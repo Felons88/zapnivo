@@ -4,7 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AgentConsole } from "@/components/AgentConsole";
 import { AdminGate } from "@/components/AdminShell";
-import { EmptyCard } from "@/components/AdminCards";
+import { EmptyCard } from "@/components/PortalShell";
 import { Pill } from "@/components/SupportNav";
 import { getSessionUser } from "@/lib/auth";
 import { assistantConfigured } from "@/lib/ai/openrouter";
@@ -47,8 +47,8 @@ export default async function TicketPage({ params }: { params: Promise<{ number:
               {t.aiSummary && <div className="rounded-xl border border-lime bg-lime/20 p-4 text-sm"><b>AI summary:</b> {t.aiSummary}</div>}
               <ol className="space-y-3" aria-label="Conversation">
                 {data.messages.map((m) => (
-                  <li key={m.id} className={m.internal ? "rounded-xl border border-gold bg-gold/20 p-4" : m.authorType === "customer" || m.authorType === "partner" ? "rounded-xl bg-white/5 p-4 shadow-sm" : "ml-6 rounded-xl border-l-4 border-lime bg-white/5 p-4 shadow-sm"}>
-                    <p className="flex flex-wrap items-center gap-2 text-xs font-extrabold uppercase tracking-wider text-lime/70">
+                  <li key={m.id} className={m.internal ? "rounded-xl border border-gold bg-gold/20 p-4" : m.authorType === "customer" || m.authorType === "partner" ? "rounded-xl bg-white p-4 shadow-sm" : "ml-6 rounded-xl border-l-4 border-lime bg-white p-4 shadow-sm"}>
+                    <p className="flex flex-wrap items-center gap-2 text-xs font-extrabold uppercase tracking-wider text-forest/70">
                       {m.internal && <Pill tone="gold">Internal</Pill>}<span>{m.authorName || m.authorType}</span><Pill tone={m.authorType === "ai" ? "lime" : m.authorType === "system" ? "mist" : "ink"}>{m.authorType}</Pill><span className="font-medium normal-case tracking-normal">{when(m.createdAt)}</span>
                     </p>
                     <p className="mt-2 whitespace-pre-wrap text-sm leading-6">{m.body}</p>
@@ -67,28 +67,28 @@ export default async function TicketPage({ params }: { params: Promise<{ number:
             </div>
 
             <aside className="space-y-4 text-sm" aria-label="Ticket details">
-              <div className="rounded-xl bg-white/5 p-4 shadow-sm">
+              <div className="rounded-xl bg-white p-4 shadow-sm">
                 <h2 className="font-display text-lg font-bold">Requester</h2>
-                <p className="mt-2 font-semibold">{t.name}</p><p className="text-silver">{t.email}{t.phone ? ` · ${t.phone}` : ""}</p>
-                <p className="mt-1 text-xs text-silver">{t.requesterType === "partner" ? `Partner${t.venueLabel ? ` · ${t.venueLabel}` : ""}` : "Customer"}{t.stationLabel ? ` · ${t.stationLabel}` : ""}</p>
+                <p className="mt-2 font-semibold">{t.name}</p><p className="text-graphite">{t.email}{t.phone ? ` · ${t.phone}` : ""}</p>
+                <p className="mt-1 text-xs text-graphite">{t.requesterType === "partner" ? `Partner${t.venueLabel ? ` · ${t.venueLabel}` : ""}` : "Customer"}{t.stationLabel ? ` · ${t.stationLabel}` : ""}</p>
                 <div className="mt-3 flex flex-wrap gap-1.5"><Pill tone="mist">{t.queue}</Pill><Pill tone={t.priority === "urgent" ? "red" : t.priority === "high" ? "gold" : "mist"}>{t.priority}</Pill><Pill tone={t.aiState === "ai_active" ? "lime" : t.aiState === "needs_human" ? "gold" : "ink"}>{t.aiState.replace("_", " ")}</Pill></div>
               </div>
-              <div className="rounded-xl bg-white/5 p-4 shadow-sm">
+              <div className="rounded-xl bg-white p-4 shadow-sm">
                 <h2 className="font-display text-lg font-bold">SLA (internal)</h2>
                 <p className="mt-2">First response: <Pill tone={sla.firstResponse === "breached" ? "red" : sla.firstResponse === "due_soon" ? "gold" : sla.firstResponse === "met" ? "lime" : "mist"}>{t.firstResponseAt ? "met" : humanDue(t.firstResponseDueAt, now)}</Pill></p>
                 <p className="mt-1">Resolution: <Pill tone={sla.resolution === "breached" ? "red" : sla.resolution === "met" ? "lime" : "mist"}>{t.resolvedAt ? "resolved" : humanDue(t.resolutionDueAt, now)}</Pill></p>
               </div>
               {data.rental && (
-                <div className="rounded-xl bg-white/5 p-4 shadow-sm">
+                <div className="rounded-xl bg-white p-4 shadow-sm">
                   <h2 className="font-display text-lg font-bold">Rental {data.rental.reference}</h2>
                   <p className="mt-2"><Pill tone={data.rental.tone === "warn" ? "gold" : data.rental.tone === "ok" ? "lime" : "cyan"}>{data.rental.status}</Pill></p>
-                  <dl className="mt-3 space-y-1 text-silver"><div>Station: {data.rental.station}</div><div>Charge: {data.rental.charge}</div>{data.rental.expectedCents != null && <div>Published rate for period: {fmt(data.rental.expectedCents)}</div>}<div>Refundable balance: {fmt(data.remainingCents ?? 0)}</div></dl>
-                  <p className="mt-3 rounded-lg bg-white/10 p-2 text-xs leading-5 text-silver">{data.rental.explanation}</p>
+                  <dl className="mt-3 space-y-1 text-graphite"><div>Station: {data.rental.station}</div><div>Charge: {data.rental.charge}</div>{data.rental.expectedCents != null && <div>Published rate for period: {fmt(data.rental.expectedCents)}</div>}<div>Refundable balance: {fmt(data.remainingCents ?? 0)}</div></dl>
+                  <p className="mt-3 rounded-lg bg-mist/70 p-2 text-xs leading-5 text-graphite">{data.rental.explanation}</p>
                 </div>
               )}
-              <div className="rounded-xl bg-white/5 p-4 shadow-sm">
+              <div className="rounded-xl bg-white p-4 shadow-sm">
                 <h2 className="font-display text-lg font-bold">Timeline</h2>
-                <ol className="mt-3 space-y-2 text-xs text-silver">{data.events.map((e) => <li key={e.id}><b className="text-ink">{e.type.replace(/_/g, " ")}</b> · {e.actor} · {when(e.createdAt)}</li>)}</ol>
+                <ol className="mt-3 space-y-2 text-xs text-graphite">{data.events.map((e) => <li key={e.id}><b className="text-ink">{e.type.replace(/_/g, " ")}</b> · {e.actor} · {when(e.createdAt)}</li>)}</ol>
               </div>
             </aside>
           </div>

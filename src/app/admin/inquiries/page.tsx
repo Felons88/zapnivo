@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 import type { Metadata } from "next";
 import { AdminGate } from "@/components/AdminShell";
-import { EmptyCard, Metric } from "@/components/AdminCards";
+import { EmptyCard, Metric } from "@/components/PortalShell";
 import { Pill } from "@/components/SupportNav";
 import { serviceClient } from "@/lib/supabase";
 
@@ -27,23 +27,23 @@ export default async function Inquiries() {
             <Metric label="Advertising" value={rows.filter((r) => r.queue === "advertising").length} />
           </section>
 
-          <section aria-label="Messages" className="overflow-x-auto rounded-2xl border border-white/10 bg-[#181933] shadow-sm">
-            <div className="border-b border-white/10 px-6 py-4"><h2 className="font-display text-lg font-bold">Contact messages</h2></div>
+          <section aria-label="Messages" className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
+            <div className="border-b border-mist px-6 py-4"><h2 className="font-display text-lg font-bold">Contact messages</h2></div>
             {rows.length === 0 ? (
-              <p className="px-6 py-10 text-sm text-silver">No messages yet. Submissions from the contact form land here.</p>
+              <p className="px-6 py-10 text-sm text-graphite">No messages yet. Submissions from the contact form land here.</p>
             ) : (
               <table className="w-full min-w-[880px] text-left text-sm">
-                <thead className="border-b border-white/10 bg-white/5 text-xs uppercase tracking-wider text-silver">
+                <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite">
                   <tr>{["From", "Queue", "Message", "Status", "Received"].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr>
                 </thead>
                 <tbody>
                   {rows.map((r) => (
-                    <tr key={r.id} className="border-b border-white/10 last:border-0 hover:bg-lime/10">
-                      <td className="px-4 py-3"><p className="font-bold">{r.name}</p><p className="text-xs text-silver">{r.email}</p></td>
+                    <tr key={r.id} className="border-b border-mist/70 last:border-0 hover:bg-lime/10">
+                      <td className="px-4 py-3"><p className="font-bold">{r.name}</p><p className="text-xs text-graphite">{r.email}</p></td>
                       <td className="px-4 py-3"><Pill tone={QUEUE_TONE[r.queue] ?? "mist"}>{r.queue.replace("_", " ")}</Pill></td>
-                      <td className="max-w-md px-4 py-3"><p className="line-clamp-2 text-xs text-silver">{r.message}</p></td>
+                      <td className="max-w-md px-4 py-3"><p className="line-clamp-2 text-xs text-graphite">{r.message}</p></td>
                       <td className="px-4 py-3"><Pill tone={r.handled ? "lime" : "gold"}>{r.handled ? "handled" : "open"}</Pill></td>
-                      <td className="px-4 py-3 text-xs text-silver">{when(r.created_at)}</td>
+                      <td className="px-4 py-3 text-xs text-graphite">{when(r.created_at)}</td>
                     </tr>
                   ))}
                 </tbody>

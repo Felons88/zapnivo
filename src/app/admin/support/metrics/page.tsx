@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 import type { Metadata } from "next";
 import { AdminGate } from "@/components/AdminShell";
-import { EmptyCard, Metric } from "@/components/AdminCards";
+import { EmptyCard, Metric } from "@/components/PortalShell";
 import { assistantConfigured } from "@/lib/ai/openrouter";
 import { mailerConfigured } from "@/lib/helpdesk/mailer";
 import { computeMetrics } from "@/lib/helpdesk/metrics";
@@ -39,17 +39,17 @@ export default async function MetricsPage() {
             <Metric label="Issued" value={m.refunds.issued} sub={fmt(m.refunds.issuedCents)} />
             <Metric label="Denied / failed" value={`${m.refunds.denied} / ${m.refunds.failed}`} />
           </section>
-          <section aria-label="System status" className="rounded-xl bg-white/5 p-6 shadow-sm">
+          <section aria-label="System status" className="rounded-xl bg-white p-6 shadow-sm">
             <h2 className="font-display text-xl font-bold">System status</h2>
             <ul className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
               {[
                 ["AI assistant (OpenRouter)", assistantConfigured(), "Set OPENROUTER_API_KEY"],
                 ["Email delivery (Resend)", mailerConfigured(), `Set RESEND_API_KEY + SUPPORT_FROM_EMAIL. ${queued} email(s) waiting, ${failed} failed`],
                 ["Stripe (refunds & live payment data)", stripeLinked(), "Not linked. Refunds are approved here and issued manually"],
-              ].map(([k, ok, hint]) => <li key={String(k)} className="flex items-start gap-3 rounded-lg bg-white/10 p-3"><span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${ok ? "bg-green-500" : "bg-gold"}`} aria-hidden /><span><b>{String(k)}</b><br /><span className="text-silver">{ok ? "Connected" : String(hint)}</span></span></li>)}
+              ].map(([k, ok, hint]) => <li key={String(k)} className="flex items-start gap-3 rounded-lg bg-mist/60 p-3"><span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${ok ? "bg-green-500" : "bg-gold"}`} aria-hidden /><span><b>{String(k)}</b><br /><span className="text-graphite">{ok ? "Connected" : String(hint)}</span></span></li>)}
             </ul>
             <h3 className="mt-6 font-bold">Internal SLA targets (hours)</h3>
-            <p className="mt-1 text-xs text-silver">{Object.entries(SLA_HOURS).map(([p, s]) => `${p}: first reply ${s.first}h · resolve ${s.resolve}h`).join("  |  ")}</p>
+            <p className="mt-1 text-xs text-graphite">{Object.entries(SLA_HOURS).map(([p, s]) => `${p}: first reply ${s.first}h · resolve ${s.resolve}h`).join("  |  ")}</p>
           </section>
         </div>
       )}

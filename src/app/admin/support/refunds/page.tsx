@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { AdminGate } from "@/components/AdminShell";
-import { EmptyCard } from "@/components/AdminCards";
+import { EmptyCard } from "@/components/PortalShell";
 import { RefundActions } from "@/components/RefundActions";
 import { getSessionUser } from "@/lib/auth";
 import { defaultCtx } from "@/lib/helpdesk/service";
@@ -21,7 +21,7 @@ export default async function RefundQueue() {
     <AdminGate title="Refund queue" nav="refunds">
       {!ctx || !user ? <EmptyCard title="Support system not connected">Connect Supabase or enable the dev store.</EmptyCard> : (
         <div className="space-y-8">
-          <p className="max-w-3xl text-sm text-silver">Agents approve up to the first-24-hour cap. Larger amounts need an admin who did not request them. Refunds are issued through Stripe once linked; until then approved refunds wait here and can be recorded after issuing manually in Stripe.</p>
+          <p className="max-w-3xl text-sm text-graphite">Agents approve up to the first-24-hour cap. Larger amounts need an admin who did not request them. Refunds are issued through Stripe once linked; until then approved refunds wait here and can be recorded after issuing manually in Stripe.</p>
           <section aria-label="Open refunds">
             <h2 className="mb-3 font-display text-xl font-bold">Needs action ({open.length})</h2>
             {open.length === 0 ? <EmptyCard title="No open refunds">Refund requests created from tickets appear here.</EmptyCard> : (
