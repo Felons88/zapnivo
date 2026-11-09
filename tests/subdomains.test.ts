@@ -69,6 +69,16 @@ describe("apex canonical redirects", () => {
   });
 });
 
+describe("oauth ?code fallback", () => {
+  it("forwards a code dropped on the root to the auth callback", () => {
+    expect(r("www.zapnivo.com", "/")).toEqual({ kind: "next" });
+    expect(planRoute({ host: "www.zapnivo.com", path: "/", protocol: "https:", base: "zapnivo.com", hasAuthCode: true }))
+      .toEqual({ kind: "rewrite", to: "/api/auth/callback" });
+    expect(planRoute({ host: "internal.zapnivo.com", path: "/", protocol: "https:", base: "zapnivo.com", hasAuthCode: true }))
+      .toEqual({ kind: "rewrite", to: "/api/auth/callback" });
+  });
+});
+
 describe("local dev subdomains", () => {
   it("mirrors the production scheme on *.localhost, keeping the port", () => {
     expect(r("support.localhost:3000", "/", "http:")).toEqual({ kind: "rewrite", to: "/support", noindex: false });

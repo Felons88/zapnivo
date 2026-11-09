@@ -12,6 +12,7 @@ export function proxy(req: NextRequest) {
     path: req.nextUrl.pathname,
     protocol: req.nextUrl.protocol,
     base: baseDomain(),
+    hasAuthCode: req.nextUrl.searchParams.has("code"),
   });
   const tag = (r: NextResponse, noindex?: boolean) => {
     if (noindex) r.headers.set("x-robots-tag", "noindex, nofollow");

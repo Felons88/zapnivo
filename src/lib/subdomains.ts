@@ -46,11 +46,14 @@ export function planRoute({
   path,
   protocol,
   base = DEFAULT_BASE_DOMAIN,
+  hasAuthCode = false,
 }: {
   host: string;
   path: string;
   protocol: string; // "http:" | "https:" — from req.nextUrl.protocol
   base?: string;
+  /** true when the URL carries an OAuth ?code= — Supabase drops it on the Site URL root when redirect_to isn't allowlisted */
+  hasAuthCode?: boolean;
 }): RouteDecision {
   const hostname = host.split(":")[0].toLowerCase();
   const port = host.includes(":") ? host.slice(host.indexOf(":")) : "";
@@ -69,6 +72,9 @@ export function planRoute({
   const isFile = /\.[a-zA-Z0-9]{1,10}$/.test(path);
   const isApi = path === "/api" || path.startsWith("/api/");
   const pass = isApi || isFile || path === "/login" || path.startsWith("/.well-known/");
+
+  // OAuth fallback: a ?code landing on / belongs to /api/auth/callback, on any host.
+  if (hasAuthCode && (path === "/" || path === "")) return { kind: "rewrite", to: "/api/auth/callback" };
 
   if (sub === "api") {
     if (path === "/robots.txt") {
