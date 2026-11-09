@@ -2,14 +2,14 @@ export const dynamic = "force-dynamic";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Conversation } from "@/components/Conversation";
-import { EmptyCard, PortalGate } from "@/components/PortalShell";
+import { PartnerGate } from "@/components/PartnerShell";
+import { EmptyCard } from "@/components/PortalShell";
 import { RequesterReply } from "@/components/RequesterReply";
 import { getSessionUser } from "@/lib/auth";
 import { defaultCtx, getRequesterThread } from "@/lib/helpdesk/service";
 import { HelpdeskError } from "@/lib/helpdesk/types";
 
 export const metadata: Metadata = { title: "Partner request", robots: { index: false, follow: false } };
-const TABS = [{ href: "/partners", label: "Overview" }, { href: "/partners/payouts", label: "Payouts" }, { href: "/partners/support", label: "Support" }];
 
 export default async function PartnerThread({ params }: { params: Promise<{ number: string }> }) {
   const { number } = await params;
@@ -22,14 +22,18 @@ export default async function PartnerThread({ params }: { params: Promise<{ numb
     catch (e) { if (e instanceof HelpdeskError) denied = true; else throw e; }
   }
   return (
-    <PortalGate require="partner" eyebrow="Venue partner" title={thread ? `${thread.number} · ${thread.category}` : "Partner request"} tabs={TABS}>
-      <Link href="/partners/support" className="text-sm font-bold underline underline-offset-4">← All requests</Link>
-      {!thread ? <div className="mt-4"><EmptyCard title={denied ? "Request not found" : "Partner view"}>{denied ? "This request doesn't exist or isn't part of your organization." : "Sign in with a venue partner account to view requests."}</EmptyCard></div> : (
-        <div className="mx-auto mt-6 max-w-3xl space-y-6">
-          <Conversation messages={thread.messages} mine="partner" />
-          <RequesterReply number={thread.number} mode="partner" withPerson resolved={thread.state === "resolved" || thread.state === "closed"} />
-        </div>
+    <PartnerGate title={thread ? `${thread.number} · ${thread.category}` : "Partner request"} nav="support">
+      {() => (
+        <>
+          <Link href="/partners/support" className="text-sm font-bold underline underline-offset-4">← All requests</Link>
+          {!thread ? <div className="mt-4"><EmptyCard title={denied ? "Request not found" : "Partner view"}>{denied ? "This request doesn't exist or isn't part of your organization." : "Sign in with a venue partner account to view requests."}</EmptyCard></div> : (
+            <div className="mx-auto mt-6 max-w-3xl space-y-6">
+              <Conversation messages={thread.messages} mine="partner" />
+              <RequesterReply number={thread.number} mode="partner" withPerson resolved={thread.state === "resolved" || thread.state === "closed"} />
+            </div>
+          )}
+        </>
       )}
-    </PortalGate>
+    </PartnerGate>
   );
 }

@@ -1,28 +1,34 @@
 export const dynamic = "force-dynamic";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { EmptyCard, PortalGate } from "@/components/PortalShell";
+import { PartnerGate } from "@/components/PartnerShell";
+import { EmptyCard } from "@/components/PortalShell";
 import { PartnerRequestForm } from "@/components/PartnerRequestForm";
 import { Pill } from "@/components/SupportNav";
 import { getSessionUser } from "@/lib/auth";
 import { defaultCtx } from "@/lib/helpdesk/service";
+import { serviceClient } from "@/lib/supabase";
 
 export const metadata: Metadata = { title: "Partner support", robots: { index: false, follow: false } };
-
-const TABS = [{ href: "/partners", label: "Overview" }, { href: "/partners/payouts", label: "Payouts" }, { href: "/partners/support", label: "Support" }];
 const STATE: Record<string, string> = { open: "Received", pending_customer: "Waiting for you", pending_internal: "In progress", resolved: "Resolved", closed: "Closed" };
 
 export default async function PartnerSupport() {
-  const user = await getSessionUser();
-  const ctx = await defaultCtx();
-  const isPartner = user?.role === "partner" && !!user.organizationId;
-  const tickets = ctx && isPartner ? await ctx.repo.listTickets({ orgId: user!.organizationId!, limit: 100 }) : [];
-
   return (
-    <PortalGate require="partner" eyebrow="Venue partner" title="Partner support" tabs={TABS}>
-      {!ctx ? <EmptyCard title="Support system not connected">Partner requests will be available once the support system is connected.</EmptyCard>
-        : !isPartner ? <EmptyCard title="Partner view">Sign in with a venue partner account to raise and track requests. Staff manage partner requests in the admin Support inbox.</EmptyCard>
-        : (
+    <PartnerGate title="Support" nav="support">
+      {async ({ user }) => {
+        const ctx = await defaultCtx();
+        const isPartner = user.role === "partner" && !!user.organizationId;
+        const db = serviceClient();
+        const [tickets, venues] = await Promise.all([
+          ctx && isPartner ? ctx.repo.listTickets({ orgId: user.organizationId!, limit: 100 }) : Promise.resolve([]),
+          isPartner && db ? db.from("venues").select("name").eq("organization_id", user.organizationId!).limit(50).then((r) => r.data ?? []) : Promise.resolve([]),
+        ]);
+        const venueNames = (venues as { name: string }[]).map((v) => v.name);
+
+        if (!ctx) return <EmptyCard title="Support system not connected">Partner requests will be available once the support system is connected.</EmptyCard>;
+        if (!isPartner) return <EmptyCard title="Partner view">Sign in with a venue partner account to raise and track requests. Staff manage partner requests in the admin Support inbox.</EmptyCard>;
+
+        return (
           <div className="grid gap-8 lg:grid-cols-[1.2fr_.8fr]">
             <section aria-label="Your requests">
               <h2 className="font-display text-xl font-bold">Your requests</h2>
@@ -40,10 +46,11 @@ export default async function PartnerSupport() {
             <section aria-label="New request" className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
               <h2 className="font-display text-xl font-bold">New request</h2>
               <p className="mb-5 mt-1 text-sm text-graphite">Goes straight to Zapnivo partner relations. Guests with rental problems should use support.zapnivo.com. Rental charges and refunds are handled by Zapnivo.</p>
-              <PartnerRequestForm venues={[]} />
+              <PartnerRequestForm venues={venueNames} />
             </section>
           </div>
-        )}
-    </PortalGate>
+        );
+      }}
+    </PartnerGate>
   );
 }
