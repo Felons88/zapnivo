@@ -21,14 +21,16 @@ export default async function PartnerPortal() {
         const [venues, kiosks, rentalCounts, agreements, openTickets] = orgId && db ? await Promise.all([
           db.from("venues").select("id,name,city,state,published,hours").eq("organization_id", orgId).limit(50),
           db.from("kiosks").select("id,station_id,state,last_seen_at,venues!inner(name,organization_id)").eq("venues.organization_id", orgId).limit(50),
-          db.from("rentals").select("state,created_at,kiosks!inner(venues!inner(organization_id))").eq("kiosks.venues.organization_id", orgId).gte("created_at", new Date(Date.now() - 30 * 86400_000).toISOString()).limit(5000),
+          db.from("rentals").select("kiosk_id,state,created_at,kiosks!inner(venues!inner(organization_id))").eq("kiosks.venues.organization_id", orgId).gte("created_at", new Date(Date.now() - 30 * 86400_000).toISOString()).limit(5000),
           db.from("partner_agreements").select("id,signed_at,document_path,venues(name)").eq("organization_id", orgId).order("signed_at", { ascending: false }).limit(20),
           ctx ? ctx.repo.listTickets({ orgId, states: ["open", "pending_customer", "pending_internal"], limit: 5 }) : Promise.resolve([]),
         ]) : [{ data: null }, { data: null }, { data: null }, { data: null }, []];
 
         const venueRows = (venues?.data ?? []) as { id: string; name: string; city: string; state: string; published: boolean; hours: string | null }[];
         const kioskRows = (kiosks?.data ?? []) as unknown as { id: string; station_id: string; state: keyof typeof KIOSK_TONE; last_seen_at: string | null; venues: { name: string }[] | null }[];
-        const rentalRows = (rentalCounts?.data ?? []) as { state: string }[];
+        const rentalRows = (rentalCounts?.data ?? []) as { kiosk_id: string; state: string }[];
+        const rentalsByKiosk = new Map<string, number>();
+        for (const r of rentalRows) rentalsByKiosk.set(r.kiosk_id, (rentalsByKiosk.get(r.kiosk_id) ?? 0) + 1);
         const active = rentalRows.filter((r) => r.state === "active" || r.state === "dispense_pending").length;
         const agrRows = (agreements?.data ?? []) as unknown as { id: string; signed_at: string | null; document_path: string | null; venues: { name: string }[] | null }[];
         const docs = db ? (await Promise.all(agrRows.map(async (a) => ({
@@ -52,13 +54,14 @@ export default async function PartnerPortal() {
                 <p className="px-6 py-10 text-sm text-graphite">No stations installed yet. Your kiosk appears here after installation.</p>
               ) : (
                 <table className="w-full min-w-[640px] text-left text-sm">
-                  <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite"><tr>{["Station", "Venue", "Status", "Last seen"].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr></thead>
+                  <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite"><tr>{["Station", "Venue", "Status", "Rentals (30d)", "Last seen"].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr></thead>
                   <tbody>
                     {kioskRows.map((k) => (
                       <tr key={k.id} className="border-b border-mist/70 last:border-0">
                         <td className="px-4 py-3 font-bold">{k.station_id}</td>
                         <td className="px-4 py-3 text-xs font-semibold">{k.venues?.[0]?.name ?? "—"}</td>
                         <td className="px-4 py-3"><Pill tone={KIOSK_TONE[k.state] ?? "mist"}>{k.state}</Pill></td>
+                        <td className="px-4 py-3 font-display font-bold">{rentalsByKiosk.get(k.id) ?? 0}</td>
                         <td className="px-4 py-3 text-xs text-graphite">{when(k.last_seen_at)}</td>
                       </tr>
                     ))}

@@ -62,6 +62,38 @@ export default async function Partners() {
             )}
           </section>
 
+          <div className="grid gap-6 lg:grid-cols-3">
+            <section aria-label="Invite owner" className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+              <h2 className="font-display text-lg font-bold">Invite a site owner</h2>
+              <form method="post" action="/api/admin/partners" className="mt-4 space-y-3">
+                <input type="hidden" name="action" value="invite_partner" />
+                <div><label htmlFor="i-email" className="mb-1 block text-xs font-bold">Email</label><input id="i-email" name="email" type="email" required className="min-h-10 w-full rounded-lg border border-silver/70 px-3 text-sm" placeholder="owner@bar.com" /></div>
+                <div><label htmlFor="i-name" className="mb-1 block text-xs font-bold">Name</label><input id="i-name" name="name" className="min-h-10 w-full rounded-lg border border-silver/70 px-3 text-sm" placeholder="Alex Rivera" /></div>
+                <div><label htmlFor="i-org" className="mb-1 block text-xs font-bold">Organization</label>
+                  <select id="i-org" name="organization_id" required className="min-h-10 w-full rounded-lg border border-silver/70 px-3 text-sm"><option value="">Select…</option>{orgRows.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}</select></div>
+                <button className="min-h-10 w-full rounded-full bg-ink px-5 text-sm font-bold text-white">Send invite</button>
+              </form>
+              <p className="mt-3 text-xs text-graphite">Sends a Supabase sign-up email. The owner's portal shows earnings for every venue on that org — one owner, many locations.</p>
+            </section>
+            <section aria-label="New organization" className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+              <h2 className="font-display text-lg font-bold">New organization</h2>
+              <form method="post" action="/api/admin/partners" className="mt-4 space-y-3">
+                <input type="hidden" name="action" value="create_org" />
+                <div><label htmlFor="o-name" className="mb-1 block text-xs font-bold">Business name</label><input id="o-name" name="name" required className="min-h-10 w-full rounded-lg border border-silver/70 px-3 text-sm" placeholder="Northside Hospitality LLC" /></div>
+                <button className="min-h-10 w-full rounded-full bg-ink px-5 text-sm font-bold text-white">Create</button>
+              </form>
+              <p className="mt-3 text-xs text-graphite">One organization can own several venues — assign them on the Fleet page.</p>
+            </section>
+            <section aria-label="Monthly statements" className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+              <h2 className="font-display text-lg font-bold">Monthly statements</h2>
+              <form method="post" action="/api/admin/statements" className="mt-4 space-y-3">
+                <div><label htmlFor="s-period" className="mb-1 block text-xs font-bold">Period</label><input id="s-period" name="period" required pattern="\d{4}-(0[1-9]|1[0-2])" className="min-h-10 w-full rounded-lg border border-silver/70 px-3 text-sm" placeholder="2026-05" /></div>
+                <button className="min-h-10 w-full rounded-full bg-ink px-5 text-sm font-bold text-white">Queue statement emails</button>
+              </form>
+              <p className="mt-3 text-xs text-graphite">Emails one statement per venue to each owner on the org, through the outbox — nothing claims sent if mail isn't configured.</p>
+            </section>
+          </div>
+
           <section aria-label="Venues" className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
             <div className="border-b border-mist px-6 py-4"><h2 className="font-display text-lg font-bold">Venues</h2></div>
             {venueRows.length === 0 ? (
