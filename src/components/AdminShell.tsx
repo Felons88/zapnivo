@@ -23,6 +23,8 @@ const icons = {
   swap: <I><path d="M8 3 4 7l4 4" /><path d="M4 7h16" /><path d="m16 21 4-4-4-4" /><path d="M20 17H4" /></I>,
   store: <I><path d="M4 10v10a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V10" /><path d="M3 6.5 5 3h14l2 3.5a3 3 0 0 1-6 .5 3 3 0 0 1-6 0 3 3 0 0 1-6-.5Z" /><path d="M9 21v-6h6v6" /></I>,
   megaphone: <I><path d="m3 11 18-5v12L3 13v-2Z" /><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6" /></I>,
+  users: <I><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20a6.5 6.5 0 0 1 13 0" /><path d="M16 4.5a3.5 3.5 0 0 1 0 7M21.5 20a6.5 6.5 0 0 0-4-6" /></I>,
+  scroll: <I><path d="M8 3h11v14a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3v-1h13" /><path d="M8 8h6M8 12h6" /></I>,
   mail: <I><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3 7 9 6 9-6" /></I>,
 } satisfies Record<string, ReactNode>;
 
@@ -40,9 +42,11 @@ const NAV_ITEMS = {
   rentals: { href: "/admin/rentals", label: "Rentals", icon: icons.swap, group: "Operations" },
   partners: { href: "/admin/partners", label: "Partners", icon: icons.store, group: "Operations" },
   advertising: { href: "/admin/advertising", label: "Advertising", icon: icons.megaphone, group: "Operations" },
+  users: { href: "/admin/users", label: "Users & roles", icon: icons.users, group: "System" },
+  audit: { href: "/admin/audit", label: "Audit log", icon: icons.scroll, group: "System" },
 } as const;
 
-const GROUPS = ["Overview", "Support", "Operations"] as const;
+const GROUPS = ["Overview", "Support", "Operations", "System"] as const;
 
 function NavLink({ item, active }: { item: (typeof NAV_ITEMS)[AdminNavKey]; active: boolean }) {
   return (

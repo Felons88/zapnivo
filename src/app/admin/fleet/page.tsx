@@ -102,7 +102,7 @@ export default async function Fleet({ searchParams }: { searchParams: Promise<{ 
                     const s = byKiosk.get(k.id) ?? {};
                     return (
                       <tr key={k.id} className="border-b border-mist/70 last:border-0 hover:bg-lime/10">
-                        <td className="px-4 py-3 font-bold">{k.station_id}</td>
+                        <td className="px-4 py-3 font-bold"><Link href={`/admin/fleet/${k.station_id}`} className="underline underline-offset-4 hover:text-forest">{k.station_id}</Link></td>
                         <td className="px-4 py-3">
                           <form method="post" action="/api/admin/fleet" className="flex items-center gap-2">
                             <input type="hidden" name="action" value="assign_kiosk" /><input type="hidden" name="kiosk_id" value={k.id} />
