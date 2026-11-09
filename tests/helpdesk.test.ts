@@ -351,7 +351,7 @@ describe("SLA, outbox, macros, metrics", () => {
     expect(await flushOutbox(c.repo, { send })).toMatchObject({ sent: 1, failed: 0 });
     expect(send).toHaveBeenCalledOnce();
     expect(await c.repo.listEmails("queued")).toHaveLength(0);
-    await c.repo.queueEmail({ ticketId: null, to: "a@b.co", subject: "s", body: "b" });
+    await c.repo.queueEmail({ ticketId: null, to: "a@b.co", subject: "s", body: "b", html: null });
     expect(await flushOutbox(c.repo, { send: async () => { throw new Error("boom"); } })).toMatchObject({ failed: 1 });
     expect((await c.repo.listEmails("failed"))[0].error).toBe("boom");
   });

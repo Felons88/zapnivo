@@ -87,7 +87,7 @@ export type RefundRequest = {
   issuedAt: string | null;
 };
 
-export type OutboxEmail = { id: string; ticketId: string | null; to: string; subject: string; body: string; status: "queued" | "sent" | "failed"; error: string | null; createdAt: string };
+export type OutboxEmail = { id: string; ticketId: string | null; to: string; subject: string; body: string; html: string | null; status: "queued" | "sent" | "failed"; error: string | null; createdAt: string };
 
 export type TicketFilter = { states?: TicketState[]; queue?: Queue; priority?: Priority; assignedTo?: string | "unassigned"; orgId?: string; aiState?: AiState; q?: string; limit?: number };
 

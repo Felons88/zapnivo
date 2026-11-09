@@ -27,7 +27,7 @@ const toRefund = (r: Row): RefundRequest => ({
   error: r.error, createdAt: r.created_at, decidedAt: r.decided_at, issuedAt: r.issued_at,
 });
 const refundCols: Record<string, string> = { decidedBy: "decided_by", decisionNote: "decision_note", providerRefundId: "provider_refund_id", decidedAt: "decided_at", issuedAt: "issued_at", paymentIntentId: "payment_intent_id", amountCents: "amount_cents" };
-const toEmail = (r: Row): OutboxEmail => ({ id: r.id, ticketId: r.ticket_id, to: r.to_email, subject: r.subject, body: r.body, status: r.status, error: r.error, createdAt: r.created_at });
+const toEmail = (r: Row): OutboxEmail => ({ id: r.id, ticketId: r.ticket_id, to: r.to_email, subject: r.subject, body: r.body, html: r.html ?? null, status: r.status, error: r.error, createdAt: r.created_at });
 
 /**
  * Production repository (Supabase Postgres, service role, server-side only).
@@ -117,7 +117,7 @@ export class SupabaseRepo implements HelpdeskRepo {
     return data ? toRefund(data) : null;
   }
   async queueEmail(e: Omit<OutboxEmail, "id" | "createdAt" | "status" | "error">) {
-    const { data, error } = await this.db().from("email_outbox").insert({ ticket_id: e.ticketId, to_email: e.to, subject: e.subject, body: e.body }).select("*").single();
+    const { data, error } = await this.db().from("email_outbox").insert({ ticket_id: e.ticketId, to_email: e.to, subject: e.subject, body: e.body, html: e.html ?? null }).select("*").single();
     this.fail(error);
     return toEmail(data!);
   }

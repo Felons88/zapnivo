@@ -38,6 +38,7 @@ export async function POST(req: Request) {
     const { data: owners } = await db.from("profiles").select("email,full_name").eq("organization_id", venue.organization_id).eq("role", "partner").limit(20);
     for (const o of (owners ?? []) as { email: string; full_name: string | null }[]) {
       await repo.queueEmail({
+        html: null,
         ticketId: null,
         to: o.email,
         subject: `Your ${month} statement — ${venue.name}`,

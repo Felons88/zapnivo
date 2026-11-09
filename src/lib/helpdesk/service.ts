@@ -5,6 +5,7 @@ import { getRefundProvider, type RefundProvider } from "../payments/source";
 import { describeRental, type RentalResult } from "../rental-lookup";
 import { SITE, subUrl } from "../site";
 import { signAccess } from "./access";
+import { renderEmail } from "../email-templates";
 import { flushOutbox, getMailer, type Mailer } from "./mailer";
 import { requiresAdmin, snapshot, suggestRefund } from "./refund-policy";
 import { getRepo, type HelpdeskRepo } from "./repo";
@@ -31,8 +32,15 @@ const audit = (c: Ctx, ticketId: string, actor: Actor, type: string, detail?: Re
 const ticketLink = (c: Ctx, t: Ticket) => (t.requesterType === "partner" ? subUrl("partners", `/support/${t.number}`, c.siteUrl) : subUrl("support", `/ticket/${t.number}${(() => { const tok = signAccess(t.number, t.email); return tok ? `?t=${tok}` : ""; })()}`, c.siteUrl));
 
 /** Writes to the outbox, then best-effort sends. If no mailer is configured the email simply stays queued. */
-async function notify(c: Ctx, t: Ticket, subject: string, body: string) {
-  await c.repo.queueEmail({ ticketId: t.id, to: t.email, subject: `[${t.number}] ${subject}`, body: `${body}\n\n— View or reply: ${ticketLink(c, t)}\n\nZapnivo Support` });
+async function notify(c: Ctx, t: Ticket, subject: string, body: string, kind: "created" | "updated" = "updated") {
+  const link = ticketLink(c, t);
+  const vars = {
+    ticket_id: t.number, ticket_subject: t.subject, ticket_status: t.state.replace(/_/g, " "),
+    ticket_url: link, year: String(new Date().getFullYear()),
+    [`${kind}_at`]: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }),
+  };
+  const html = kind === "created" ? renderEmail("support_created", vars) : renderEmail("support_updated", vars);
+  await c.repo.queueEmail({ ticketId: t.id, to: t.email, subject: `[${t.number}] ${subject}`, body: `${body}\n\n— View or reply: ${link}\n\nZapnivo Support`, html });
   try { await flushOutbox(c.repo, c.mailer); } catch { /* recorded per-email */ }
 }
 
@@ -67,7 +75,7 @@ export async function createTicket(c: Ctx, input: NewTicketInput): Promise<{ tic
   if (d.summary) await c.repo.addMessage({ ticketId: ticket.id, authorType: "ai", authorId: null, authorName: "AI triage", internal: true, body: `Summary for agent: ${d.summary}` });
   ticket = await c.repo.updateTicket(ticket.id, { aiState: d.aiState, aiSummary: d.summary, state: d.aiState === "ai_active" ? "pending_customer" : "open" });
   await audit(c, ticket.id, { kind: "ai" }, "triage", { kind: d.kind, aiState: d.aiState, auto_reply: !!d.reply });
-  if (d.reply) await notify(c, ticket, "We received your request", d.reply);
+  if (d.reply) await notify(c, ticket, "We received your request", d.reply, "created");
   return { ticket, token: ticket.requesterType === "customer" ? signAccess(ticket.number, ticket.email) : null };
 }
 
