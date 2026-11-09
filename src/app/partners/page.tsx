@@ -51,7 +51,7 @@ export default async function PartnerPortal() {
             <section aria-label="Your stations" className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
               <div className="border-b border-mist px-6 py-4"><h2 className="font-display text-lg font-bold">Your stations</h2></div>
               {kioskRows.length === 0 ? (
-                <p className="px-6 py-10 text-sm text-graphite">No stations installed yet. Your kiosk appears here after installation.</p>
+                <div className="px-6 py-10"><p className="text-sm text-graphite">No stations installed yet. Your kiosk appears here after installation.</p><Link href="/partners/demo" className="mt-3 inline-block text-xs font-extrabold uppercase tracking-wider text-forest hover:underline">Preview a populated portal →</Link></div>
               ) : (
                 <table className="w-full min-w-[640px] text-left text-sm">
                   <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite"><tr>{["Station", "Venue", "Status", "Rentals (30d)", "Last seen"].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr></thead>
