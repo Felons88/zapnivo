@@ -1,0 +1,38 @@
+import type { HelpdeskRepo } from "./repo";
+
+/**
+ * Email delivery seam. Everything customer-visible is first written to the outbox (so nothing is lost
+ * and the UI can show delivery state), then flushed through a Mailer. With no provider configured,
+ * emails stay "queued"; the product never claims an email was sent when it wasn't.
+ *
+ * Provider: Resend (set RESEND_API_KEY + SUPPORT_FROM_EMAIL, a verified sender like "Zapnivo Support <support@yourdomain>").
+ * Inbound replies-by-email would arrive via a provider webhook (future) and call addCustomerMessage.
+ */
+export interface Mailer { send(m: { to: string; subject: string; body: string }): Promise<void> }
+
+export const mailerConfigured = () => Boolean(process.env.RESEND_API_KEY && process.env.SUPPORT_FROM_EMAIL);
+
+export class ResendMailer implements Mailer {
+  async send(m: { to: string; subject: string; body: string }) {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST", signal: AbortSignal.timeout(15_000),
+      headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ from: process.env.SUPPORT_FROM_EMAIL, to: m.to, subject: m.subject, text: m.body }),
+    });
+    if (!res.ok) throw new Error(`resend_${res.status}`);
+  }
+}
+
+export const getMailer = (): Mailer | null => (mailerConfigured() ? new ResendMailer() : null);
+
+/** Sends everything queued. Individual failures are recorded, never thrown. Returns counts. */
+export async function flushOutbox(repo: HelpdeskRepo, mailer: Mailer | null) {
+  const queued = await repo.listEmails("queued");
+  if (!mailer) return { sent: 0, failed: 0, queued: queued.length };
+  let sent = 0, failed = 0;
+  for (const e of queued) {
+    try { await mailer.send({ to: e.to, subject: e.subject, body: e.body }); await repo.markEmail(e.id, "sent"); sent++; }
+    catch (err) { await repo.markEmail(e.id, "failed", err instanceof Error ? err.message : "error"); failed++; }
+  }
+  return { sent, failed, queued: 0 };
+}

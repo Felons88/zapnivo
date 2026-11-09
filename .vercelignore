@@ -1,0 +1,7 @@
+.next
+.next-e2e
+.data
+*.log
+legacy/
+.env*
+!.env.example
