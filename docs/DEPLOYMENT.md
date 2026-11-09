@@ -27,7 +27,7 @@ Copy values from local `.env.local`; **never commit them**.
 | `HELPDESK_SECRET` | from `.env.local` — required for customer thread links |
 | `KIOSK_ADAPTER` | `none` |
 
-Optional / later: `NEXT_PUBLIC_MAPBOX_TOKEN` (map), `OPENROUTER_API_KEY` (+`OPENROUTER_MODEL`), `RESEND_API_KEY` + `SUPPORT_FROM_EMAIL` (email), `STRIPE_*` (payments).
+Optional / later: `NEXT_PUBLIC_MAPBOX_TOKEN` (map), `OPENROUTER_API_KEY` (+`OPENROUTER_MODEL`), `RESEND_API_KEY` or `BREVO_API_KEY` + `SUPPORT_FROM_EMAIL` (email — Brevo wins if both set), `STRIPE_*` (payments).
 
 **Do NOT set `HELPDESK_DEV_STORE`** — it's dev-only and ignored in production builds anyway.
 
@@ -85,5 +85,5 @@ Local dev is unchanged: `localhost:3000/support` etc. work as paths, and
 ## Notes
 
 - Rate limiting is in-memory per instance — fine at Vercel scale for launch; move to Upstash Redis if abuse appears (`src/lib/rate-limit.ts` is the seam).
-- `email_outbox` delivers nothing until `RESEND_API_KEY` is set; staff can flush it from the metrics page.
+- `email_outbox` delivers nothing until `RESEND_API_KEY` or `BREVO_API_KEY` is set; staff can flush it from the metrics page.
 - Preview deployments get the same env vars — that's fine (same Supabase project) unless you want a separate preview DB.

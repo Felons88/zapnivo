@@ -10,7 +10,9 @@ import type { HelpdeskRepo } from "./repo";
  */
 export interface Mailer { send(m: { to: string; subject: string; body: string }): Promise<void> }
 
-export const mailerConfigured = () => Boolean(process.env.RESEND_API_KEY && process.env.SUPPORT_FROM_EMAIL);
+export const mailerConfigured = () => Boolean(
+  (process.env.RESEND_API_KEY || process.env.BREVO_API_KEY) && process.env.SUPPORT_FROM_EMAIL,
+);
 
 export class ResendMailer implements Mailer {
   async send(m: { to: string; subject: string; body: string }) {
@@ -23,7 +25,26 @@ export class ResendMailer implements Mailer {
   }
 }
 
-export const getMailer = (): Mailer | null => (mailerConfigured() ? new ResendMailer() : null);
+/** Brevo (Sendinblue) transactional API — set BREVO_API_KEY + SUPPORT_FROM_EMAIL. */
+export class BrevoMailer implements Mailer {
+  async send(m: { to: string; subject: string; body: string }) {
+    const from = process.env.SUPPORT_FROM_EMAIL!;
+    const match = from.match(/^(.*)<([^>]+)>\s*$/);
+    const sender = match ? { name: match[1].trim(), email: match[2].trim() } : { email: from.trim() };
+    const res = await fetch("https://api.brevo.com/v3/smtp/email", {
+      method: "POST", signal: AbortSignal.timeout(15_000),
+      headers: { "api-key": process.env.BREVO_API_KEY!, "Content-Type": "application/json", accept: "application/json" },
+      body: JSON.stringify({ sender, to: [{ email: m.to }], subject: m.subject, textContent: m.body }),
+    });
+    if (!res.ok) throw new Error(`brevo_${res.status}`);
+  }
+}
+
+export const getMailer = (): Mailer | null => {
+  if (!mailerConfigured()) return null;
+  if (process.env.BREVO_API_KEY) return new BrevoMailer();
+  return new ResendMailer();
+};
 
 /** Sends everything queued. Individual failures are recorded, never thrown. Returns counts. */
 export async function flushOutbox(repo: HelpdeskRepo, mailer: Mailer | null) {
