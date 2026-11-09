@@ -10,6 +10,7 @@ import { computeMetrics } from "@/lib/helpdesk/metrics";
 import { defaultCtx } from "@/lib/helpdesk/service";
 import { humanDue } from "@/lib/helpdesk/sla";
 import { fmt } from "@/lib/pricing";
+import { serviceClient } from "@/lib/supabase";
 
 export const metadata: Metadata = { title: "Dashboard", robots: { index: false, follow: false } };
 
@@ -39,6 +40,39 @@ const Row = ({ k, v }: { k: string; v: ReactNode }) => (
   <div className="flex items-baseline justify-between gap-4"><dt className="text-sm text-graphite">{k}</dt><dd className="font-display text-xl font-bold">{v}</dd></div>
 );
 
+/** Area/line chart — server-rendered SVG, no JS. */
+function AreaChart({ data, color = "#8063ff", label }: { data: number[]; color?: string; label: string }) {
+  const w = 560, h = 96, p = 6, gid = `a${color.slice(1)}`;
+  const max = Math.max(1, ...data);
+  const step = (w - 2 * p) / Math.max(1, data.length - 1);
+  const pts = data.map((v, i) => `${(p + i * step).toFixed(1)},${(h - p - (v / max) * (h - 2 * p)).toFixed(1)}`).join(" ");
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} className="h-24 w-full" role="img" aria-label={label} preserveAspectRatio="none">
+      <defs><linearGradient id={gid} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={color} stopOpacity=".3" /><stop offset="100%" stopColor={color} stopOpacity="0" /></linearGradient></defs>
+      <polygon points={`${p},${h - p} ${pts} ${w - p},${h - p}`} fill={`url(#${gid})`} />
+      <polyline points={pts} fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+/** Donut chart with legend — server-rendered SVG. */
+function Donut({ parts }: { parts: { label: string; value: number; color: string }[] }) {
+  const R = 15.9, C = 2 * Math.PI * R;
+  const sum = Math.max(1, parts.reduce((a, p) => a + p.value, 0));
+  let off = 0;
+  return (
+    <div className="flex items-center gap-6">
+      <svg viewBox="0 0 42 42" className="h-28 w-28 shrink-0 -rotate-90" role="img" aria-label={`Ticket mix: ${parts.map((p) => `${p.label} ${p.value}`).join(", ")}`}>
+        <circle cx="21" cy="21" r={R} fill="none" stroke="#eae7fa" strokeWidth="7" />
+        {parts.map((p) => { const f = p.value / sum; const el = <circle key={p.label} cx="21" cy="21" r={R} fill="none" stroke={p.color} strokeWidth="7" strokeLinecap="round" strokeDasharray={`${f * C} ${C}`} strokeDashoffset={-off * C} />; off += f; return el; })}
+      </svg>
+      <ul className="space-y-1.5 text-xs font-bold">
+        {parts.map((p) => <li key={p.label} className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full" style={{ background: p.color }} aria-hidden /><span className="capitalize">{p.label}</span><span className="text-graphite">· {p.value}</span></li>)}
+      </ul>
+    </div>
+  );
+}
+
 const QUICK_ACTIONS = [
   { href: "/admin/fleet", label: "Register kiosk" },
   { href: "/admin/partners", label: "Invite a partner" },
@@ -67,6 +101,21 @@ export default async function AdminDashboard() {
     if (idx >= 0 && idx < 14) days[idx].count++;
   }
   const peak = Math.max(1, ...days.map((d) => d.count));
+
+  // 30-day rentals trend + ticket queue mix — real rows
+  const start30 = new Date(now); start30.setHours(0, 0, 0, 0); start30.setDate(start30.getDate() - 29);
+  const rentalSeries = Array(30).fill(0) as number[];
+  const db = serviceClient();
+  if (db) {
+    const { data } = await db.from("rentals").select("created_at").gte("created_at", start30.toISOString()).limit(5000);
+    for (const r of (data ?? []) as { created_at: string }[]) {
+      const c = new Date(r.created_at); c.setHours(0, 0, 0, 0);
+      const idx = Math.round((c.getTime() - start30.getTime()) / 86400_000);
+      if (idx >= 0 && idx < 30) rentalSeries[idx]++;
+    }
+  }
+  const queues = { support: 0, billing: 0, partner: 0, safety: 0 };
+  for (const t of all) if (t.queue in queues) queues[t.queue as keyof typeof queues]++;
 
   const kiosksOnline = pick(stats?.kioskStates, "online");
   const kiosksTotal = total(stats?.kioskStates);
@@ -103,6 +152,15 @@ export default async function AdminDashboard() {
 
         <div className="grid gap-6 xl:grid-cols-[1.6fr_1fr]">
           <div className="space-y-6">
+            <Card title="Rentals · 30 days" href="/admin/rentals">
+              <AreaChart data={rentalSeries} label="New rentals per day over the last 30 days" />
+              <div className="mt-2 flex justify-between text-[10px] font-bold uppercase tracking-wider text-silver">
+                <span>{start30.toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
+                <span>{rentalSeries.reduce((a, b) => a + b, 0)} total</span>
+                <span>Today</span>
+              </div>
+            </Card>
+
             <Card title="Latest activity" href="/admin/support">
               {recent.length === 0 ? (
                 <p className="py-6 text-sm text-graphite">No tickets yet. New requests from support.zapnivo.com appear here instantly.</p>
@@ -148,6 +206,15 @@ export default async function AdminDashboard() {
           </div>
 
           <div className="space-y-6">
+            <Card title="Ticket mix" href="/admin/support">
+              <Donut parts={[
+                { label: "support", value: queues.support, color: "#8063ff" },
+                { label: "billing", value: queues.billing, color: "#ffdc8d" },
+                { label: "partner", value: queues.partner, color: "#74e7ed" },
+                { label: "safety", value: queues.safety, color: "#ff86b5" },
+              ]} />
+            </Card>
+
             <Card title="Ticket volume · 14 days" href="/admin/support/metrics">
               <div className="flex h-24 items-end gap-1.5" role="img" aria-label={`New tickets per day for 14 days, peak ${peak}`}>
                 {days.map((d, i) => (
