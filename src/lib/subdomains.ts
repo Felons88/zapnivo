@@ -19,6 +19,16 @@ export const DEFAULT_BASE_DOMAIN = "zapnivo.com";
 /** Apex domain the subdomains hang off. Override with BASE_DOMAIN for staging setups. */
 export const baseDomain = () => (process.env.BASE_DOMAIN ?? DEFAULT_BASE_DOMAIN).toLowerCase();
 
+/**
+ * Cookie domain that shares a session across every zapnivo.com subdomain; undefined
+ * on any other host so the cookie stays host-only (localhost, previews).
+ */
+export const apexCookieDomain = (host: string) => {
+  const h = host.split(":")[0].toLowerCase();
+  const b = baseDomain();
+  return h === b || h.endsWith(`.${b}`) ? b : undefined;
+};
+
 /** Top-level sections owned by the marketing site — on a subdomain these bounce to apex. */
 const APEX_SECTIONS = new Set([
   "about", "advertise", "business", "contact", "how-it-works", "legal", "locations",

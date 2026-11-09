@@ -2,17 +2,13 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { rateLimit } from "@/lib/rate-limit";
 import { SESSION_COOKIE } from "@/lib/auth";
-import { baseDomain } from "@/lib/subdomains";
+import { apexCookieDomain } from "@/lib/subdomains";
 import { anonClient, serviceClient } from "@/lib/supabase";
 
 const schema = z.object({ email: z.string().email().max(254), password: z.string().min(1).max(200) });
 
 /** Share the session cookie across zapnivo.com subdomains; host-only elsewhere (localhost, previews). */
-const cookieDomain = (req: Request) => {
-  const host = (req.headers.get("host") ?? "").split(":")[0].toLowerCase();
-  const base = baseDomain();
-  return host === base || host.endsWith(`.${base}`) ? base : undefined;
-};
+const cookieDomain = (req: Request) => apexCookieDomain(req.headers.get("host") ?? "");
 
 export async function POST(req: Request) {
   const origin = req.headers.get("origin");

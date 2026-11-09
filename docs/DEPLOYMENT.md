@@ -55,7 +55,21 @@ Local dev is unchanged: `localhost:3000/support` etc. work as paths, and
 
 ## 5. Provider-side settings
 
-- **Supabase Auth** → URL Configuration → Site URL: `https://zapnivo.com`, add `https://zapnivo.com/**` and `https://*.zapnivo.com/**` to the redirect allowlist.
+- **Supabase Auth** → URL Configuration → Site URL: `https://zapnivo.com`. Redirect URL allowlist:
+  - `https://zapnivo.com/api/auth/callback`
+  - `https://www.zapnivo.com/api/auth/callback`
+  - `https://internal.zapnivo.com/api/auth/callback`
+  - `https://partners.zapnivo.com/api/auth/callback`
+  - `https://support.zapnivo.com/api/auth/callback`
+  - `https://*.zapnivo.com/api/auth/callback` (wildcard covers future subdomains)
+  - `http://localhost:3000/api/auth/callback` (dev)
+- **Google sign-in** (one-time, ~10 min):
+  1. Google Cloud Console → APIs & Services → OAuth consent screen → External; fill in app name/support email; **Authorized domains**: `zapnivo.com` and `supabase.co`.
+  2. Credentials → Create → OAuth client ID → Web application. **Authorized redirect URIs**: `https://qidbieuvxeqtbqobjkns.supabase.co/auth/v1/callback` (exact value shown in Supabase → Authentication → Providers → Google).
+  3. Supabase → Authentication → Providers → Google → enable, paste client ID + secret.
+  Flow: `/api/auth/google` → Supabase → Google consent → `/api/auth/callback` →
+  shared `zapnivo_access` cookie → role-based portal redirect. The callback must
+  stay on the host where sign-in started (PKCE verifier cookie is host-bound).
 - **Mapbox token** → restrict to `https://*.zapnivo.com` and `https://*.vercel.app` (previews).
 
 ## 6. Post-deploy smoke test
