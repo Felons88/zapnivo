@@ -22,7 +22,7 @@ const venueSchema = z.object({
 /** Partner self-service settings. Every write is scoped to the user's organization. */
 export async function POST(req: Request) {
   const user = await getSessionUser();
-  if (!user || (user.role !== "partner" && user.role !== "admin" && user.role !== "staff") || !user.organizationId) {
+  if (!user || (user.role !== "partner" && user.role !== "admin" && user.role !== "staff")) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   const db = serviceClient();
@@ -40,6 +40,7 @@ export async function POST(req: Request) {
   }
 
   if (action === "venue") {
+    if (!orgId) return NextResponse.json({ error: "No organization is linked to your account." }, { status: 403 });
     const p = venueSchema.safeParse({
       venue_id: form.get("venue_id"), name: form.get("name"), venue_type: form.get("venue_type"),
       street: form.get("street"), city: form.get("city"), state: form.get("state"),
@@ -63,8 +64,10 @@ export async function POST(req: Request) {
     if (p.data.contact_name || p.data.contact_email || p.data.contact_phone) {
       const { data: existing } = await db.from("venue_contacts").select("id").eq("venue_id", p.data.venue_id).limit(1).maybeSingle();
       const contact = { name: p.data.contact_name ?? "", email: p.data.contact_email ?? "", phone: p.data.contact_phone ?? null };
-      if (existing) await db.from("venue_contacts").update(contact).eq("id", existing.id);
-      else await db.from("venue_contacts").insert({ venue_id: p.data.venue_id, ...contact });
+      const result = existing
+        ? await db.from("venue_contacts").update(contact).eq("id", existing.id)
+        : await db.from("venue_contacts").insert({ venue_id: p.data.venue_id, ...contact });
+      if (result.error) return NextResponse.json({ error: "Venue saved, but the contact could not be saved." }, { status: 500 });
     }
     return back(req, "venues");
   }

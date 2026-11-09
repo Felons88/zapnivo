@@ -9,7 +9,8 @@ export const metadata: Metadata = { title: "Inquiries", robots: { index: false, 
 const QUEUE_TONE = { venue_partnerships: "cyan", customer_support: "lime", advertising: "gold", general: "mist" } as const;
 const when = (iso: string) => new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 
-export default async function Inquiries() {
+export default async function Inquiries({ searchParams }: { searchParams: Promise<{ result?: string }> }) {
+  const feedback = await searchParams;
   const db = serviceClient();
   const res = db ? await db.from("contact_messages").select("id,queue,name,email,message,handled,created_at").order("created_at", { ascending: false }).limit(300) : null;
   const rows = (res?.data ?? []) as { id: string; queue: keyof typeof QUEUE_TONE; name: string; email: string; message: string; handled: boolean; created_at: string }[];
@@ -20,6 +21,7 @@ export default async function Inquiries() {
         <EmptyCard title="Contact data not connected">Connect Supabase to see live messages.</EmptyCard>
       ) : (
         <div className="space-y-6">
+          {feedback.result && <p role="status" className={`rounded-xl px-4 py-3 text-sm font-bold ${feedback.result === "saved" ? "bg-lime" : "bg-red-100 text-red-900"}`}>{feedback.result === "saved" ? "Inquiry status saved." : "Inquiry status could not be saved."}</p>}
           <section aria-label="Inquiry summary" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <Metric label="Total messages" value={rows.length} />
             <Metric label="Unhandled" value={rows.filter((r) => !r.handled).length} sub="Needs a reply" />
@@ -42,7 +44,7 @@ export default async function Inquiries() {
                       <td className="px-4 py-3"><p className="font-bold">{r.name}</p><p className="text-xs text-graphite">{r.email}</p></td>
                       <td className="px-4 py-3"><Pill tone={QUEUE_TONE[r.queue] ?? "mist"}>{r.queue.replace("_", " ")}</Pill></td>
                       <td className="max-w-md px-4 py-3"><p className="line-clamp-2 text-xs text-graphite">{r.message}</p></td>
-                      <td className="px-4 py-3"><Pill tone={r.handled ? "lime" : "gold"}>{r.handled ? "handled" : "open"}</Pill></td>
+                      <td className="px-4 py-3"><form method="post" action="/api/admin/inquiries" className="flex items-center gap-2"><input type="hidden" name="id" value={r.id} /><input type="hidden" name="handled" value={String(!r.handled)} /><Pill tone={r.handled ? "lime" : "gold"}>{r.handled ? "handled" : "open"}</Pill><button className="rounded-full bg-mist px-3 py-1.5 text-xs font-bold hover:bg-lime">Mark {r.handled ? "open" : "handled"}</button></form></td>
                       <td className="px-4 py-3 text-xs text-graphite">{when(r.created_at)}</td>
                     </tr>
                   ))}

@@ -7,6 +7,21 @@ const SCENES = {
   event: { src: "/images/charging-event.png", alt: "Illustrative outdoor event scene with a person charging a phone on the move" },
 } as const;
 
+const KIOSK_SCENES = {
+  bar: { src: "/images/kiosk-bar.png", alt: "Illustrative Zapnivo kiosk placement inside a neighborhood bar" },
+  cafe: { src: "/images/kiosk-cafe.png", alt: "Illustrative Zapnivo kiosk placement inside a café" },
+  hotel: { src: "/images/kiosk-hotel.png", alt: "Illustrative Zapnivo kiosk placement in a hotel lobby" },
+  shopping: { src: "/images/kiosk-shopping.png", alt: "Illustrative Zapnivo kiosk placement in a shopping center" },
+  campus: { src: "/images/kiosk-campus.png", alt: "Illustrative Zapnivo kiosk placement in a student center" },
+  event: { src: "/images/kiosk-event.png", alt: "Illustrative Zapnivo kiosk placement in an event venue" },
+} as const;
+
+/** Generated placement concepts based on the actual Zapnivo kiosk photo. */
+export function KioskScenePhoto({ scene, className = "", priority = false }: { scene: keyof typeof KIOSK_SCENES; className?: string; priority?: boolean }) {
+  const photo = KIOSK_SCENES[scene];
+  return <Image src={photo.src} alt={photo.alt} fill priority={priority} sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw" className={`object-cover ${className}`} />;
+}
+
 /** Concept photography. The scenes are illustrative, not actual Zapnivo venues or customers. */
 export function ScenePhoto({ scene, className = "", priority = false }: { scene: keyof typeof SCENES; className?: string; priority?: boolean }) {
   const photo = SCENES[scene];

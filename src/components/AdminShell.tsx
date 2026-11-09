@@ -5,6 +5,7 @@ import { authConfigured, devAuth, getSessionUser, isStaff } from "@/lib/auth";
 import { Logo } from "./Logo";
 import { LogoutButton } from "./LogoutButton";
 import { Notice } from "./ui";
+import { SITE } from "@/lib/site";
 
 const stroke = { fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round", strokeLinejoin: "round" } as const;
 const I = ({ children, className = "h-[18px] w-[18px] shrink-0" }: { children: ReactNode; className?: string }) => (
@@ -116,7 +117,7 @@ export async function AdminGate({ title, nav, children }: { title: string; nav: 
               <LogoutButton light />
             </div>
           </div>
-          <Link href="https://zapnivo.com" className="mt-2 flex items-center justify-center gap-1.5 py-1 text-xs font-bold text-graphite hover:text-ink">View public site ↗</Link>
+          <Link href={SITE.url} className="mt-2 flex items-center justify-center gap-1.5 py-1 text-xs font-bold text-graphite hover:text-ink">View public site ↗</Link>
         </div>
       </aside>
 
@@ -129,7 +130,7 @@ export async function AdminGate({ title, nav, children }: { title: string; nav: 
               <span className="hidden items-center gap-2 rounded-full bg-white px-4 py-2 text-xs font-bold text-graphite ring-1 ring-mist sm:flex">
                 <span className="h-2 w-2 rounded-full bg-green-500" aria-hidden />{user.email}
               </span>
-              <Link href="https://zapnivo.com" className="hidden rounded-full border border-silver/60 px-4 py-2 text-xs font-bold hover:border-ink md:block">View site</Link>
+              <Link href={SITE.url} className="hidden rounded-full border border-silver/60 px-4 py-2 text-xs font-bold hover:border-ink md:block">View site</Link>
               <div className="lg:hidden"><LogoutButton light /></div>
             </div>
           </div>

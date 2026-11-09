@@ -26,7 +26,7 @@ export default async function PartnerPortal() {
         ]) : [{ data: null }, { data: null }, { data: null }, []];
 
         const venueRows = (venues?.data ?? []) as { id: string; name: string; city: string; state: string; published: boolean; hours: string | null }[];
-        const kioskRows = (kiosks?.data ?? []) as unknown as { id: string; station_id: string; state: keyof typeof KIOSK_TONE; last_seen_at: string | null; venues: { name: string }[] | null }[];
+        const kioskRows = (kiosks?.data ?? []) as unknown as { id: string; station_id: string; state: keyof typeof KIOSK_TONE; last_seen_at: string | null; venues: { name: string } | null }[];
         const rentalRows = (rentalCounts?.data ?? []) as { kiosk_id: string; state: string }[];
         const rentalsByKiosk = new Map<string, number>();
         for (const r of rentalRows) rentalsByKiosk.set(r.kiosk_id, (rentalsByKiosk.get(r.kiosk_id) ?? 0) + 1);
@@ -38,7 +38,7 @@ export default async function PartnerPortal() {
             <section aria-label="Your business" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               <Metric label="Stations" value={kioskRows.length} sub={`${kioskRows.filter((k) => k.state === "online").length} online`} />
               <Metric label="Rentals (30 days)" value={rentalRows.length} sub={`${active} active now`} />
-              <Metric label="Venues" value={venueRows.length} sub={`${venueRows.filter((v) => v.published).length} live`} />
+              <Metric label="Venues" value={venueRows.length} sub={`${venueRows.filter((v) => v.published).length} published`} />
               <Metric label="Open requests" value={openTickets.length} sub="With Zapnivo support" />
             </section>
 
@@ -53,7 +53,7 @@ export default async function PartnerPortal() {
                     {kioskRows.map((k) => (
                       <tr key={k.id} className="border-b border-mist/70 last:border-0">
                         <td className="px-4 py-3 font-bold">{k.station_id}</td>
-                        <td className="px-4 py-3 text-xs font-semibold">{k.venues?.[0]?.name ?? "—"}</td>
+                        <td className="px-4 py-3 text-xs font-semibold">{k.venues?.name ?? "—"}</td>
                         <td className="px-4 py-3"><Pill tone={KIOSK_TONE[k.state] ?? "mist"}>{k.state}</Pill></td>
                         <td className="px-4 py-3 font-display font-bold">{rentalsByKiosk.get(k.id) ?? 0}</td>
                         <td className="px-4 py-3 text-xs text-graphite">{when(k.last_seen_at)}</td>
@@ -72,7 +72,7 @@ export default async function PartnerPortal() {
                     {venueRows.map((v) => (
                       <li key={v.id} className="flex items-center justify-between gap-3 text-sm">
                         <span><b>{v.name}</b> <span className="text-graphite">· {v.city}, {v.state}</span></span>
-                        <Pill tone={v.published ? "lime" : "mist"}>{v.published ? "live" : "pending"}</Pill>
+                        <Pill tone={v.published ? "lime" : "mist"}>{v.published ? "published" : "pending"}</Pill>
                       </li>
                     ))}
                   </ul>

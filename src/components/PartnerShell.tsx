@@ -6,6 +6,7 @@ import { serviceClient } from "@/lib/supabase";
 import { Logo } from "./Logo";
 import { LogoutButton } from "./LogoutButton";
 import { Notice } from "./ui";
+import { SITE } from "@/lib/site";
 
 const stroke = { fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round", strokeLinejoin: "round" } as const;
 const I = ({ children }: { children: ReactNode }) => (
@@ -85,7 +86,7 @@ export async function PartnerGate({ title, nav, children }: { title: string; nav
               <LogoutButton light />
             </div>
           </div>
-          <Link href="https://zapnivo.com" className="mt-2 flex items-center justify-center gap-1.5 py-1 text-xs font-bold text-graphite hover:text-ink">Zapnivo.com ↗</Link>
+          <Link href={SITE.url} className="mt-2 flex items-center justify-center gap-1.5 py-1 text-xs font-bold text-graphite hover:text-ink">Public site ↗</Link>
         </div>
       </aside>
 

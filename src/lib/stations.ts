@@ -31,13 +31,13 @@ export async function getStations(): Promise<Station[]> {
   if (!db) return STATIONS;
   const { data, error } = await db
     .from("venues")
-    .select("name,street,city,state,zip,hours,lat,lng,kiosks(station_id,state)")
+    .select("name,street,city,state,zip,hours,lat,lng,kiosks(station_id,state,installed_at)")
     .eq("published", true);
   if (error || !data) return STATIONS;
   const out: Station[] = [];
-  for (const v of data as { name: string; street: string; city: string; state: string; zip: string | null; hours: string | null; lat: number | null; lng: number | null; kiosks: { station_id: string; state: string }[] }[]) {
+  for (const v of data as { name: string; street: string; city: string; state: string; zip: string | null; hours: string | null; lat: number | null; lng: number | null; kiosks: { station_id: string; state: string; installed_at: string | null }[] }[]) {
     for (const k of v.kiosks ?? []) {
-      if (k.state === "disabled" || v.lat == null || v.lng == null) continue;
+      if (k.state !== "online" || !k.installed_at || v.lat == null || v.lng == null) continue;
       out.push({
         id: k.station_id, name: v.name,
         address: `${v.street}, ${v.city}, ${v.state}${v.zip ? ` ${v.zip}` : ""}`,

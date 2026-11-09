@@ -74,9 +74,9 @@ function Donut({ parts }: { parts: { label: string; value: number; color: string
 }
 
 const QUICK_ACTIONS = [
-  { href: "/admin/fleet", label: "Register kiosk" },
-  { href: "/admin/partners", label: "Invite a partner" },
-  { href: "/admin/partners", label: "Queue statements" },
+  { href: "/admin/fleet#register-kiosk", label: "Register kiosk" },
+  { href: "/admin/partners#invite-partner", label: "Invite a partner" },
+  { href: "/admin/partners#statements", label: "Queue statements" },
   { href: "/admin/support", label: "Open inbox" },
   { href: "/admin/demo", label: "Preview demo" },
 ];

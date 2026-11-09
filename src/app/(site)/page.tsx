@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Button, Eyebrow, Section } from "@/components/ui";
 import { Reveal } from "@/components/Reveal";
-import { KioskPhoto, PowerBankPhoto, ScenePhoto } from "@/components/Photo";
+import { KioskPhoto, PowerBankPhoto, ScenePhoto, KioskScenePhoto } from "@/components/Photo";
 import { Showcase } from "@/components/Showcase";
 import { RentalGuide } from "@/components/RentalGuide";
 import { HomeFaq } from "@/components/HomeFaq";
@@ -21,6 +21,7 @@ const STEPS = [
   { n: "04", title: "Return and go", body: "Dock the power bank at an eligible participating station to end your rental." },
 ];
 const PLACES = ["Bars & nightlife", "Restaurants & cafés", "Hotels", "Shopping centers", "Campuses", "Events & venues"];
+const PLACE_SCENES = ["bar", "cafe", "hotel", "shopping", "campus", "event"] as const;
 
 export default async function Home() {
   const stations = await getStations();
@@ -81,7 +82,7 @@ export default async function Home() {
 
     <Section className="section-lavender" id="for-venues">
       <div className="grid items-center gap-12 lg:grid-cols-2">
-        <div className="relative min-h-[440px] overflow-hidden rounded-[2rem] bg-forest sm:min-h-[560px]"><ScenePhoto scene="evening" /><div className="absolute bottom-4 left-4"><IllustrativeTag light /></div></div>
+        <div className="relative min-h-[440px] overflow-hidden rounded-[2rem] bg-forest sm:min-h-[560px]"><KioskScenePhoto scene="bar" className="object-[60%_center]" /><div className="absolute bottom-4 left-4"><IllustrativeTag light /></div></div>
         <div><Eyebrow className="text-forest">For venues</Eyebrow><h2 className="display-lg mt-5">Make charging part of the experience.</h2><p className="lead mt-6 text-graphite">Give guests a way to charge without staying beside an outlet. Zapnivo handles the equipment, servicing, software, and rental support.</p>
           <div className="mt-8 grid gap-3 sm:grid-cols-2">{["Self-service rentals", "Compact counter footprint", "Zapnivo-managed servicing", "Customer support covered"].map(item => <div key={item} className="flex items-center gap-3 rounded-lg bg-white p-4 text-sm font-bold"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-lime" aria-hidden>✓</span>{item}</div>)}</div>
           <div className="mt-9 flex flex-wrap gap-3"><Button href="/business/apply" variant="dark">Request a partnership</Button><Button href="/business" variant="ghost" className="border-ink/30">How hosting works</Button></div>
@@ -89,7 +90,7 @@ export default async function Home() {
       </div>
     </Section>
 
-    <Section className="section-aurora"><div className="grid gap-8 lg:grid-cols-[.9fr_1.1fr] lg:items-end"><div><Eyebrow className="text-forest">Made for real places</Eyebrow><h2 className="display-lg mt-5">A better amenity for where people gather.</h2></div><p className="lead max-w-xl text-graphite">From a quick stop to an all-night event, guests can take a charger with them as they move through your space. Placement is planned with each venue.</p></div><div className="mt-11 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{PLACES.map((place, i) => <Reveal key={place} delay={i * 50} className="venue-card group flex min-h-48 items-end justify-between overflow-hidden rounded-xl p-6 text-white transition-transform hover:-translate-y-1">{i === 2 && <ScenePhoto scene="hotel" />}{i === 5 && <ScenePhoto scene="event" />}{(i === 2 || i === 5) && <div className="absolute inset-0 bg-gradient-to-t from-ink/85 via-ink/10 to-transparent" aria-hidden />}<span className="absolute right-4 top-1 font-display text-7xl font-bold text-white/10" aria-hidden>{String(i + 1).padStart(2, "0")}</span><h3 className="relative font-display text-2xl font-bold">{place}</h3><span className="relative grid h-10 w-10 place-items-center rounded-full bg-lime text-ink transition-transform group-hover:rotate-45" aria-hidden>↗</span>{(i === 2 || i === 5) && <span className="absolute left-6 top-5 rounded-full bg-ink/75 px-2 py-1 text-[9px] font-bold uppercase tracking-widest text-white">Illustrative render</span>}</Reveal>)}</div></Section>
+    <Section className="section-aurora"><div className="grid gap-8 lg:grid-cols-[.9fr_1.1fr] lg:items-end"><div><Eyebrow className="text-forest">Made for real places</Eyebrow><h2 className="display-lg mt-5">A better amenity for where people gather.</h2></div><p className="lead max-w-xl text-graphite">From a quick stop to an all-night event, guests can take a charger with them as they move through your space. Placement is planned with each venue.</p></div><div className="mt-11 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{PLACES.map((place, i) => <Reveal key={place} delay={i * 50} className="venue-card group flex min-h-64 items-end justify-between overflow-hidden rounded-xl p-6 text-white transition-transform hover:-translate-y-1"><KioskScenePhoto scene={PLACE_SCENES[i]} className="object-[60%_center]" /><div className="absolute inset-0 bg-gradient-to-t from-ink/95 via-ink/10 to-transparent" aria-hidden /><span className="absolute right-4 top-1 font-display text-7xl font-bold text-white/20" aria-hidden>{String(i + 1).padStart(2, "0")}</span><h3 className="relative font-display text-2xl font-bold">{place}</h3><span className="relative grid h-10 w-10 place-items-center rounded-full bg-lime text-ink transition-transform group-hover:rotate-45" aria-hidden>↗</span><span className="absolute left-6 top-5 rounded-full bg-ink/75 px-2 py-1 text-[9px] font-bold uppercase tracking-widest text-white">Illustrative render</span></Reveal>)}</div></Section>
 
     <RentalGuide />
 

@@ -47,7 +47,7 @@ export default async function Rentals() {
             ) : (
               <table className="w-full min-w-[880px] text-left text-sm">
                 <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite">
-                  <tr>{["Reference", "Station", "State", "Started", "Returned", "Due back", "Payment"].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr>
+                  <tr>{["Reference", "Station", "State", "Started", "Returned", "Due back", "Payment", "Actions"].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr>
                 </thead>
                 <tbody>
                   {rows.map((r) => {
@@ -62,6 +62,14 @@ export default async function Rentals() {
                         <td className="px-4 py-3 text-xs text-graphite">{when(r.returned_at)}</td>
                         <td className="px-4 py-3 text-xs text-graphite">{when(r.non_return_deadline)}</td>
                         <td className="px-4 py-3 text-xs font-semibold">{p ? `${fmt(p.amount_captured_cents ?? p.amount_authorized_cents ?? 0)} · ${p.state}` : "—"}</td>
+                        <td className="px-4 py-3">
+                          {(r.state === "authorized" || r.state === "dispense_pending") && (
+                            <form method="post" action={`/api/rentals/${r.id}`}><input type="hidden" name="action" value="dispense" /><button className="min-h-8 rounded-full bg-lime px-3 text-xs font-bold text-ink">Confirm dispense</button></form>
+                          )}
+                          {(r.state === "active" || r.state === "unreturned") && (
+                            <form method="post" action={`/api/rentals/${r.id}`}><input type="hidden" name="action" value="return" /><button className="min-h-8 rounded-full border border-silver/60 px-3 text-xs font-bold hover:border-ink">Record return</button></form>
+                          )}
+                        </td>
                       </tr>
                     );
                   })}

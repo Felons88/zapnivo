@@ -26,17 +26,17 @@ export default async function PartnerSettings({ searchParams }: { searchParams: 
       {async ({ user, orgName }) => {
         const orgId = user.organizationId;
         const db = serviceClient();
-        const [profileRes, venuesRes, contactsRes, agrRes] = db ? await Promise.all([
+        const [profileRes, venuesRes, agrRes] = db ? await Promise.all([
           db.from("profiles").select("full_name").eq("id", user.id).single(),
           orgId ? db.from("venues").select("id,name,venue_type,street,city,state,zip,hours").eq("organization_id", orgId).order("name").limit(50) : Promise.resolve({ data: [] }),
-          orgId ? db.from("venue_contacts").select("venue_id,name,email,phone").limit(50) : Promise.resolve({ data: [] }),
           orgId ? db.from("partner_agreements").select("id,signed_at,document_path,venues(name)").eq("organization_id", orgId).order("signed_at", { ascending: false }).limit(20) : Promise.resolve({ data: [] }),
-        ]) : [{ data: null }, { data: [] }, { data: [] }, { data: [] }];
+        ]) : [{ data: null }, { data: [] }, { data: [] }];
 
         const profile = profileRes?.data as { full_name: string | null } | null;
         const venues = (venuesRes?.data ?? []) as { id: string; name: string; venue_type: string; street: string; city: string; state: string; zip: string | null; hours: string | null }[];
+        const contactsRes = db && venues.length ? await db.from("venue_contacts").select("venue_id,name,email,phone").in("venue_id", venues.map((v) => v.id)).limit(100) : { data: [] };
         const contactByVenue = new Map(((contactsRes?.data ?? []) as { venue_id: string; name: string; email: string; phone: string | null }[]).map((c) => [c.venue_id, c]));
-        const agrRows = (agrRes?.data ?? []) as unknown as { id: string; signed_at: string | null; document_path: string | null; venues: { name: string }[] | null }[];
+        const agrRows = (agrRes?.data ?? []) as unknown as { id: string; signed_at: string | null; document_path: string | null; venues: { name: string } | null }[];
         const docs = db ? await Promise.all(agrRows.map(async (a) => ({ ...a, url: a.document_path ? (await db.storage.from("agreements").createSignedUrl(a.document_path, 300)).data?.signedUrl ?? null : null }))) : agrRows.map((a) => ({ ...a, url: null }));
 
         return (
@@ -76,7 +76,7 @@ export default async function PartnerSettings({ searchParams }: { searchParams: 
                       venues.map((v, i) => {
                         const c = contactByVenue.get(v.id);
                         return (
-                          <form key={v.id} method="post" action="/api/partners/settings" className={`mt-${i === 0 ? 6 : 8} rounded-xl border border-mist p-5`}>
+                          <form key={v.id} method="post" action="/api/partners/settings" className={`${i === 0 ? "mt-6" : "mt-8"} rounded-xl border border-mist p-5`}>
                             <input type="hidden" name="action" value="venue" /><input type="hidden" name="venue_id" value={v.id} />
                             <div className="grid gap-4 sm:grid-cols-2">
                               <div><label className={lbl}>Venue name</label><input name="name" required defaultValue={v.name} className={input} /></div>
@@ -109,7 +109,7 @@ export default async function PartnerSettings({ searchParams }: { searchParams: 
                       <ul className="mt-5 space-y-3 text-sm">
                         {docs.map((a) => (
                           <li key={a.id} className="flex items-center justify-between gap-3">
-                            <span><b>{a.venues?.[0]?.name ?? "Partnership agreement"}</b><span className="text-graphite">{a.signed_at ? ` · signed ${new Date(a.signed_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}` : " · unsigned"}</span></span>
+                            <span><b>{a.venues?.name ?? "Partnership agreement"}</b><span className="text-graphite">{a.signed_at ? ` · signed ${new Date(a.signed_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}` : " · unsigned"}</span></span>
                             {a.url ? <a href={a.url} className="shrink-0 rounded-full border border-silver/60 px-3 py-1.5 text-xs font-bold hover:border-ink">Download ↓</a> : <span className="text-xs text-graphite">Pending</span>}
                           </li>
                         ))}

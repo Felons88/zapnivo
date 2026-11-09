@@ -27,13 +27,13 @@ export async function POST(req: Request) {
     .select("period,gross_cents,commission_cents,venues!inner(id,name,city,organization_id)")
     .eq("period", periodStart)
     .limit(500);
-  const rows = (ledgers ?? []) as unknown as { period: string; gross_cents: number; commission_cents: number; venues: { id: string; name: string; city: string; organization_id: string | null }[] | null }[];
+  const rows = (ledgers ?? []) as unknown as { period: string; gross_cents: number; commission_cents: number; venues: { id: string; name: string; city: string; organization_id: string | null } | null }[];
   if (!rows.length) return NextResponse.redirect(new URL(`/admin/partners?stm=none`, req.url), 303);
 
   let queued = 0;
   const month = new Date(`${periodStart}T00:00:00Z`).toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
   for (const l of rows) {
-    const venue = l.venues?.[0];
+    const venue = l.venues;
     if (!venue?.organization_id) continue;
     const { data: owners } = await db.from("profiles").select("email,full_name").eq("organization_id", venue.organization_id).eq("role", "partner").limit(20);
     for (const o of (owners ?? []) as { email: string; full_name: string | null }[]) {

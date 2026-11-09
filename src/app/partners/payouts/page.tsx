@@ -22,8 +22,8 @@ export default async function Payouts() {
           db.from("payout_records").select("id,amount_cents,status,paid_at,created_at,commission_ledgers!inner(period,venues!inner(name,organization_id))").eq("commission_ledgers.venues.organization_id", orgId).order("created_at", { ascending: false }).limit(60),
         ]) : [{ data: null }, { data: null }];
 
-        const ledgerRows = (ledgers?.data ?? []) as unknown as { id: string; period: string; gross_cents: number; commission_cents: number; venues: { name: string }[] | null }[];
-        const payoutRows = (payouts?.data ?? []) as unknown as { id: string; amount_cents: number; status: keyof typeof PAY_TONE; paid_at: string | null; created_at: string; commission_ledgers: { period: string; venues: { name: string }[] }[] | null }[];
+        const ledgerRows = (ledgers?.data ?? []) as unknown as { id: string; period: string; gross_cents: number; commission_cents: number; venues: { name: string } | null }[];
+        const payoutRows = (payouts?.data ?? []) as unknown as { id: string; amount_cents: number; status: keyof typeof PAY_TONE; paid_at: string | null; created_at: string; commission_ledgers: { period: string; venues: { name: string } | null } | null }[];
         const scheduled = payoutRows.filter((p) => p.status === "scheduled").reduce((a, p) => a + p.amount_cents, 0);
         const paidTotal = payoutRows.filter((p) => p.status === "paid").reduce((a, p) => a + p.amount_cents, 0);
 
@@ -45,8 +45,8 @@ export default async function Payouts() {
                   <tbody>
                     {payoutRows.map((p) => (
                       <tr key={p.id} className="border-b border-mist/70 last:border-0">
-                        <td className="px-4 py-3 font-bold">{p.commission_ledgers?.[0]?.period ? month(p.commission_ledgers[0].period) : "—"}</td>
-                        <td className="px-4 py-3 text-xs font-semibold">{p.commission_ledgers?.[0]?.venues?.[0]?.name ?? "—"}</td>
+                        <td className="px-4 py-3 font-bold">{p.commission_ledgers?.period ? month(p.commission_ledgers.period) : "—"}</td>
+                        <td className="px-4 py-3 text-xs font-semibold">{p.commission_ledgers?.venues?.name ?? "—"}</td>
                         <td className="px-4 py-3 font-display font-bold">{fmt(p.amount_cents)}</td>
                         <td className="px-4 py-3"><Pill tone={PAY_TONE[p.status] ?? "mist"}>{p.status}</Pill></td>
                         <td className="px-4 py-3 text-xs text-graphite">{when(p.paid_at)}</td>
@@ -68,7 +68,7 @@ export default async function Payouts() {
                     {ledgerRows.map((l) => (
                       <tr key={l.id} className="border-b border-mist/70 last:border-0">
                         <td className="px-4 py-3 font-bold">{month(l.period)}</td>
-                        <td className="px-4 py-3 text-xs font-semibold">{l.venues?.[0]?.name ?? "—"}</td>
+                        <td className="px-4 py-3 text-xs font-semibold">{l.venues?.name ?? "—"}</td>
                         <td className="px-4 py-3 font-semibold">{fmt(l.gross_cents)}</td>
                         <td className="px-4 py-3 font-semibold">{fmt(l.commission_cents)}</td>
                       </tr>

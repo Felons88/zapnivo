@@ -10,7 +10,8 @@ export const metadata: Metadata = { title: "Advertising", robots: { index: false
 const STATE_TONE = { new: "cyan", draft: "mist", pending_approval: "gold", approved: "lime", scheduled: "cyan", live: "lime", paused: "gold", taken_down: "red" } as const;
 const when = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 
-export default async function AdminAds() {
+export default async function AdminAds({ searchParams }: { searchParams: Promise<{ result?: string }> }) {
+  const feedback = await searchParams;
   const db = serviceClient();
   const [inquiries, campaigns] = db ? await Promise.all([
     db.from("advertising_inquiries").select("id,company_name,contact_name,email,goals,budget,state,created_at").order("created_at", { ascending: false }).limit(200),
@@ -27,6 +28,7 @@ export default async function AdminAds() {
         <EmptyCard title="Advertising data not connected">Connect Supabase to see live inquiries and campaigns.</EmptyCard>
       ) : (
         <div className="space-y-6">
+          {feedback.result && <p role="status" className={`rounded-xl px-4 py-3 text-sm font-bold ${feedback.result === "saved" ? "bg-lime" : "bg-red-100 text-red-900"}`}>{feedback.result === "saved" ? "Advertising inquiry updated." : "Advertising inquiry could not be updated."}</p>}
           <section aria-label="Advertising summary" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <Metric label="Inquiries" value={inqRows.length} sub={`${inqRows.filter((i) => i.state === "new").length} new`} />
             <Metric label="Campaigns" value={campRows.length} sub={`${campRows.filter((c) => c.status === "live").length} live`} />
@@ -50,7 +52,7 @@ export default async function AdminAds() {
                       <td className="px-4 py-3"><p className="font-semibold">{i.contact_name}</p><p className="text-xs text-graphite">{i.email}</p></td>
                       <td className="max-w-xs px-4 py-3"><p className="truncate text-xs text-graphite">{i.goals}</p></td>
                       <td className="px-4 py-3 text-xs font-semibold">{i.budget ?? "—"}</td>
-                      <td className="px-4 py-3"><Pill tone={i.state === "new" ? "cyan" : "mist"}>{i.state}</Pill></td>
+                      <td className="px-4 py-3"><form method="post" action="/api/admin/advertising" className="flex items-center gap-2"><input type="hidden" name="id" value={i.id} /><select name="state" defaultValue={i.state} aria-label={`Inquiry status for ${i.company_name}`} className="min-h-9 rounded-lg border border-silver/60 px-2 text-xs font-semibold">{["new", "reviewing", "closed"].map((s) => <option key={s} value={s}>{s}</option>)}</select><button className="min-h-9 rounded-full bg-mist px-3 text-xs font-bold hover:bg-lime">Save</button></form></td>
                       <td className="px-4 py-3 text-xs text-graphite">{when(i.created_at)}</td>
                     </tr>
                   ))}
