@@ -6,7 +6,7 @@ import { Showcase } from "@/components/Showcase";
 import { RentalGuide } from "@/components/RentalGuide";
 import { HomeFaq } from "@/components/HomeFaq";
 import { NetworkMap } from "@/components/NetworkMap";
-import { STATIONS } from "@/lib/stations";
+import { getStations } from "@/lib/stations";
 import { IllustrativeTag } from "@/components/Illustrations";
 
 export const metadata: Metadata = {
@@ -22,7 +22,8 @@ const STEPS = [
 ];
 const PLACES = ["Bars & nightlife", "Restaurants & cafés", "Hotels", "Shopping centers", "Campuses", "Events & venues"];
 
-export default function Home() {
+export default async function Home() {
+  const stations = await getStations();
   return <>
     <section className="home-hero relative overflow-hidden bg-forest text-white" aria-labelledby="hero-h">
       <div className="home-hero-grid absolute inset-0" aria-hidden />
@@ -92,7 +93,7 @@ export default function Home() {
 
     <RentalGuide />
 
-    <Section dark id="locations" className="section-cinematic overflow-hidden"><div className="grid gap-6 lg:grid-cols-[1fr_.65fr] lg:items-end"><div><Eyebrow className="text-lime">Station network</Eyebrow><h2 className="display-lg mt-5">Find power near you.</h2></div><div><p className="lead text-white/70">We publish locations when a station is installed, verified, and live. Check the map for the latest available locations.</p><div className="mt-6"><Button href="/locations">Open station map</Button></div></div></div><NetworkMap stations={STATIONS} interactive={false} className="mt-11 h-[360px] rounded-xl md:h-[500px]" /></Section>
+    <Section dark id="locations" className="section-cinematic overflow-hidden"><div className="grid gap-6 lg:grid-cols-[1fr_.65fr] lg:items-end"><div><Eyebrow className="text-lime">Station network</Eyebrow><h2 className="display-lg mt-5">Find power near you.</h2></div><div><p className="lead text-white/70">We publish locations when a station is installed, verified, and live. Check the map for the latest available locations.</p><div className="mt-6"><Button href="/locations">Open station map</Button></div></div></div><NetworkMap stations={stations} interactive={false} className="mt-11 h-[360px] rounded-xl md:h-[500px]" /></Section>
 
     <HomeFaq />
 

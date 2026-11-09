@@ -46,7 +46,7 @@ function NavLink({ item, active }: { item: (typeof NAV_ITEMS)[AdminNavKey]; acti
     <Link
       href={item.href}
       aria-current={active ? "page" : undefined}
-      className={`flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-bold transition-colors ${
+      className={`flex items-center gap-3 rounded-lg px-3.5 py-2 text-sm font-bold transition-colors ${
         active ? "bg-lime text-ink" : "text-graphite hover:bg-mist hover:text-ink"
       }`}
     >
@@ -92,27 +92,29 @@ export async function AdminGate({ title, nav, children }: { title: string; nav: 
 
       {/* Sidebar (desktop) */}
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-72 flex-col border-r border-mist bg-white lg:flex">
-        <div className="flex items-center justify-between border-b border-mist px-6 py-5">
+        <div className="flex items-center justify-between border-b border-mist px-6 py-4">
           <Link href="/admin" aria-label="Zapnivo internal"><Logo className="text-[1.25rem]!" /></Link>
           <span className="rounded-full bg-forest px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-widest text-lime">Internal</span>
         </div>
-        <nav aria-label="Console" className="flex-1 space-y-6 overflow-y-auto px-4 py-6">
+        <nav aria-label="Console" className="flex-1 space-y-4 px-4 py-4">
           {GROUPS.map((g) => (
             <div key={g}>
-              <p className="eyebrow px-3.5 pb-2 text-[10px] text-silver">{g}</p>
-              <div className="space-y-1">
+              <p className="eyebrow px-3.5 pb-1.5 text-[10px] text-silver">{g}</p>
+              <div className="space-y-0.5">
                 {all.filter(([, i]) => i.group === g).map(([key, item]) => <NavLink key={key} item={item} active={nav === key} />)}
               </div>
             </div>
           ))}
         </nav>
-        <div className="border-t border-mist p-4">
-          <div className="rounded-xl bg-mist/60 p-4">
+        <div className="border-t border-mist p-3">
+          <div className="rounded-xl bg-mist/60 p-3">
             <p className="truncate text-sm font-bold">{user.email}</p>
-            <p className="mt-0.5 text-xs font-bold uppercase tracking-wider text-graphite">{user.role}</p>
-            <div className="mt-3"><LogoutButton light /></div>
+            <div className="mt-1.5 flex items-center justify-between gap-2">
+              <p className="text-xs font-bold uppercase tracking-wider text-graphite">{user.role}</p>
+              <LogoutButton light />
+            </div>
           </div>
-          <Link href="https://zapnivo.com" className="mt-3 flex items-center justify-center gap-1.5 text-xs font-bold text-graphite hover:text-ink">View public site ↗</Link>
+          <Link href="https://zapnivo.com" className="mt-2 flex items-center justify-center gap-1.5 py-1 text-xs font-bold text-graphite hover:text-ink">View public site ↗</Link>
         </div>
       </aside>
 
