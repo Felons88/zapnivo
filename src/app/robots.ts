@@ -1,9 +1,29 @@
 import type { MetadataRoute } from "next";
+import { headers } from "next/headers";
 import { SITE } from "@/lib/site";
+import { baseDomain } from "@/lib/subdomains";
+
+export const dynamic = "force-dynamic";
 
 const PRIVATE = ["/admin", "/partners", "/login", "/api", "/support/ticket"];
+const SUPPORT_PRIVATE = ["/ticket", "/api", "/login", "/admin", "/partners", "/support/ticket"];
 
-export default function robots(): MetadataRoute.Robots {
+export default async function robots(): Promise<MetadataRoute.Robots> {
+  const host = ((await headers()).get("host") ?? "").split(":")[0].toLowerCase();
+  const base = baseDomain();
+  const is = (s: string) => host === `${s}.${base}` || host === `${s}.localhost`;
+
+  // Private portals and the API host are not for crawlers at all.
+  if (is("internal") || is("partners") || is("api")) {
+    return { rules: [{ userAgent: "*", disallow: "/" }] };
+  }
+  if (is("support")) {
+    return {
+      rules: [{ userAgent: "*", allow: "/", disallow: SUPPORT_PRIVATE }],
+      sitemap: `${SITE.url}/sitemap.xml`,
+      host: SITE.url,
+    };
+  }
   return {
     rules: [
       { userAgent: "*", allow: "/", disallow: PRIVATE },

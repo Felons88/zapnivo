@@ -3,7 +3,7 @@ import { assistantConfigured, openrouterChat, type ChatFn } from "../ai/openrout
 import { fmt } from "../pricing";
 import { getRefundProvider, type RefundProvider } from "../payments/source";
 import { describeRental, type RentalResult } from "../rental-lookup";
-import { SITE } from "../site";
+import { SITE, subUrl } from "../site";
 import { signAccess } from "./access";
 import { flushOutbox, getMailer, type Mailer } from "./mailer";
 import { requiresAdmin, snapshot, suggestRefund } from "./refund-policy";
@@ -28,7 +28,7 @@ const label = (a: Actor) => (a.kind === "staff" || a.kind === "partner" ? `${a.k
 
 const audit = (c: Ctx, ticketId: string, actor: Actor, type: string, detail?: Record<string, unknown>) => c.repo.addEvent({ ticketId, actor: label(actor), type, detail: detail ?? null });
 
-const ticketLink = (c: Ctx, t: Ticket) => (t.requesterType === "partner" ? `${c.siteUrl}/partners/support/${t.number}` : `${c.siteUrl}/support/ticket/${t.number}${(() => { const tok = signAccess(t.number, t.email); return tok ? `?t=${tok}` : ""; })()}`);
+const ticketLink = (c: Ctx, t: Ticket) => (t.requesterType === "partner" ? subUrl("partners", `/support/${t.number}`, c.siteUrl) : subUrl("support", `/ticket/${t.number}${(() => { const tok = signAccess(t.number, t.email); return tok ? `?t=${tok}` : ""; })()}`, c.siteUrl));
 
 /** Writes to the outbox, then best-effort sends. If no mailer is configured the email simply stays queued. */
 async function notify(c: Ctx, t: Ticket, subject: string, body: string) {

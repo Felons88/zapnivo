@@ -17,8 +17,9 @@ export function LoginForm({ configured }: { configured: boolean }) {
     const body = Object.fromEntries(new FormData(e.currentTarget).entries());
     const res = await fetch("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     setSending(false);
-    if (!res.ok) return setErr((await res.json().catch(() => ({}))).error ?? "Sign-in failed.");
-    router.push("/partners");
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return setErr(data.error ?? "Sign-in failed.");
+    router.push(data.role === "partner" ? "/partners" : data.role ? "/admin" : "/");
     router.refresh();
   }
   return (

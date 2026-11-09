@@ -15,6 +15,9 @@ Next.js 16 (App Router, Turbopack) + TypeScript + Tailwind v4 + Supabase.
   Success responses only after a real DB insert; 503 when Supabase isn't configured.
 - Server-only code (service-role key, Stripe) must never be `NEXT_PUBLIC_` or imported by client components.
 - Portal pages (`/admin`, `/partners`) use `PortalGate` + `export const dynamic = "force-dynamic"`.
+- Subdomains (`src/proxy.ts` + `src/lib/subdomains.ts`): support→/support, internal→/admin,
+  partners→/partners, api→/api. Apex paths 308 to the subdomain; `*.localhost` mirrors prod in dev.
+  Portal links in emails go through `subUrl()` in `src/lib/site.ts` (path-based on non-apex hosts).
 - Imagery is original SVG in `components/Illustrations.tsx`, labeled "Illustrative render" —
   replace with real photos in `public/images/` when supplied.
 - Never fabricate: live stations, stats, partners, reviews, or revenue terms. Pricing comes from

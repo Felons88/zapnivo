@@ -31,19 +31,42 @@ Optional / later: `NEXT_PUBLIC_MAPBOX_TOKEN` (map), `OPENROUTER_API_KEY` (+`OPEN
 
 **Do NOT set `HELPDESK_DEV_STORE`** — it's dev-only and ignored in production builds anyway.
 
-## 4. Provider-side settings
+## 4. Domains & subdomains
 
-- **Supabase Auth** → URL Configuration → Site URL: `https://zapnivo.com`, add `https://zapnivo.com/**` to redirect allowlist.
-- **Mapbox token** → restrict to `https://zapnivo.com` and `https://*.vercel.app` (previews).
-- **Domain** → Vercel project → Domains → add `zapnivo.com` (+`www` redirect), then point DNS at Vercel per its instructions.
+The site is one Next.js app serving several hosts. `src/proxy.ts` routes by `Host`:
 
-## 5. Post-deploy smoke test
+| Host | Serves | Notes |
+|---|---|---|
+| `zapnivo.com` / `www` | marketing site | `/support`, `/admin`, `/partners` 308 to their subdomain |
+| `support.zapnivo.com` | `/support` | customer help center, tickets, assistant — apex-owned links bounce back to apex |
+| `internal.zapnivo.com` | `/admin` | staff console, `X-Robots-Tag: noindex`, robots disallow-all |
+| `partners.zapnivo.com` | `/partners` | venue portal, noindex |
+| `api.zapnivo.com` | `/api` | `/x` rewrites to `/api/x`; `/` returns a small JSON status |
+
+Vercel project → **Domains**: all five hostnames are assigned to the `zapnivo`
+project (domain is on Vercel DNS, so records/certs are automatic). Sessions:
+the login cookie is scoped `Domain=zapnivo.com`, so one sign-in works on every
+subdomain; partners sign in at `partners.zapnivo.com/login`, staff at
+`internal.zapnivo.com/login`.
+
+Local dev is unchanged: `localhost:3000/support` etc. work as paths, and
+`*.localhost` subdomains (`support.localhost:3000`) mirror production routing.
+`BASE_DOMAIN` overrides the apex if the domain ever changes.
+
+## 5. Provider-side settings
+
+- **Supabase Auth** → URL Configuration → Site URL: `https://zapnivo.com`, add `https://zapnivo.com/**` and `https://*.zapnivo.com/**` to the redirect allowlist.
+- **Mapbox token** → restrict to `https://*.zapnivo.com` and `https://*.vercel.app` (previews).
+
+## 6. Post-deploy smoke test
 
 1. `curl -I https://zapnivo.com` → 200, has `Content-Security-Policy` header.
 2. `https://zapnivo.com/api/dev/as?role=admin` → **404** (dev seams must be dead).
-3. `/support` → create a test ticket → it should persist (Supabase) and return `Z-####` + signed link.
-4. `/login` → sign in as admin → `/admin/support` inbox shows the ticket.
-5. Rental lookup + AI chat show honest "not configured" until their keys are set — that's correct, not a bug.
+3. `https://support.zapnivo.com` → help center; create a test ticket → persists (Supabase), returns `Z-####` + signed `support.zapnivo.com/ticket/…` link.
+4. `https://internal.zapnivo.com` → `/login` → sign in as admin → `/support` inbox shows the ticket.
+5. `https://zapnivo.com/support` → 308 to `https://support.zapnivo.com/`; same for `/admin` → internal, `/partners` → partners.
+6. `https://api.zapnivo.com/` → `{"service":"zapnivo-api","ok":true}`; `/robots.txt` on internal/partners/api → `Disallow: /`.
+7. Rental lookup + AI chat show honest "not configured" until their keys are set — that's correct, not a bug.
 
 ## Notes
 

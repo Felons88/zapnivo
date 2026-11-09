@@ -148,7 +148,7 @@ export const ARTICLES: Article[] = [
     ], tags: ["maintenance", "broken", "offline", "service"] },
   { id: "v-guest", audience: "venue", category: "Guest questions", popular: true, title: "A guest has a rental problem. What do I tell them?",
     body: [
-      "Point them to zapnivo.com/support. They can find their rental by email plus reference or date and station, then report the issue. Rental support is handled by Zapnivo, so your team doesn't need to resolve charges.",
+      "Point them to support.zapnivo.com. They can find their rental by email plus reference or date and station, then report the issue. Rental support is handled by Zapnivo, so your team doesn't need to resolve charges.",
       "Please don't ask guests for card details, and don't refund or alter charges yourself.",
     ], tags: ["guest", "customer", "complaint", "refund"] },
   { id: "v-price", audience: "venue", category: "Guest questions", title: "What do guests pay?",

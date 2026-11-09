@@ -1,3 +1,5 @@
+import { SUB_PREFIX, baseDomain, type Subdomain } from "./subdomains";
+
 export const SITE = {
   name: "Zapnivo",
   tagline: "Life moves. Power follows.",
@@ -5,6 +7,22 @@ export const SITE = {
   description:
     "Zapnivo is a portable phone-charger rental network rolling out across Minnesota. Rent a power bank, stay connected, and return it to a participating station.",
 };
+
+/**
+ * Absolute URL for something living on a portal subdomain. On the real domain it's
+ * https://<sub>.zapnivo.com<path>; anywhere else (localhost, preview deploys) it's the
+ * plain prefix path on the same origin so dev and previews keep working end to end.
+ */
+export function subUrl(sub: Subdomain, path = "/", baseUrl: string = SITE.url): string {
+  const clean = path.startsWith("/") ? path : `/${path}`;
+  const prefix = sub === "api" ? "/api" : SUB_PREFIX[sub];
+  let u: URL;
+  try { u = new URL(baseUrl); } catch { return `${prefix}${clean === "/" ? "" : clean}`; }
+  const base = baseDomain();
+  const apex = u.hostname === base || u.hostname === `www.${base}`;
+  if (!apex) return `${baseUrl.replace(/\/$/, "")}${prefix}${clean === "/" ? "" : clean}`;
+  return `${u.protocol}//${sub}.${base}${clean}`;
+}
 
 export const NAV = [
   { href: "/how-it-works", label: "How It Works" },

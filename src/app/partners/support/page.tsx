@@ -39,7 +39,7 @@ export default async function PartnerSupport() {
             </section>
             <section aria-label="New request" className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
               <h2 className="font-display text-xl font-bold">New request</h2>
-              <p className="mb-5 mt-1 text-sm text-graphite">Goes straight to Zapnivo partner relations. Guests with rental problems should use zapnivo.com/support. Rental charges and refunds are handled by Zapnivo.</p>
+              <p className="mb-5 mt-1 text-sm text-graphite">Goes straight to Zapnivo partner relations. Guests with rental problems should use support.zapnivo.com. Rental charges and refunds are handled by Zapnivo.</p>
               <PartnerRequestForm venues={[]} />
             </section>
           </div>
