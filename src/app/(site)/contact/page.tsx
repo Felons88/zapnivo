@@ -5,7 +5,7 @@ import { Reveal } from "@/components/Reveal";
 import { MarketingHero } from "@/components/MarketingHero";
 
 export const metadata: Metadata = {
-  title: "Contact Zapnivo | Venue Partnerships & Support",
+  title: { absolute: "Contact Zapnivo | Venue Partnerships & Support" },
   description: "Contact Zapnivo for venue partnerships, customer support, advertising and general inquiries.",
 };
 

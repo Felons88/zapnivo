@@ -5,7 +5,7 @@ import { MarketingHero } from "@/components/MarketingHero";
 import { KioskPhoto } from "@/components/Photo";
 
 export const metadata: Metadata = {
-  title: "About Zapnivo | Portable Charging Network",
+  title: { absolute: "About Zapnivo | Portable Charging Network" },
   description: "Zapnivo is a Minnesota-based startup building a portable phone-charger rental network serving Minnesota.",
 };
 

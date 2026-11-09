@@ -5,7 +5,7 @@ import { RentalWalkthrough } from "@/components/RentalWalkthrough";
 import { ScenePhoto } from "@/components/Photo";
 import { fmt, PRICING_V1 } from "@/lib/pricing";
 
-export const metadata: Metadata = { title: "How Portable Charger Rentals Work | Zapnivo", description: "Learn how to find a Zapnivo station, rent a portable power bank, charge on the move, and return it." };
+export const metadata: Metadata = { title: { absolute: "How Portable Charger Rentals Work | Zapnivo" }, description: "Learn how to find a Zapnivo station, rent a portable power bank, charge on the move, and return it." };
 const P = PRICING_V1;
 const ROWS = [
   { label: "First started hour", value: fmt(P.firstHourCents) },

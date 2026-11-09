@@ -5,7 +5,7 @@ import { MarketingHero } from "@/components/MarketingHero";
 import { KioskPhoto } from "@/components/Photo";
 
 export const metadata: Metadata = {
-  title: "Partner With Zapnivo | Apply to Host a Charging Station",
+  title: { absolute: "Partner With Zapnivo | Apply to Host a Charging Station" },
   description: "Apply to host a Zapnivo charging station at your bar, restaurant, hotel or venue. Tell us about your space and we'll schedule a consultation.",
 };
 

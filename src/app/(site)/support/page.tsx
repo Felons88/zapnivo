@@ -9,7 +9,7 @@ import { OpenAssistant } from "@/components/OpenAssistant";
 import type { Audience } from "@/lib/support-content";
 
 export const metadata: Metadata = {
-  title: "Phone Charger Rental Support & Help Center | Zapnivo",
+  title: { absolute: "Phone Charger Rental Support | Zapnivo" },
   description: "Zapnivo help center for renters and venue partners: find a past rental, request a refund review, track a ticket, and search answers about rentals, returns and billing.",
 };
 

@@ -4,7 +4,7 @@ import { MarketingHero } from "@/components/MarketingHero";
 import { ScenePhoto } from "@/components/Photo";
 import { Reveal } from "@/components/Reveal";
 
-export const metadata: Metadata = { title: "Phone Charging Stations for Businesses | Zapnivo", description: "Explore a managed Zapnivo charging station for your venue. Learn about guest rentals, placement, servicing, and the partnership process." };
+export const metadata: Metadata = { title: { absolute: "Phone Charging Stations for Businesses | Zapnivo" }, description: "Explore a managed Zapnivo charging station for your venue. Learn about guest rentals, placement, servicing, and the partnership process." };
 const FIT = [
   { title: "Hospitality", places: "Hotels · Restaurants · Cafés", body: "Help guests stay connected while they settle in, dine, or wait." },
   { title: "Entertainment", places: "Bars · Nightlife · Event venues", body: "Let guests carry the charge through the night without asking staff for an outlet." },

@@ -6,7 +6,7 @@ import { MarketingHero } from "@/components/MarketingHero";
 import { ScenePhoto } from "@/components/Photo";
 
 export const metadata: Metadata = {
-  title: "Advertise on Phone Charging Stations | Zapnivo",
+  title: { absolute: "Advertise on Phone Charging Stations | Zapnivo" },
   description: "Explore advertising opportunities on Zapnivo charging stations. Inquire about screen placements, venue targeting and sponsorships.",
 };
 

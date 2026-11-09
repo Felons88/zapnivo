@@ -10,7 +10,7 @@ import { getStations } from "@/lib/stations";
 import { IllustrativeTag } from "@/components/Illustrations";
 
 export const metadata: Metadata = {
-  title: "Portable Phone Charger Rentals | Zapnivo",
+  title: { absolute: "Portable Phone Charger Rentals | Zapnivo" },
   description: "Rent a portable power bank from a Zapnivo station, charge while you move, and return it to an eligible participating station. Explore rentals and venue partnerships in Minnesota.",
 };
 
