@@ -18,17 +18,23 @@ export default async function PartnerPortal() {
         const orgId = user.organizationId;
         const db = serviceClient();
         const ctx = await defaultCtx();
-        const [venues, kiosks, rentalCounts, openTickets] = orgId && db ? await Promise.all([
+        const [venues, kiosks, rentalCounts, agreements, openTickets] = orgId && db ? await Promise.all([
           db.from("venues").select("id,name,city,state,published,hours").eq("organization_id", orgId).limit(50),
           db.from("kiosks").select("id,station_id,state,last_seen_at,venues!inner(name,organization_id)").eq("venues.organization_id", orgId).limit(50),
           db.from("rentals").select("state,created_at,kiosks!inner(venues!inner(organization_id))").eq("kiosks.venues.organization_id", orgId).gte("created_at", new Date(Date.now() - 30 * 86400_000).toISOString()).limit(5000),
+          db.from("partner_agreements").select("id,signed_at,document_path,venues(name)").eq("organization_id", orgId).order("signed_at", { ascending: false }).limit(20),
           ctx ? ctx.repo.listTickets({ orgId, states: ["open", "pending_customer", "pending_internal"], limit: 5 }) : Promise.resolve([]),
-        ]) : [{ data: null }, { data: null }, { data: null }, []];
+        ]) : [{ data: null }, { data: null }, { data: null }, { data: null }, []];
 
         const venueRows = (venues?.data ?? []) as { id: string; name: string; city: string; state: string; published: boolean; hours: string | null }[];
         const kioskRows = (kiosks?.data ?? []) as unknown as { id: string; station_id: string; state: keyof typeof KIOSK_TONE; last_seen_at: string | null; venues: { name: string }[] | null }[];
         const rentalRows = (rentalCounts?.data ?? []) as { state: string }[];
         const active = rentalRows.filter((r) => r.state === "active" || r.state === "dispense_pending").length;
+        const agrRows = (agreements?.data ?? []) as unknown as { id: string; signed_at: string | null; document_path: string | null; venues: { name: string }[] | null }[];
+        const docs = db ? (await Promise.all(agrRows.map(async (a) => ({
+          ...a,
+          url: a.document_path ? (await db.storage.from("agreements").createSignedUrl(a.document_path, 300)).data?.signedUrl ?? null : null,
+        })))) : agrRows.map((a) => ({ ...a, url: null }));
 
         return (
           <div className="space-y-6">
@@ -70,6 +76,19 @@ export default async function PartnerPortal() {
                       <li key={v.id} className="flex items-center justify-between gap-3 text-sm">
                         <span><b>{v.name}</b> <span className="text-graphite">· {v.city}, {v.state}</span></span>
                         <Pill tone={v.published ? "lime" : "mist"}>{v.published ? "live" : "pending"}</Pill>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+              <section aria-label="Agreements" className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+                <h2 className="font-display text-lg font-bold">Agreements</h2>
+                {docs.length === 0 ? <p className="mt-4 text-sm text-graphite">Your signed agreement and addenda will be available for download here.</p> : (
+                  <ul className="mt-4 space-y-3 text-sm">
+                    {docs.map((a) => (
+                      <li key={a.id} className="flex items-center justify-between gap-3">
+                        <span><b>{a.venues?.[0]?.name ?? "Partnership agreement"}</b><span className="text-graphite">{a.signed_at ? ` · signed ${new Date(a.signed_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}` : " · unsigned"}</span></span>
+                        {a.url ? <a href={a.url} className="shrink-0 rounded-full border border-silver/60 px-3 py-1.5 text-xs font-bold hover:border-ink">Download ↓</a> : <span className="text-xs text-graphite">Pending</span>}
                       </li>
                     ))}
                   </ul>

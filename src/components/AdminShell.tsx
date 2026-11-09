@@ -22,6 +22,7 @@ const icons = {
   swap: <I><path d="M8 3 4 7l4 4" /><path d="M4 7h16" /><path d="m16 21 4-4-4-4" /><path d="M20 17H4" /></I>,
   store: <I><path d="M4 10v10a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V10" /><path d="M3 6.5 5 3h14l2 3.5a3 3 0 0 1-6 .5 3 3 0 0 1-6 0 3 3 0 0 1-6-.5Z" /><path d="M9 21v-6h6v6" /></I>,
   megaphone: <I><path d="m3 11 18-5v12L3 13v-2Z" /><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6" /></I>,
+  mail: <I><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3 7 9 6 9-6" /></I>,
 } satisfies Record<string, ReactNode>;
 
 export type AdminNavKey = keyof typeof NAV_ITEMS;
@@ -33,6 +34,7 @@ const NAV_ITEMS = {
   safety: { href: "/admin/support?queue=safety", label: "Safety", icon: icons.shield, group: "Support" },
   refunds: { href: "/admin/support/refunds", label: "Refunds", icon: icons.coins, group: "Support" },
   metrics: { href: "/admin/support/metrics", label: "Metrics", icon: icons.chart, group: "Support" },
+  inquiries: { href: "/admin/inquiries", label: "Inquiries", icon: icons.mail, group: "Support" },
   fleet: { href: "/admin/fleet", label: "Fleet", icon: icons.battery, group: "Operations" },
   rentals: { href: "/admin/rentals", label: "Rentals", icon: icons.swap, group: "Operations" },
   partners: { href: "/admin/partners", label: "Partners", icon: icons.store, group: "Operations" },
