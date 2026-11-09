@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { AdminGate } from "@/components/AdminShell";
-import { Metric } from "@/components/PortalShell";
+import { Metric } from "@/components/AdminCards";
 import { Pill } from "@/components/SupportNav";
 import { fmt } from "@/lib/pricing";
 
@@ -19,12 +19,12 @@ const icons = {
 };
 
 const Card = ({ title, href, children }: { title: string; href?: string; children: ReactNode }) => (
-  <section className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
-    <div className="flex items-center justify-between"><h2 className="font-display text-lg font-bold">{title}</h2>{href && <span className="text-xs font-extrabold uppercase tracking-wider text-forest">Open →</span>}</div>
+  <section className="rounded-2xl border border-white/10 bg-[#181933] p-6 shadow-sm">
+    <div className="flex items-center justify-between"><h2 className="font-display text-lg font-bold">{title}</h2>{href && <span className="text-xs font-extrabold uppercase tracking-wider text-lime">Open →</span>}</div>
     <div className="mt-4">{children}</div>
   </section>
 );
-const Row = ({ k, v }: { k: string; v: ReactNode }) => <div className="flex items-baseline justify-between gap-4"><dt className="text-sm text-graphite">{k}</dt><dd className="font-display text-xl font-bold">{v}</dd></div>;
+const Row = ({ k, v }: { k: string; v: ReactNode }) => <div className="flex items-baseline justify-between gap-4"><dt className="text-sm text-silver">{k}</dt><dd className="font-display text-xl font-bold">{v}</dd></div>;
 
 /* Sample data — preview only */
 const ACTIVITY = [
@@ -46,7 +46,7 @@ export default function AdminDemo() {
           Sample data — dashboard preview · <Link href="/admin" className="underline">back to live dashboard</Link>
         </div>
 
-        <Link href="/admin/support" className="flex items-center gap-3 rounded-2xl border border-gold/60 bg-gold/25 px-5 py-3 text-sm font-bold text-ink hover:bg-gold/40">
+        <Link href="/admin/support" className="flex items-center gap-3 rounded-2xl border border-gold/40 bg-gold/15 px-5 py-3 text-sm font-bold text-ink hover:bg-gold/40">
           <span className="grid h-6 w-6 place-items-center rounded-full bg-ink text-xs font-extrabold text-lime">!</span>
           <span>3 tickets unassigned</span><span aria-hidden>·</span><span>1 overdue first response</span>
           <span className="ml-auto text-xs font-extrabold uppercase tracking-wider">Open inbox →</span>
@@ -61,31 +61,31 @@ export default function AdminDemo() {
 
         <section aria-label="Quick actions" className="flex flex-wrap gap-2">
           {["Register kiosk", "Invite a partner", "Queue statements", "Open inbox"].map((l) => (
-            <span key={l} className="rounded-full border border-silver/50 bg-white px-4 py-2 text-xs font-extrabold uppercase tracking-wider text-ink shadow-sm">{l}</span>
+            <span key={l} className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-xs font-extrabold uppercase tracking-wider text-white shadow-sm">{l}</span>
           ))}
         </section>
 
         <div className="grid gap-6 xl:grid-cols-[1.6fr_1fr]">
           <div className="space-y-6">
             <Card title="Latest activity" href="/admin/support">
-              <ul className="-mx-6 -mb-4 divide-y divide-mist/80">
+              <ul className="-mx-6 -mb-4 divide-y divide-white/10">
                 {ACTIVITY.map((t) => (
                   <li key={t.n}><span className="flex items-center gap-4 px-6 py-3.5">
                     <span className="w-20 shrink-0 font-bold">{t.n}</span>
-                    <span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold">{t.s}</span><span className="block truncate text-xs text-graphite">{t.who}</span></span>
+                    <span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold">{t.s}</span><span className="block truncate text-xs text-silver">{t.who}</span></span>
                     <span className="hidden sm:block"><Pill tone={qTone[t.q]}>{t.q}</Pill></span>
-                    <span className="hidden text-xs text-graphite md:block">{t.due}</span>
+                    <span className="hidden text-xs text-silver md:block">{t.due}</span>
                   </span></li>
                 ))}
               </ul>
             </Card>
 
             <Card title="Partner & maintenance requests" href="/admin/support?queue=partner">
-              <ul className="-mx-6 -mb-4 divide-y divide-mist/80">
+              <ul className="-mx-6 -mb-4 divide-y divide-white/10">
                 {[ACTIVITY[1], ACTIVITY[3], ACTIVITY[4]].map((t) => (
                   <li key={t.n}><span className="flex items-center gap-4 px-6 py-3.5">
                     <span className="w-20 shrink-0 font-bold">{t.n}</span>
-                    <span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold">{t.s}</span><span className="block truncate text-xs text-graphite">{t.who}</span></span>
+                    <span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold">{t.s}</span><span className="block truncate text-xs text-silver">{t.who}</span></span>
                     <Pill tone={t.q === "safety" ? "red" : "cyan"}>{t.s}</Pill>
                   </span></li>
                 ))}

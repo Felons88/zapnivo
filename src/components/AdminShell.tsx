@@ -49,25 +49,25 @@ function NavLink({ item, active }: { item: (typeof NAV_ITEMS)[AdminNavKey]; acti
       href={item.href}
       aria-current={active ? "page" : undefined}
       className={`flex items-center gap-3 rounded-lg px-3.5 py-2 text-sm font-bold transition-colors ${
-        active ? "bg-lime text-ink" : "text-graphite hover:bg-mist hover:text-ink"
+        active ? "bg-lime text-ink" : "text-silver hover:bg-white/5 hover:text-white"
       }`}
     >
-      <span className={active ? "text-ink" : "text-silver"}>{item.icon}</span>
+      <span className={active ? "text-ink" : "text-white/40"}>{item.icon}</span>
       {item.label}
     </Link>
   );
 }
 
 /**
- * Staff-console gate + dashboard chrome: fixed sidebar, sticky topbar, grouped nav.
+ * Staff-console gate + dark dashboard chrome: fixed sidebar, sticky topbar, grouped nav.
  * Same auth rules as PortalGate — unauthenticated → /login, non-staff → /partners.
  */
 export async function AdminGate({ title, nav, children }: { title: string; nav: AdminNavKey; children: ReactNode }) {
   if (!authConfigured()) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-paper px-6">
+      <div className="flex min-h-screen items-center justify-center bg-[#0e0f24] px-6 text-white">
         <div className="w-full max-w-xl">
-          <p className="eyebrow text-forest">Operations</p>
+          <p className="eyebrow text-lime">Operations</p>
           <h1 className="display-md mt-4">{title}</h1>
           <div className="mt-8 text-left"><Notice title="Not configured yet.">
             Authentication isn't connected in this environment. Set <code>NEXT_PUBLIC_SUPABASE_URL</code>,
@@ -84,7 +84,7 @@ export async function AdminGate({ title, nav, children }: { title: string; nav: 
 
   const all = Object.entries(NAV_ITEMS) as [AdminNavKey, (typeof NAV_ITEMS)[AdminNavKey]][];
   return (
-    <div className="min-h-screen bg-[#f2f1fa] text-ink">
+    <div className="min-h-screen bg-[#0e0f24] text-white">
       {devAuth() && (
         <div className="relative z-50 bg-gold px-4 py-2 text-center text-xs font-bold text-ink">
           DEV STORE · not real data · acting as <b>{user.email}</b> ({user.role}) — switch:{" "}
@@ -93,51 +93,51 @@ export async function AdminGate({ title, nav, children }: { title: string; nav: 
       )}
 
       {/* Sidebar (desktop) */}
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-72 flex-col border-r border-mist bg-white lg:flex">
-        <div className="flex items-center justify-between border-b border-mist px-6 py-4">
-          <Link href="/admin" aria-label="Zapnivo internal"><Logo className="text-[1.25rem]!" /></Link>
-          <span className="rounded-full bg-forest px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-widest text-lime">Internal</span>
+      <aside className="fixed inset-y-0 left-0 z-40 hidden w-72 flex-col border-r border-white/10 bg-[#14152e] lg:flex">
+        <div className="flex items-center justify-between border-b border-white/10 px-6 py-4">
+          <Link href="/admin" aria-label="Zapnivo internal"><Logo className="text-[1.25rem]! text-white" /></Link>
+          <span className="rounded-full bg-lime/10 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-widest text-lime ring-1 ring-lime/30">Internal</span>
         </div>
         <nav aria-label="Console" className="flex-1 space-y-4 px-4 py-4">
           {GROUPS.map((g) => (
             <div key={g}>
-              <p className="eyebrow px-3.5 pb-1.5 text-[10px] text-silver">{g}</p>
+              <p className="eyebrow px-3.5 pb-1.5 text-[10px] text-white/35">{g}</p>
               <div className="space-y-0.5">
                 {all.filter(([, i]) => i.group === g).map(([key, item]) => <NavLink key={key} item={item} active={nav === key} />)}
               </div>
             </div>
           ))}
         </nav>
-        <div className="border-t border-mist p-3">
-          <div className="rounded-xl bg-mist/60 p-3">
+        <div className="border-t border-white/10 p-3">
+          <div className="rounded-xl bg-white/5 p-3">
             <p className="truncate text-sm font-bold">{user.email}</p>
             <div className="mt-1.5 flex items-center justify-between gap-2">
-              <p className="text-xs font-bold uppercase tracking-wider text-graphite">{user.role}</p>
+              <p className="text-xs font-bold uppercase tracking-wider text-silver">{user.role}</p>
               <LogoutButton light />
             </div>
           </div>
-          <Link href="https://zapnivo.com" className="mt-2 flex items-center justify-center gap-1.5 py-1 text-xs font-bold text-graphite hover:text-ink">View public site ↗</Link>
+          <Link href="https://zapnivo.com" className="mt-2 flex items-center justify-center gap-1.5 py-1 text-xs font-bold text-silver hover:text-white">View public site ↗</Link>
         </div>
       </aside>
 
       <div className="lg:pl-72">
         {/* Topbar */}
-        <header className="sticky top-0 z-30 border-b border-mist bg-[#f2f1fa]/85 backdrop-blur">
+        <header className="sticky top-0 z-30 border-b border-white/10 bg-[#0e0f24]/85 backdrop-blur">
           <div className="flex h-16 items-center justify-between gap-4 px-5 md:px-8">
             <h1 className="truncate font-display text-xl font-bold tracking-tight">{title}</h1>
             <div className="flex items-center gap-3">
-              <span className="hidden items-center gap-2 rounded-full bg-white px-4 py-2 text-xs font-bold text-graphite ring-1 ring-mist sm:flex">
-                <span className="h-2 w-2 rounded-full bg-green-500" aria-hidden />{user.email}
+              <span className="hidden items-center gap-2 rounded-full bg-white/5 px-4 py-2 text-xs font-bold text-silver ring-1 ring-white/10 sm:flex">
+                <span className="h-2 w-2 rounded-full bg-green-400" aria-hidden />{user.email}
               </span>
-              <Link href="https://zapnivo.com" className="hidden rounded-full border border-silver/60 px-4 py-2 text-xs font-bold hover:border-ink md:block">View site</Link>
-              <div className="lg:hidden"><LogoutButton light /></div>
+              <Link href="https://zapnivo.com" className="hidden rounded-full border border-white/20 px-4 py-2 text-xs font-bold text-silver hover:border-lime hover:text-white md:block">View site</Link>
+              <div className="lg:hidden"><LogoutButton /></div>
             </div>
           </div>
           {/* Mobile nav */}
           <nav aria-label="Console" className="flex gap-1 overflow-x-auto px-4 pb-3 lg:hidden">
             {all.map(([key, item]) => (
               <Link key={key} href={item.href} aria-current={nav === key ? "page" : undefined}
-                className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold ${nav === key ? "bg-ink text-white" : "bg-white text-graphite"}`}>
+                className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold ${nav === key ? "bg-lime text-ink" : "bg-white/5 text-silver"}`}>
                 {item.icon}{item.label}
               </Link>
             ))}
