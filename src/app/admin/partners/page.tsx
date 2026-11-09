@@ -105,9 +105,23 @@ export default async function Partners({ searchParams }: { searchParams: Promise
                 <div><label htmlFor="s-period" className="mb-1 block text-xs font-bold">Period</label><input id="s-period" name="period" required pattern="\d{4}-(0[1-9]|1[0-2])" className="min-h-10 w-full rounded-lg border border-silver/70 px-3 text-sm" placeholder="2026-05" /></div>
                 <button className="min-h-10 w-full rounded-full bg-ink px-5 text-sm font-bold text-white">Queue statement emails</button>
               </form>
+              <a href="/admin/payouts" className="mt-3 inline-block text-xs font-extrabold uppercase tracking-wider text-forest hover:underline">Ledgers &amp; payouts →</a>
               <p className="mt-3 text-xs text-graphite">Emails one statement per venue to each owner on the org, through the outbox — nothing claims sent if mail isn't configured.</p>
             </section>
           </div>
+
+          <section aria-label="Agreement terms" className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+            <h2 className="font-display text-lg font-bold">Record agreement terms <span className="ml-2 align-middle text-[10px] font-extrabold uppercase tracking-widest text-silver">admin · private</span></h2>
+            <form method="post" action="/api/admin/partners" className="mt-4 flex flex-wrap items-end gap-3">
+              <input type="hidden" name="action" value="set_agreement" />
+              <div><label htmlFor="a-org" className="mb-1 block text-xs font-bold">Organization</label><select id="a-org" name="organization_id" required className="min-h-10 rounded-lg border border-silver/70 px-3 text-sm"><option value="">Select…</option>{orgRows.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}</select></div>
+              <div><label htmlFor="a-venue" className="mb-1 block text-xs font-bold">Venue (blank = all)</label><select id="a-venue" name="venue_id" className="min-h-10 rounded-lg border border-silver/70 px-3 text-sm"><option value="">All venues</option>{venueRows.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}</select></div>
+              <div><label htmlFor="a-pct" className="mb-1 block text-xs font-bold">Commission %</label><input id="a-pct" name="commission_pct" type="number" step="0.01" min="0" max="100" required className="min-h-10 w-28 rounded-lg border border-silver/70 px-3 text-sm" /></div>
+              <div><label htmlFor="a-date" className="mb-1 block text-xs font-bold">Signed</label><input id="a-date" name="signed_at" type="date" className="min-h-10 rounded-lg border border-silver/70 px-3 text-sm" /></div>
+              <button className="min-h-10 rounded-full bg-ink px-5 text-sm font-bold text-white">Save terms</button>
+            </form>
+            <p className="mt-3 text-xs text-graphite">Stored in the private agreement record and used only by the ledger job. Never shown publicly; the newest agreement per venue wins.</p>
+          </section>
 
           <section aria-label="Venues" className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
             <div className="flex items-center justify-between border-b border-mist px-6 py-4"><h2 className="font-display text-lg font-bold">Venues</h2><Link href="/admin/fleet" className="text-xs font-bold text-forest underline">Add venue or kiosk →</Link></div>

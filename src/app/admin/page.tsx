@@ -114,6 +114,8 @@ export default async function AdminDashboard() {
       if (idx >= 0 && idx < 30) rentalSeries[idx]++;
     }
   }
+  const cronRes = db ? await db.from("cron_runs").select("job,ok,ran_at,detail").order("ran_at", { ascending: false }).limit(6) : null;
+  const crons = (cronRes?.data ?? []) as { job: string; ok: boolean; ran_at: string; detail: unknown }[];
   const queues = { support: 0, billing: 0, partner: 0, safety: 0 };
   for (const t of all) if (t.queue in queues) queues[t.queue as keyof typeof queues]++;
 
@@ -227,6 +229,19 @@ export default async function AdminDashboard() {
                 <span>{days[0].day.toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
                 <span>{days[13].day.toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
               </div>
+            </Card>
+
+            <Card title="System">
+              <ul className="space-y-1.5 text-xs">
+                {crons.length === 0 ? <li className="text-graphite">No scheduled runs recorded yet — the daily sweep logs here.</li> : crons.slice(0, 3).map((c, i) => (
+                  <li key={i} className="flex items-center justify-between"><span className="font-bold capitalize">{c.job} sweep</span><span className={c.ok ? "text-forest" : "font-bold text-red-700"}>{c.ok ? "ok" : "FAILED"} · {new Date(c.ran_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span></li>
+                ))}
+              </ul>
+              <p className="mt-4 text-[10px] font-extrabold uppercase tracking-widest text-silver">Export CSV</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {["rentals", "payments", "payouts", "ledgers", "tickets", "kiosks"].map((t) => <a key={t} href={`/api/admin/export?type=${t}`} className="rounded-full border border-silver/50 px-3 py-1 text-xs font-bold capitalize hover:border-ink">{t}</a>)}
+              </div>
+              <a href="/api/cron/rentals" className="mt-4 inline-block text-xs font-extrabold uppercase tracking-wider text-forest hover:underline">Run checks now →</a>
             </Card>
 
             <Card title="Network" href="/admin/fleet">

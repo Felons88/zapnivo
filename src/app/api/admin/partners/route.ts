@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { auditLog } from "@/lib/audit";
 import { getSessionUser, isStaff } from "@/lib/auth";
 import { serviceClient } from "@/lib/supabase";
 
@@ -122,6 +123,19 @@ export async function POST(req: Request) {
     const { data, error } = await db.from("venues").update({ lat: p.data.lat, lng: p.data.lng, published }).eq("id", venueId.data).select("id").maybeSingle();
     if (error || !data) return back(req, "error", "Map details could not be saved.");
     return back(req, "map");
+  }
+
+  if (action === "set_agreement") {
+    if (user!.role !== "admin") return back(req, "error", "Only admins can record agreement terms.");
+    const p = z.object({
+      organization_id: z.string().uuid(), venue_id: z.string().uuid().nullable(),
+      commission_pct: z.coerce.number().min(0).max(100), signed_at: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
+    }).safeParse({ organization_id: form.get("organization_id"), venue_id: form.get("venue_id") || null, commission_pct: form.get("commission_pct"), signed_at: form.get("signed_at") || null });
+    if (!p.success) return back(req, "error", "Check the agreement fields.");
+    const { data, error } = await db.from("partner_agreements").insert({ organization_id: p.data.organization_id, venue_id: p.data.venue_id, signed_at: p.data.signed_at, terms: { commission_pct: p.data.commission_pct } }).select("id").single();
+    if (error) return back(req, "error", "The agreement could not be saved.");
+    await auditLog(user!.id, "set_agreement", "organization", p.data.organization_id, { agreement: data.id, venue_id: p.data.venue_id });
+    return back(req, "agreement");
   }
 
   return back(req, "error", "Unknown partner action.");
