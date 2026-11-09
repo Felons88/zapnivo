@@ -61,6 +61,9 @@ export function planRoute({
   const pass = isApi || isFile || path === "/login" || path.startsWith("/.well-known/");
 
   if (sub === "api") {
+    if (path === "/robots.txt") {
+      return { kind: "respond", status: 200, body: "User-agent: *\nDisallow: /\n", contentType: "text/plain", noindex: true };
+    }
     if (path === "/" || path === "") {
       return { kind: "respond", status: 200, body: JSON.stringify({ service: "zapnivo-api", ok: true }), contentType: "application/json", noindex: true };
     }

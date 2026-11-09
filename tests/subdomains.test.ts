@@ -34,6 +34,9 @@ describe("subdomain rewrites", () => {
     const root = r("api.zapnivo.com", "/");
     expect(root.kind).toBe("respond");
     if (root.kind === "respond") expect(root.status).toBe(200);
+    const bots = r("api.zapnivo.com", "/robots.txt");
+    expect(bots.kind).toBe("respond");
+    if (bots.kind === "respond") expect(bots.body).toContain("Disallow: /");
   });
 
   it("bounces cross-portal and apex-owned paths to the right host", () => {
