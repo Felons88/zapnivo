@@ -10,7 +10,7 @@ import { getStations } from "@/lib/stations";
 import { IllustrativeTag } from "@/components/Illustrations";
 
 export const metadata: Metadata = {
-  title: "Zapnivo — Portable phone charger rentals | Life moves. Power follows.",
+  title: "Portable Phone Charger Rentals | Zapnivo",
   description: "Rent a portable power bank from a Zapnivo station, charge while you move, and return it to an eligible participating station. Explore rentals and venue partnerships in Minnesota.",
 };
 
@@ -30,13 +30,13 @@ export default async function Home() {
       <div className="container-z relative grid min-h-[700px] items-center gap-8 pb-14 pt-36 lg:min-h-[760px] lg:grid-cols-[1.05fr_.95fr] lg:pb-20 lg:pt-40">
         <div className="relative z-10 max-w-3xl">
           <p className="eyebrow anim-hero text-lime">Portable power, wherever life takes you</p>
-          <h1 id="hero-h" className="display-xl anim-hero mt-6 !text-[clamp(3.4rem,8.2vw,8.4rem)]" style={{ "--d": "80ms" } as React.CSSProperties}>Don&apos;t stop.<br /><span className="text-lime">Recharge.</span></h1>
-          <p className="lead anim-hero mt-7 max-w-xl text-white/75" style={{ "--d": "160ms" } as React.CSSProperties}>Rent a power bank at a Zapnivo station, take the charge with you, and return it when you&apos;re done. No outlet required.</p>
+          <h1 id="hero-h" className="display-xl anim-hero mt-6 !text-[clamp(3rem,7.6vw,7.6rem)]" style={{ "--d": "80ms" } as React.CSSProperties}>Life moves.<br /><span className="text-lime">Power follows.</span></h1>
+          <p className="lead anim-hero mt-7 max-w-xl text-white/75" style={{ "--d": "160ms" } as React.CSSProperties}>Zapnivo provides self-service portable phone charger rentals. Scan a station, take a power bank with you, and return it to any eligible participating station — no outlet required.</p>
           <div className="anim-hero mt-9 flex flex-wrap gap-3" style={{ "--d": "240ms" } as React.CSSProperties}>
             <Button href="/locations">Find a station</Button>
             <Button href="/how-it-works" variant="ghost" className="border-white/40 text-white">See how rentals work</Button>
           </div>
-          <p className="mt-7 max-w-md text-sm text-white/55">Rolling out across Minnesota. The station map shows verified live locations only.</p>
+          <p className="mt-7 max-w-md text-sm text-white/55">Rolling out first in St. Cloud and across Minnesota. The station map shows verified live locations only.</p>
         </div>
         <div className="home-product-stage relative mx-auto flex h-[420px] w-full max-w-[600px] items-end justify-center sm:h-[540px] lg:h-[620px]">
           <div className="hero-orbit absolute bottom-[8%] left-1/2 h-[78%] w-[78%] -translate-x-1/2 rounded-full" aria-hidden />

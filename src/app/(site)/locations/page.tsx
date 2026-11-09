@@ -5,7 +5,7 @@ import { ScenePhoto } from "@/components/Photo";
 import { Locator } from "@/components/Locator";
 import { getStations } from "@/lib/stations";
 
-export const metadata: Metadata = { title: "Find a Station", description: "Explore verified live Zapnivo portable charger rental stations in Minnesota and learn where the network is rolling out." };
+export const metadata: Metadata = { title: "Find Portable Phone Charger Stations | Zapnivo", description: "Explore verified live Zapnivo portable charger rental stations in Minnesota and learn where the network is rolling out." };
 export default async function Locations() {
   const stations = await getStations();
   return <>
