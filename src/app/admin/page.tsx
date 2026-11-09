@@ -44,6 +44,7 @@ const QUICK_ACTIONS = [
   { href: "/admin/partners", label: "Invite a partner" },
   { href: "/admin/partners", label: "Queue statements" },
   { href: "/admin/support", label: "Open inbox" },
+  { href: "/admin/demo", label: "Preview demo" },
 ];
 
 export default async function AdminDashboard() {
