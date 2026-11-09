@@ -15,11 +15,14 @@ export function EmptyCard({ title, children }: { title: string; children: ReactN
   );
 }
 
-/** Metric card — only rendered when real data exists. */
-export function Metric({ label, value, sub }: { label: string; value: ReactNode; sub?: string }) {
+/** Metric card — only rendered when real data exists. Optional icon badge. */
+export function Metric({ label, value, sub, icon }: { label: string; value: ReactNode; sub?: string; icon?: ReactNode }) {
   return (
     <div className="rounded-2xl border border-mist bg-white p-5 shadow-sm">
-      <p className="eyebrow text-forest">{label}</p>
+      <div className="flex items-start justify-between gap-3">
+        <p className="eyebrow text-forest">{label}</p>
+        {icon && <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-mist/70 text-forest" aria-hidden>{icon}</span>}
+      </div>
       <p className="mt-2 font-display text-4xl font-bold">{value}</p>
       {sub && <p className="mt-1 text-xs text-graphite">{sub}</p>}
     </div>
