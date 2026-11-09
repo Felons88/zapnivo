@@ -9,6 +9,7 @@ describe("subdomain rewrites", () => {
     expect(r("support.zapnivo.com", "/")).toEqual({ kind: "rewrite", to: "/support", noindex: false });
     expect(r("support.zapnivo.com", "/new")).toEqual({ kind: "rewrite", to: "/support/new", noindex: false });
     expect(r("support.zapnivo.com", "/ticket/Z-1234")).toEqual({ kind: "rewrite", to: "/support/ticket/Z-1234", noindex: false });
+    expect(r("support.zapnivo.com", "/articles/how-to-rent-a-charger")).toEqual({ kind: "rewrite", to: "/support/articles/how-to-rent-a-charger", noindex: false });
   });
 
   it("maps the internal and partners roots onto /admin and /partners with noindex", () => {

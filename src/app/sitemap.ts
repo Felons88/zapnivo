@@ -1,29 +1,31 @@
 import type { MetadataRoute } from "next";
+import { headers } from "next/headers";
 import { SITE, subUrl } from "@/lib/site";
-import type { Subdomain } from "@/lib/subdomains";
+import { baseDomain } from "@/lib/subdomains";
+import { PUBLIC_ARTICLES } from "@/lib/support-articles";
 
-const ROUTES: { path: string; sub?: Subdomain; freq: MetadataRoute.Sitemap[number]["changeFrequency"]; priority: number }[] = [
-  { path: "", freq: "weekly", priority: 1 },
-  { path: "/how-it-works", freq: "weekly", priority: 0.9 },
-  { path: "/locations", freq: "daily", priority: 0.9 },
-  { path: "/business", freq: "weekly", priority: 0.8 },
-  { path: "/business/apply", freq: "monthly", priority: 0.7 },
-  { path: "/", sub: "support", freq: "weekly", priority: 0.8 },
-  { path: "/new", sub: "support", freq: "monthly", priority: 0.6 },
-  { path: "/about", freq: "monthly", priority: 0.6 },
-  { path: "/contact", freq: "monthly", priority: 0.6 },
-  { path: "/advertise", freq: "monthly", priority: 0.5 },
-  { path: "/legal/privacy", freq: "yearly", priority: 0.3 },
-  { path: "/legal/terms", freq: "yearly", priority: 0.3 },
-  { path: "/legal/rental-terms", freq: "yearly", priority: 0.4 },
-  { path: "/legal/refund-policy", freq: "yearly", priority: 0.4 },
-  { path: "/legal/cookie-policy", freq: "yearly", priority: 0.3 },
-  { path: "/legal/accessibility", freq: "yearly", priority: 0.3 },
+export const dynamic = "force-dynamic";
+
+const MAIN = [
+  "", "/how-it-works", "/locations", "/business", "/business/apply",
+  "/about", "/contact", "/advertise", "/legal/privacy", "/legal/terms",
+  "/legal/rental-terms", "/legal/refund-policy", "/legal/cookie-policy",
+  "/legal/accessibility",
 ];
 
-export default function sitemap(): MetadataRoute.Sitemap {
-  return ROUTES.map(({ path, sub, freq, priority }) => ({
-    url: sub ? subUrl(sub, path) : `${SITE.url}${path}`,
-    lastModified: new Date(), changeFrequency: freq, priority,
-  }));
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  const host = ((await headers()).get("host") ?? "").split(":")[0].toLowerCase();
+  const base = baseDomain();
+  const support = host === `support.${base}` || host === "support.localhost";
+  const privateHost = ["internal", "partners", "api"].some(
+    (sub) => host === `${sub}.${base}` || host === `${sub}.localhost`,
+  );
+
+  if (privateHost) return [];
+  if (support) {
+    return ["/", ...PUBLIC_ARTICLES.map(({ slug }) => `/articles/${slug}`)].map((path) => ({
+      url: subUrl("support", path),
+    }));
+  }
+  return MAIN.map((path) => ({ url: `${SITE.url.replace(/\/$/, "")}${path || "/"}` }));
 }

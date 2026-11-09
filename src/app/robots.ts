@@ -1,6 +1,6 @@
 import type { MetadataRoute } from "next";
 import { headers } from "next/headers";
-import { SITE } from "@/lib/site";
+import { SITE, subUrl } from "@/lib/site";
 import { baseDomain } from "@/lib/subdomains";
 
 export const dynamic = "force-dynamic";
@@ -20,8 +20,7 @@ export default async function robots(): Promise<MetadataRoute.Robots> {
   if (is("support")) {
     return {
       rules: [{ userAgent: "*", allow: "/", disallow: SUPPORT_PRIVATE }],
-      sitemap: `${SITE.url}/sitemap.xml`,
-      host: SITE.url,
+      sitemap: subUrl("support", "/sitemap.xml"),
     };
   }
   return {

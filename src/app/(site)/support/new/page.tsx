@@ -6,6 +6,7 @@ import { MarketingHero } from "@/components/MarketingHero";
 export const metadata: Metadata = {
   title: "Create a Support Ticket",
   description: "Get help with a Zapnivo rental, return, billing issue or damaged charger. Describe the issue and we'll investigate.",
+  robots: { index: false, follow: false },
 };
 
 const clip = (v: string | string[] | undefined, n: number) => (Array.isArray(v) ? v[0] : v)?.slice(0, n);
