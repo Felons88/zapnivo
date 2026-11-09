@@ -1,9 +1,9 @@
 export const dynamic = "force-dynamic";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { EmptyCard, PortalGate } from "@/components/PortalShell";
+import { AdminGate } from "@/components/AdminShell";
+import { EmptyCard } from "@/components/PortalShell";
 import { RefundActions } from "@/components/RefundActions";
-import { ADMIN_TABS, SupportNav } from "@/components/SupportNav";
 import { getSessionUser } from "@/lib/auth";
 import { defaultCtx } from "@/lib/helpdesk/service";
 
@@ -18,8 +18,7 @@ export default async function RefundQueue() {
   const role = user?.role === "admin" ? "admin" : "staff";
 
   return (
-    <PortalGate require="staff" eyebrow="Operations" title="Refund queue" tabs={ADMIN_TABS}>
-      <SupportNav active="refunds" />
+    <AdminGate title="Refund queue" nav="refunds">
       {!ctx || !user ? <EmptyCard title="Support system not connected">Connect Supabase or enable the dev store.</EmptyCard> : (
         <div className="space-y-8">
           <p className="max-w-3xl text-sm text-graphite">Agents approve up to the first-24-hour cap. Larger amounts need an admin who did not request them. Refunds are issued through Stripe once linked; until then approved refunds wait here and can be recorded after issuing manually in Stripe.</p>
@@ -32,6 +31,6 @@ export default async function RefundQueue() {
           {done.length > 0 && <section aria-label="Recently closed"><h2 className="mb-3 font-display text-xl font-bold">Recently closed</h2><div className="grid gap-3 lg:grid-cols-2">{done.map((r) => <RefundActions key={r.id} r={r} role={role} myId={user.id} />)}</div></section>}
         </div>
       )}
-    </PortalGate>
+    </AdminGate>
   );
 }

@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 import type { Metadata } from "next";
-import { EmptyCard, Metric, PortalGate } from "@/components/PortalShell";
-import { ADMIN_TABS, SupportNav } from "@/components/SupportNav";
+import { AdminGate } from "@/components/AdminShell";
+import { EmptyCard, Metric } from "@/components/PortalShell";
 import { assistantConfigured } from "@/lib/ai/openrouter";
 import { mailerConfigured } from "@/lib/helpdesk/mailer";
 import { computeMetrics } from "@/lib/helpdesk/metrics";
@@ -20,8 +20,7 @@ export default async function MetricsPage() {
   const dash = (v: number | null, suffix = "") => (v == null ? "—" : `${v}${suffix}`);
 
   return (
-    <PortalGate require="staff" eyebrow="Operations" title="Support metrics" tabs={ADMIN_TABS}>
-      <SupportNav active="metrics" />
+    <AdminGate title="Support metrics" nav="metrics">
       {!m ? <EmptyCard title="Support system not connected">Connect Supabase or enable the dev store.</EmptyCard> : (
         <div className="space-y-8">
           <section aria-label="Queue health" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -54,6 +53,6 @@ export default async function MetricsPage() {
           </section>
         </div>
       )}
-    </PortalGate>
+    </AdminGate>
   );
 }

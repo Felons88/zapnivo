@@ -3,8 +3,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AgentConsole } from "@/components/AgentConsole";
-import { EmptyCard, PortalGate } from "@/components/PortalShell";
-import { ADMIN_TABS, Pill, SupportNav } from "@/components/SupportNav";
+import { AdminGate } from "@/components/AdminShell";
+import { EmptyCard } from "@/components/PortalShell";
+import { Pill } from "@/components/SupportNav";
 import { getSessionUser } from "@/lib/auth";
 import { assistantConfigured } from "@/lib/ai/openrouter";
 import { MACROS, renderMacro } from "@/lib/helpdesk/macros";
@@ -34,8 +35,7 @@ export default async function TicketPage({ params }: { params: Promise<{ number:
   const now = new Date();
 
   return (
-    <PortalGate require="staff" eyebrow="Support" title={data ? `${data.ticket.number} · ${data.ticket.category}` : "Ticket"} tabs={ADMIN_TABS}>
-      <SupportNav active={data?.ticket.queue === "partner" ? "partner" : data?.ticket.queue === "safety" ? "safety" : "inbox"} />
+    <AdminGate title={data ? `${data.ticket.number} · ${data.ticket.category}` : "Ticket"} nav={data?.ticket.queue === "partner" ? "partner" : data?.ticket.queue === "safety" ? "safety" : "inbox"}>
       {!data || !user ? <EmptyCard title="Support system not connected">Connect Supabase or enable the dev store.</EmptyCard> : (() => {
         const t = data.ticket;
         const sla = slaStatus(t, now);
@@ -94,6 +94,6 @@ export default async function TicketPage({ params }: { params: Promise<{ number:
           </div>
         );
       })()}
-    </PortalGate>
+    </AdminGate>
   );
 }

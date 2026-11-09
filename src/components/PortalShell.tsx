@@ -8,7 +8,7 @@ import { LogoutButton } from "./LogoutButton";
 /** Empty-state card used while integrations are pending. */
 export function EmptyCard({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="rounded-lg bg-white p-6">
+    <div className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
       <h3 className="font-bold">{title}</h3>
       <div className="mt-2 text-sm text-graphite">{children}</div>
     </div>
@@ -18,7 +18,7 @@ export function EmptyCard({ title, children }: { title: string; children: ReactN
 /** Metric card — only rendered when real data exists. */
 export function Metric({ label, value, sub }: { label: string; value: ReactNode; sub?: string }) {
   return (
-    <div className="rounded-lg bg-white p-5">
+    <div className="rounded-2xl border border-mist bg-white p-5 shadow-sm">
       <p className="eyebrow text-forest">{label}</p>
       <p className="mt-2 font-display text-4xl font-bold">{value}</p>
       {sub && <p className="mt-1 text-xs text-graphite">{sub}</p>}
@@ -63,7 +63,7 @@ export async function PortalGate({
   if (require === "partner" && user.role !== "partner" && !isStaff(user)) redirect("/login");
 
   return (
-    <div className="on-dark bg-ink pt-28 text-white">
+    <div className="on-dark bg-ink pt-10 text-white">
       {devAuth() && (
         <div className="bg-gold px-4 py-2 text-center text-xs font-bold text-ink">
           DEV STORE · not real data · acting as <b>{user.email}</b> ({user.role}) — switch:{" "}

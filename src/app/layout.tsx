@@ -1,9 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Manrope, Space_Grotesk } from "next/font/google";
 import "./globals.css";
-import { Header } from "@/components/Header";
-import { Footer } from "@/components/Footer";
-import { ConsentBanner } from "@/components/ConsentBanner";
 import { SITE } from "@/lib/site";
 import { Analytics } from "@vercel/analytics/next";
 
@@ -46,10 +43,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(org) }} />
       </head>
       <body>
-        <Header heroDark />
-        <main id="main">{children}</main>
-        <Footer />
-        <ConsentBanner />
+        {children}
         <Analytics />
       </body>
     </html>

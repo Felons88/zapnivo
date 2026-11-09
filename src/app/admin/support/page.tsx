@@ -1,8 +1,9 @@
 export const dynamic = "force-dynamic";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { EmptyCard, PortalGate } from "@/components/PortalShell";
-import { ADMIN_TABS, Pill, SupportNav } from "@/components/SupportNav";
+import { AdminGate } from "@/components/AdminShell";
+import { EmptyCard } from "@/components/PortalShell";
+import { Pill } from "@/components/SupportNav";
 import { getSessionUser } from "@/lib/auth";
 import { defaultCtx } from "@/lib/helpdesk/service";
 import { humanDue, slaStatus } from "@/lib/helpdesk/sla";
@@ -44,9 +45,9 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<{ 
   const now = new Date();
   const q = (extra: Record<string, string>) => { const p = new URLSearchParams({ ...(queue ? { queue } : {}), ...extra }); return `/admin/support?${p}`; };
 
+  const nav = queue === "partner" ? "partner" : queue === "safety" ? "safety" : "inbox";
   return (
-    <PortalGate require="staff" eyebrow="Operations" title="Support inbox" tabs={ADMIN_TABS}>
-      <SupportNav active={queue === "partner" ? "partner" : queue === "safety" ? "safety" : "inbox"} />
+    <AdminGate title={nav === "partner" ? "Partner relations" : nav === "safety" ? "Safety queue" : "Support inbox"} nav={nav}>
       {!ctx ? (
         <EmptyCard title="Support system not connected">Connect Supabase (and apply migrations 0001–0004), or for local development set <code>HELPDESK_DEV_STORE=1</code> and restart <code>npm run dev</code>.</EmptyCard>
       ) : (
@@ -62,9 +63,9 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<{ 
           {tickets.length === 0 ? (
             <EmptyCard title="Nothing here">No tickets match this view. New requests from /support/new and partner requests appear here instantly.</EmptyCard>
           ) : (
-            <div className="overflow-x-auto rounded-xl bg-white shadow-sm">
+            <div className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
               <table className="w-full min-w-[900px] text-left text-sm">
-                <thead className="border-b border-mist bg-mist/50 text-xs uppercase tracking-wider text-graphite"><tr>{["Ticket", "Requester", "Queue", "Priority", "Status", "Handling", "SLA", "Updated"].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr></thead>
+                <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite"><tr>{["Ticket", "Requester", "Queue", "Priority", "Status", "Handling", "SLA", "Updated"].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr></thead>
                 <tbody>
                   {tickets.map((t) => {
                     const sla = slaStatus(t, now);
@@ -89,6 +90,6 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<{ 
           <p className="mt-4 text-xs text-graphite">SLA targets are internal and not published to customers. {tickets.length} ticket{tickets.length === 1 ? "" : "s"} shown.</p>
         </>
       )}
-    </PortalGate>
+    </AdminGate>
   );
 }
