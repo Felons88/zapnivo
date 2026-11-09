@@ -20,8 +20,21 @@ export const metadata: Metadata = {
 export const viewport: Viewport = { themeColor: "#11122B", width: "device-width", initialScale: 1 };
 
 const org = {
-  "@context": "https://schema.org", "@type": "Organization", name: "Zapnivo", url: SITE.url, slogan: SITE.tagline,
-  description: SITE.description, areaServed: { "@type": "AdministrativeArea", name: "Minnesota" },
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization", "@id": `${SITE.url}/#org`, name: "Zapnivo", url: SITE.url, slogan: SITE.tagline,
+      description: SITE.description, logo: `${SITE.url}/opengraph-image`,
+      areaServed: { "@type": "AdministrativeArea", name: "Minnesota" },
+      contactPoint: { "@type": "ContactPoint", contactType: "customer support", url: `${SITE.url}/support` },
+    },
+    { "@type": "WebSite", "@id": `${SITE.url}/#site`, url: SITE.url, name: "Zapnivo", publisher: { "@id": `${SITE.url}/#org` }, inLanguage: "en-US" },
+    {
+      "@type": "Service", name: "Portable phone charger rental", serviceType: "Power bank rental",
+      provider: { "@id": `${SITE.url}/#org` }, areaServed: { "@type": "AdministrativeArea", name: "Minnesota" },
+      description: "Rent a portable power bank at a self-service kiosk and return it to any eligible participating Zapnivo station.",
+    },
+  ],
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
