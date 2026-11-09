@@ -11,6 +11,8 @@ type Opts<T> = {
   scope: string;
   map: (data: T) => Record<string, unknown>;
   limit?: number;
+  /** Runs after a successful insert (e.g. send a confirmation email). Errors never fail the submission. */
+  after?: (data: T, row: { id: string }) => Promise<void>;
 };
 
 const clientIp = (req: Request) =>
@@ -20,7 +22,7 @@ const clientIp = (req: Request) =>
  * Shared handler for public forms. Returns success ONLY after the row is persisted.
  * If the backend is not configured it answers 503 so the UI never claims a false success.
  */
-export async function handleSubmission<T extends { website?: string }>({ req, schema, table, scope, map, limit = 5 }: Opts<T>) {
+export async function handleSubmission<T extends { website?: string }>({ req, schema, table, scope, map, limit = 5, after }: Opts<T>) {
   const origin = req.headers.get("origin");
   if (origin && new URL(origin).host !== req.headers.get("host")) {
     return NextResponse.json({ error: "Cross-origin request rejected." }, { status: 403 });
@@ -53,5 +55,6 @@ export async function handleSubmission<T extends { website?: string }>({ req, sc
     console.error(JSON.stringify({ level: "error", scope, msg: "insert_failed", code: error.code }));
     return NextResponse.json({ error: "We couldn't save your submission. Please try again." }, { status: 500 });
   }
+  if (after) { try { await after(data as T, row as { id: string }); } catch { /* notification failure never fails the submission */ } }
   return NextResponse.json({ ok: true, id: row.id, ticketNumber: row.ticket_number });
 }

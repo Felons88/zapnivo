@@ -32,14 +32,14 @@ const audit = (c: Ctx, ticketId: string, actor: Actor, type: string, detail?: Re
 const ticketLink = (c: Ctx, t: Ticket) => (t.requesterType === "partner" ? subUrl("partners", `/support/${t.number}`, c.siteUrl) : subUrl("support", `/ticket/${t.number}${(() => { const tok = signAccess(t.number, t.email); return tok ? `?t=${tok}` : ""; })()}`, c.siteUrl));
 
 /** Writes to the outbox, then best-effort sends. If no mailer is configured the email simply stays queued. */
-async function notify(c: Ctx, t: Ticket, subject: string, body: string, kind: "created" | "updated" = "updated") {
+async function notify(c: Ctx, t: Ticket, subject: string, body: string, kind: "created" | "updated" = "updated", htmlOverride?: string) {
   const link = ticketLink(c, t);
   const vars = {
     ticket_id: t.number, ticket_subject: t.subject, ticket_status: t.state.replace(/_/g, " "),
     ticket_url: link, year: String(new Date().getFullYear()),
     [`${kind}_at`]: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }),
   };
-  const html = kind === "created" ? renderEmail("support_created", vars) : renderEmail("support_updated", vars);
+  const html = htmlOverride ?? (kind === "created" ? renderEmail("support_created", vars) : renderEmail("support_updated", vars));
   await c.repo.queueEmail({ ticketId: t.id, to: t.email, subject: `[${t.number}] ${subject}`, body: `${body}\n\n— View or reply: ${link}\n\nZapnivo Support`, html });
   try { await flushOutbox(c.repo, c.mailer); } catch { /* recorded per-email */ }
 }
@@ -274,7 +274,11 @@ async function finishIssue(c: Ctx, actor: Actor, r: RefundRequest, providerId: s
   if (t) {
     const msg = `A refund of ${fmt(r.amountCents)} for rental ${r.rentalRef} has been issued to your original payment method. Banks post refunds on their own schedule, so it may take some time to appear.`;
     await c.repo.addMessage({ ticketId: t.id, authorType: "system", authorId: null, authorName: "Zapnivo", internal: false, body: msg });
-    await notify(c, t, "Your refund has been issued", msg);
+    await notify(c, t, "Your refund has been issued", msg, "updated", renderEmail("refund_processed", {
+      refund_amount: fmt(r.amountCents), refund_id: r.id.slice(0, 8).toUpperCase(), refund_url: ticketLink(c, t),
+      rental_id: r.rentalRef ?? "—", processed_at: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+      year: String(new Date().getFullYear()),
+    }));
   }
   return { refund: done, status: "issued", message: "Refund issued." };
 }
