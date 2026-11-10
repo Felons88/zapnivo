@@ -7,6 +7,7 @@ import {
   inboundStatusLabel,
   normalizeTriggerStatus,
   triggerStatusLabel,
+  type StudioInboundQueue,
   type StudioInboundRow,
   type StudioLogRow,
   type StudioSenderRow,
@@ -279,8 +280,8 @@ function bodyPreviewText(e: StudioInboundRow): string | null {
 }
 
 export function InboundPanel() {
-  const [state, setState] = useState<FetchState<{ emails: StudioInboundRow[] }>>({ loading: true, data: null, note: null });
-  useEffect(() => { void getJson<{ emails: StudioInboundRow[] }>("/api/admin/email-studio/inbound").then(setState); }, []);
+  const [state, setState] = useState<FetchState<{ emails: StudioInboundRow[]; queue?: StudioInboundQueue }>>({ loading: true, data: null, note: null });
+  useEffect(() => { void getJson<{ emails: StudioInboundRow[]; queue?: StudioInboundQueue }>("/api/admin/email-studio/inbound").then(setState); }, []);
 
   if (state.loading) return <p className="text-sm text-graphite">Loading inbound email…</p>;
   if (!state.data) return <p className="rounded-xl bg-mist/60 px-4 py-3 text-sm font-bold text-graphite">{state.note ?? "Inbound email log unavailable."}</p>;
@@ -295,6 +296,16 @@ export function InboundPanel() {
         Support replies and inbound mail processed by the webhook, newest first (latest 100).
         Only a short body preview is stored — full messages and raw headers are never kept here.
       </p>
+      {state.data.queue && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Pill tone="bg-gold/50 text-ink">Queue: {state.data.queue.queued} queued</Pill>
+          <Pill tone="bg-mist text-graphite">{state.data.queue.processing} processing</Pill>
+          <Pill tone={state.data.queue.dead > 0 ? "bg-red-50 text-red-700" : "bg-mist text-graphite"}>{state.data.queue.dead} dead</Pill>
+          {state.data.queue.avgQueueWaitMs != null && (
+            <Pill tone="bg-mist text-graphite">avg wait {state.data.queue.avgQueueWaitMs < 1000 ? `${state.data.queue.avgQueueWaitMs} ms` : `${(state.data.queue.avgQueueWaitMs / 1000).toFixed(1)} s`}</Pill>
+          )}
+        </div>
+      )}
       {countEntries.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-2">
           {countEntries.map(([status, n]) => (

@@ -1,8 +1,11 @@
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 import Link from "next/link";
 import { Conversation } from "@/components/Conversation";
 import { RequesterReply } from "@/components/RequesterReply";
+import { TicketLive } from "@/components/TicketLive";
 import { Eyebrow, Section } from "@/components/ui";
+import { SESSION_COOKIE } from "@/lib/auth";
 import { verifyAccess } from "@/lib/helpdesk/access";
 import { defaultCtx, getRequesterThread } from "@/lib/helpdesk/service";
 
@@ -27,9 +30,11 @@ export default async function TicketThread({ params, searchParams }: { params: P
   let thread;
   try { thread = await getRequesterThread(ctx, { kind: "customer", email }, number); } catch { return <Gate title="We couldn't find that ticket">Check the link, or enter your ticket number and email to look it up.</Gate>; }
   const resolved = thread.state === "resolved" || thread.state === "closed";
+  const accessToken = (await cookies()).get(SESSION_COOKIE)?.value ?? null;
 
   return (
     <div className="section-lavender min-h-screen pb-24 pt-36">
+      <TicketLive ticketId={thread.id} intervalMs={15000} accessToken={accessToken} />
       <div className="container-z mx-auto max-w-3xl">
         <Link href="/support" className="text-sm font-bold underline underline-offset-4">← Help center</Link>
         <div className="mt-5 flex flex-wrap items-start justify-between gap-3">

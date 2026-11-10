@@ -1,10 +1,12 @@
 export const dynamic = "force-dynamic";
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 import Link from "next/link";
 import { AdminGate } from "@/components/AdminShell";
+import { InboxLive } from "@/components/InboxLive";
 import { EmptyCard } from "@/components/PortalShell";
 import { Pill } from "@/components/SupportNav";
-import { getSessionUser } from "@/lib/auth";
+import { SESSION_COOKIE, getSessionUser } from "@/lib/auth";
 import { BulkBar } from "@/components/BulkBar";
 import { isUuid, sanitizeInboxQuery } from "@/lib/helpdesk/inbox-query";
 import { serviceClient } from "@/lib/supabase";
@@ -65,12 +67,14 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<{ 
   const q = (extra: Record<string, string>) => { const p = new URLSearchParams({ ...(queue ? { queue } : {}), ...extra }); return `/admin/support?${p}`; };
 
   const nav = queue === "partner" ? "partner" : queue === "safety" ? "safety" : "inbox";
+  const accessToken = (await cookies()).get(SESSION_COOKIE)?.value ?? null;
   return (
     <AdminGate title={nav === "partner" ? "Partner relations" : nav === "safety" ? "Safety queue" : "Support inbox"} nav={nav}>
       {!ctx ? (
         <EmptyCard title="Support system not connected">Connect Supabase (and apply migrations 0001–0004), or for local development set <code>HELPDESK_DEV_STORE=1</code> and restart <code>npm run dev</code>.</EmptyCard>
       ) : (
         <>
+          <InboxLive intervalMs={20000} accessToken={accessToken} />
           {result && (
             <p role="status" className={`mb-4 rounded-xl px-4 py-3 text-sm font-semibold ${result === "ok" ? "bg-lime/30" : result === "partial" ? "bg-gold/20" : "bg-red-100 text-red-900"}`}>{(sp.detail ?? "").slice(0, 300)}</p>
           )}

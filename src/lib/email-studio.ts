@@ -315,6 +315,9 @@ export type StudioInboundRow = {
   createdAt: string;
 };
 
+/** Live inbound_jobs queue depth + avg wait returned alongside the inbound log. */
+export type StudioInboundQueue = { queued: number; processing: number; dead: number; avgQueueWaitMs: number | null };
+
 /** Inbound processing statuses; unknown future values pass through. */
 export const INBOUND_STATUS_LABELS: Record<string, string> = {
   accepted: "Accepted",

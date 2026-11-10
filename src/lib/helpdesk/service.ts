@@ -295,13 +295,13 @@ async function finishIssue(c: Ctx, actor: Actor, r: RefundRequest, providerId: s
 /* ───────────────────────── Views (what each audience may see) ───────────────────────── */
 
 export type PublicMessage = { authorType: Message["authorType"]; authorName: string; body: string; createdAt: string };
-export type CustomerThread = { number: string; category: string; subject: string; state: TicketState; withPerson: boolean; createdAt: string; messages: PublicMessage[] };
+export type CustomerThread = { id: string; number: string; category: string; subject: string; state: TicketState; withPerson: boolean; createdAt: string; messages: PublicMessage[] };
 
 export async function getRequesterThread(c: Ctx, actor: Actor, number: string): Promise<CustomerThread> {
   const t = await must(c, number);
   assertOwner(t, actor);
   const msgs = await c.repo.listMessages(t.id);
-  return { number: t.number, category: t.category, subject: t.subject, state: t.state, withPerson: t.aiState === "human" || t.aiState === "needs_human", createdAt: t.createdAt, messages: msgs.map((m) => ({ authorType: m.authorType, authorName: m.authorName, body: m.body, createdAt: m.createdAt })) };
+  return { id: t.id, number: t.number, category: t.category, subject: t.subject, state: t.state, withPerson: t.aiState === "human" || t.aiState === "needs_human", createdAt: t.createdAt, messages: msgs.map((m) => ({ authorType: m.authorType, authorName: m.authorName, body: m.body, createdAt: m.createdAt })) };
 }
 
 export async function getStaffThread(c: Ctx, actor: Actor, number: string) {

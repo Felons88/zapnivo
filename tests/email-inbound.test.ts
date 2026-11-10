@@ -355,6 +355,14 @@ describe("inbound email webhook — Brevo payload format", () => {
     expect(j.results[0].status).not.toBe("accepted");
   });
 
+  it("ignores auto-submitted / autoresponder mail to prevent loops", async () => {
+    const j = await (await brevoPost([brevoItem({
+      Headers: { "Auto-Submitted": "auto-replied", "Delivered-To": "support@in.zapnivo.com" },
+      Subject: "Out of Office: Re: your request",
+    })])).json();
+    expect(j.results[0]).toMatchObject({ status: "ignored", reason: "auto_submitted" });
+  });
+
   it("handles a missing original-recipient (no token, no ticket ref) gracefully", async () => {
     const j = await (await brevoPost([brevoItem({
       Headers: { "Delivered-To": "support@in.zapnivo.com" },

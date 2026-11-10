@@ -2,11 +2,13 @@ export const dynamic = "force-dynamic";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { cookies } from "next/headers";
 import { AgentConsole } from "@/components/AgentConsole";
 import { AdminGate } from "@/components/AdminShell";
+import { TicketLive } from "@/components/TicketLive";
 import { EmptyCard } from "@/components/PortalShell";
 import { Pill } from "@/components/SupportNav";
-import { getSessionUser } from "@/lib/auth";
+import { SESSION_COOKIE, getSessionUser } from "@/lib/auth";
 import { assistantConfigured } from "@/lib/ai/openrouter";
 import { MACROS, renderMacro } from "@/lib/helpdesk/macros";
 import { snapshot, suggestRefund, type Suggestion } from "@/lib/helpdesk/refund-policy";
@@ -33,6 +35,7 @@ export default async function TicketPage({ params }: { params: Promise<{ number:
     if (row) { const snap = snapshot(row); suggestions = Object.fromEntries(REFUND_REASONS.map((r) => [r, suggestRefund(snap, r)])) as Record<RefundReason, Suggestion>; }
   }
   const now = new Date();
+  const accessToken = (await cookies()).get(SESSION_COOKIE)?.value ?? null;
 
   return (
     <AdminGate title={data ? `${data.ticket.number} · ${data.ticket.category}` : "Ticket"} nav={data?.ticket.queue === "partner" ? "partner" : data?.ticket.queue === "safety" ? "safety" : "inbox"}>
@@ -41,6 +44,7 @@ export default async function TicketPage({ params }: { params: Promise<{ number:
         const sla = slaStatus(t, now);
         return (
           <div className="grid gap-6 lg:grid-cols-[1.6fr_1fr]">
+            <TicketLive ticketId={t.id} intervalMs={15000} accessToken={accessToken} />
             <div className="space-y-6">
               <Link href="/admin/support" className="text-sm font-bold underline underline-offset-4">← Inbox</Link>
               {t.queue === "safety" && <p role="alert" className="rounded-xl bg-red-100 p-4 text-sm font-bold text-red-900">SAFETY REPORT. Possible battery hazard. Contact the requester, arrange retrieval of the unit, and log the incident in Fleet. Do not close until the unit is secured.</p>}

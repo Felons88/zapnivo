@@ -282,8 +282,11 @@ function dbWithInbound(result: { data?: unknown[] | null; error?: { message: str
   return {
     from: (table: string) => {
       if (table === "inbound_jobs") {
-        // queue-stats probe: .select("status").in("status", [...]) → empty
-        return { select: () => ({ in: async () => ({ data: [], error: null }) }) };
+        // queue probes: any filter chain resolves to an empty result set
+        const q: Record<string, unknown> = {};
+        for (const m of ["select", "eq", "neq", "in", "not", "is", "order", "limit", "lte", "lt", "gte"]) q[m] = () => q;
+        q.then = (res: (v: unknown) => unknown) => Promise.resolve({ data: [], error: null }).then(res);
+        return q;
       }
       if (table !== "inbound_emails") throw new Error(`unexpected table ${table}`);
       const q: Record<string, unknown> = {};

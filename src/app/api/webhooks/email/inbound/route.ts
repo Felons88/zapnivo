@@ -73,6 +73,18 @@ const mailboxAddr = (m: unknown): string | null => {
   return null;
 };
 
+const AUTO_SUBJECT_RE = /delivery status notification|undeliverable|out of office|automatic reply|auto-?reply|mail delivery (failed|subsystem)/i;
+
+/** Detects autoresponders/delivery notifications so we never reply to them (loop prevention). */
+const detectAutoSubmitted = (headers: Record<string, unknown>, subject: string, contentType?: string): boolean => {
+  const hv = (n: string) => headerValues(headers, n).join(" ").toLowerCase();
+  const auto = hv("Auto-Submitted");
+  if (auto && auto !== "no") return true;
+  if (["bulk", "junk", "list"].includes(hv("Precedence").trim())) return true;
+  if (/multipart\/report|delivery-status/i.test(contentType ?? hv("Content-Type"))) return true;
+  return AUTO_SUBJECT_RE.test(subject);
+};
+
 // ── Brevo item → Parsed ─────────────────────────────────────────────────────
 
 const brevoItem = (it: Record<string, unknown>): Parsed | null => {
@@ -102,10 +114,12 @@ const brevoItem = (it: Record<string, unknown>): Parsed | null => {
     ...headerValues(headers, "ARC-Authentication-Results"),
   ].join(" ");
   const ar = authResults(arParts || String(it["Authentication-Results"] ?? ""));
+  const subject = String(it.Subject ?? "").slice(0, 500);
 
   return {
     from,
-    subject: String(it.Subject ?? "").slice(0, 500),
+    subject,
+    autoSubmitted: detectAutoSubmitted(headers, subject),
     text: text.slice(0, 50_000),
     messageId: String(it.MessageId ?? "").trim() || null,
     inReplyTo: String(it.InReplyTo ?? "").trim() || null,
@@ -155,9 +169,14 @@ const flatParsed = (f: Fields): Parsed | null => {
   let text = pick(f, "text", "text/plain", "body");
   if (!text) text = htmlToText(pick(f, "html", "htmlbody", "bodyhtml"));
   const ar = authResults(pick(f, "authentication-results", "auth-results", "headers"));
+  const subject = pick(f, "subject").slice(0, 500);
   return {
     from,
-    subject: pick(f, "subject").slice(0, 500),
+    subject,
+    autoSubmitted: detectAutoSubmitted(
+      { "Auto-Submitted": pick(f, "auto-submitted"), Precedence: pick(f, "precedence"), "Content-Type": pick(f, "content-type") },
+      subject,
+    ),
     text: text.slice(0, 50_000),
     messageId: pick(f, "message-id", "message_id") || null,
     inReplyTo: null,

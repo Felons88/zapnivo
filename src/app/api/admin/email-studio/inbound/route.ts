@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSessionUser, isStaff } from "@/lib/auth";
 import { serviceClient } from "@/lib/supabase";
-import type { StudioInboundRow } from "@/lib/email-studio";
+import type { StudioInboundQueue, StudioInboundRow } from "@/lib/email-studio";
 
 const MAX_ROWS = 100;
 
@@ -62,9 +62,10 @@ export async function GET() {
     });
   }
 
-  const [{ data, error }, queue] = await Promise.all([
+  const [{ data, error }, queue, done] = await Promise.all([
     db.from("inbound_emails").select("*").order("created_at", { ascending: false }).limit(MAX_ROWS),
     db.from("inbound_jobs").select("status").in("status", ["queued", "processing", "dead"]),
+    db.from("inbound_jobs").select("created_at,processed_at").eq("status", "done").not("processed_at", "is", null).order("processed_at", { ascending: false }).limit(50),
   ]);
 
   if (error) {
@@ -77,10 +78,14 @@ export async function GET() {
   }
 
   const jobs = (queue.data ?? []) as { status: string }[];
-  const queueStats = {
+  const waits = ((done.data ?? []) as { created_at: string; processed_at: string }[])
+    .map((r) => new Date(r.processed_at).getTime() - new Date(r.created_at).getTime())
+    .filter((n) => n >= 0);
+  const queueStats: StudioInboundQueue = {
     queued: jobs.filter((j) => j.status === "queued").length,
     processing: jobs.filter((j) => j.status === "processing").length,
     dead: jobs.filter((j) => j.status === "dead").length,
+    avgQueueWaitMs: waits.length ? Math.round(waits.reduce((a, b) => a + b, 0) / waits.length) : null,
   };
   const emails = ((data ?? []) as InboundDbRow[]).map(toRow);
   return NextResponse.json({ ok: true, available: true, emails, cap: MAX_ROWS, queue: queueStats });

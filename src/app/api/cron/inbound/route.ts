@@ -20,7 +20,18 @@ async function authorized(req: Request) {
 
 export async function GET(req: Request) {
   if (!(await authorized(req))) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!serviceClient()) return NextResponse.json({ error: "Backend not configured" }, { status: 503 });
+  const db = serviceClient();
+  if (!db) return NextResponse.json({ error: "Backend not configured" }, { status: 503 });
+
+  // Staff-only dead-letter retry: ?retry=dead requeues dead jobs once, then drains.
+  let requeued = 0;
+  if (new URL(req.url).searchParams.get("retry") === "dead") {
+    const { data } = await db.from("inbound_jobs")
+      .update({ status: "queued", attempts: 0, run_after: new Date().toISOString(), last_error: null })
+      .eq("status", "dead").select("id");
+    requeued = data?.length ?? 0;
+  }
+
   const result = await runInboundWorker(50);
-  return NextResponse.json({ ok: result.errors.length === 0, ...result });
+  return NextResponse.json({ ok: result.errors.length === 0, requeued, ...result });
 }

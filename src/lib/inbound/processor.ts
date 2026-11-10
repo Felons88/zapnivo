@@ -23,6 +23,8 @@ export type Parsed = {
   dmarc: string | null;
   spf: string | null;
   dkim: string | null;
+  /** Auto-Submitted/Precedence/bulk or obvious autoresponder — never answer these (loop prevention). */
+  autoSubmitted?: boolean;
 };
 
 export type Outcome = { status: string; reason: string | null; ticket?: string; authMethod?: string };
@@ -82,6 +84,7 @@ export async function processInboundMail(c: Ctx, db: Db | null, mail: Parsed): P
   };
 
   if (mail.dmarc === "fail") return finish("quarantined", "dmarc_fail");
+  if (mail.autoSubmitted) return finish("ignored", "auto_submitted");
   if (!body) return finish("ignored", "empty_body");
 
   // Reply-token path: scan every provider-supplied recipient; the HMAC token
