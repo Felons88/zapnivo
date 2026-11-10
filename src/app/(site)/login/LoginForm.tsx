@@ -9,6 +9,33 @@ export function LoginForm({ configured, oauthError }: { configured: boolean; oau
   const [err, setErr] = useState<string | null>(oauthError ? "Google sign-in didn't complete. Please try again." : null);
   const [sending, setSending] = useState(false);
   const router = useRouter();
+  const [phoneStep, setPhoneStep] = useState<"phone" | "code" | "done">("phone");
+  const [phone, setPhone] = useState("");
+  const [phoneMsg, setPhoneMsg] = useState<string | null>(null);
+  const [phoneErr, setPhoneErr] = useState<string | null>(null);
+  const [phoneBusy, setPhoneBusy] = useState(false);
+  async function phoneSend(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setPhoneBusy(true); setPhoneErr(null); setPhoneMsg(null);
+    const res = await fetch("/api/auth/phone", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "send", phone }) }).catch(() => null);
+    const data = await res?.json().catch(() => ({})) ?? {};
+    setPhoneBusy(false);
+    if (!res || !res.ok) return setPhoneErr(data.error ?? "We couldn't send the code. Please try again.");
+    setPhoneStep("code");
+    setPhoneMsg(data.delivered === false ? "Code created — SMS delivery is still being set up." : "We texted you a 6-digit code.");
+  }
+  async function phoneVerify(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setPhoneBusy(true); setPhoneErr(null); setPhoneMsg(null);
+    const code = String(new FormData(e.currentTarget).get("code") ?? "");
+    const res = await fetch("/api/auth/phone", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "verify", phone, code }) }).catch(() => null);
+    const data = await res?.json().catch(() => ({})) ?? {};
+    setPhoneBusy(false);
+    if (!res || !res.ok) return setPhoneErr(data.error ?? "That didn't work — try again.");
+    if (data.continue_url) { window.location.href = data.continue_url; return; }
+    setPhoneStep("done");
+    setPhoneMsg("Code accepted — check your email for the final sign-in link.");
+  }
   if (!configured) {
     return <p className="text-sm text-graphite">Sign-in is not configured in this environment yet. Connect Supabase (see .env.example) and create staff/partner accounts to enable it.</p>;
   }
@@ -57,6 +84,28 @@ export function LoginForm({ configured, oauthError }: { configured: boolean; oau
         <p role="alert" className="text-sm font-semibold text-red-700 empty:hidden">{linkErr}</p>
         <button type="submit" disabled={linkSending} className={btnClass("light", "w-full border border-mist")}>{linkSending ? "Sending..." : "Send sign-in link"}</button>
       </form>
+      <div className="flex items-center gap-3 text-xs font-bold uppercase tracking-widest text-graphite/80">
+        <span className="h-px flex-1 bg-mist" aria-hidden />or phone<span className="h-px flex-1 bg-mist" aria-hidden />
+      </div>
+      {phoneStep === "phone" && (
+        <form onSubmit={phoneSend} className="space-y-3" aria-label="Sign in with your phone number">
+          <div><label htmlFor="phone" className="mb-1.5 block text-sm font-bold">Phone number</label><input id="phone" name="phone" type="tel" required autoComplete="tel" placeholder="(555) 123-4567" value={phone} onChange={(e) => setPhone(e.target.value)} className={inputCls} /></div>
+          <p role="status" aria-live="polite" className="text-sm font-semibold text-forest empty:hidden">{phoneMsg}</p>
+          <p role="alert" className="text-sm font-semibold text-red-700 empty:hidden">{phoneErr}</p>
+          <button type="submit" disabled={phoneBusy} className={btnClass("light", "w-full border border-mist")}>{phoneBusy ? "Sending…" : "Text me a code"}</button>
+          <p className="text-xs text-graphite/80">We text a 6-digit code, then email you a sign-in link. Renters who checked out at a kiosk can use the phone number on their receipt.</p>
+        </form>
+      )}
+      {phoneStep === "code" && (
+        <form onSubmit={phoneVerify} className="space-y-3" aria-label="Enter your SMS code">
+          <div><label htmlFor="phone-code" className="mb-1.5 block text-sm font-bold">6-digit code</label><input id="phone-code" name="code" type="text" inputMode="numeric" pattern="\d{6}" maxLength={6} required autoComplete="one-time-code" className={inputCls} /></div>
+          <p role="status" aria-live="polite" className="text-sm font-semibold text-forest empty:hidden">{phoneMsg}</p>
+          <p role="alert" className="text-sm font-semibold text-red-700 empty:hidden">{phoneErr}</p>
+          <button type="submit" disabled={phoneBusy} className={btnClass("dark", "w-full")}>{phoneBusy ? "Verifying…" : "Verify & sign in"}</button>
+          <button type="button" onClick={() => { setPhoneStep("phone"); setPhoneErr(null); setPhoneMsg(null); }} className="w-full text-center text-sm font-bold underline underline-offset-4">Use a different number</button>
+        </form>
+      )}
+      {phoneStep === "done" && <p role="status" className="rounded-xl bg-mist/60 p-4 text-sm font-semibold">{phoneMsg} Open the link on this device to finish signing in.</p>}
       <div className="flex items-center gap-3 text-xs font-bold uppercase tracking-widest text-graphite/80">
         <span className="h-px flex-1 bg-mist" aria-hidden />or password<span className="h-px flex-1 bg-mist" aria-hidden />
       </div>

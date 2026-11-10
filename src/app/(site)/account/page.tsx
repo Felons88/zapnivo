@@ -4,6 +4,8 @@ import { redirect } from "next/navigation";
 import { Badge, Notice, PageHero, Section } from "@/components/ui";
 import { SESSION_COOKIE, getSessionUser } from "@/lib/auth";
 import { consoleFor, likeEscape, shapeHistory, type HistoryRentalRow } from "@/lib/customer";
+import { signAccess } from "@/lib/helpdesk/access";
+import { subUrl } from "@/lib/site";
 import { fetchSavedCard, lastSignInAt, shapeSessionActivity, type SavedCard, type SessionActivity } from "@/lib/customer-privacy";
 import { serviceClient } from "@/lib/supabase";
 import { PrivacyPanel } from "./PrivacyPanel";
@@ -32,6 +34,7 @@ export default async function Account() {
   const console_ = consoleFor(user.role);
 
   let rows: ReturnType<typeof shapeHistory> = [];
+  let tickets: { number: string; subject: string | null; category: string; state: string; createdAt: string; href: string }[] = [];
   let unavailable = false;
   const privacy: PrivacyState = { smsOptIn: false, prefsUnavailable: false, session: null, card: null, cardChecked: false, deletionStatus: "none" };
   const db = serviceClient();
@@ -43,11 +46,46 @@ export default async function Account() {
       : { data: [], error: null };
     const ids = [...new Set(((pays.data ?? []) as { rental_id: string }[]).map((p) => p.rental_id))];
     const byEmail = ids.length ? await db.from("rentals").select(SELECT).in("id", ids).limit(200) : { data: [], error: null };
-    if (byProfile.error || pays.error || byEmail.error) unavailable = true;
-    else rows = shapeHistory((byProfile.data ?? []) as unknown as HistoryRentalRow[], (byEmail.data ?? []) as unknown as HistoryRentalRow[]);
-
     // SMS preference + latest deletion request (both tolerate the 0017 migration not being applied yet).
     const { data: prof } = await db.from("profiles").select("*").eq("id", user.id).maybeSingle();
+    const profilePhone = (prof as { phone?: string | null } | null)?.phone ?? null;
+
+    // Kiosk renters: payments carry the phone typed at checkout — match rentals by it too.
+    const byPhone = profilePhone
+      ? await db.from("payments").select("rental_id").eq("customer_phone", profilePhone).limit(200)
+      : { data: [], error: null };
+    const phoneIds = [...new Set(((byPhone.data ?? []) as { rental_id: string }[]).map((p) => p.rental_id))];
+    const byPhoneRentals = phoneIds.length ? await db.from("rentals").select(SELECT).in("id", phoneIds).limit(200) : { data: [], error: null };
+
+    // Support tickets filed under this email or verified phone.
+    const ticketOr = [`email.eq.${user.email}`, ...(profilePhone ? [`phone.eq.${profilePhone}`] : [])].join(",");
+    const { data: tix } = await db
+      .from("support_tickets")
+      .select("ticket_number,subject,category,state,created_at,email")
+      .eq("requester_type", "customer")
+      .or(ticketOr)
+      .order("created_at", { ascending: false })
+      .limit(50);
+
+    if (byProfile.error || pays.error || byEmail.error || byPhone.error || byPhoneRentals.error) unavailable = true;
+    else {
+      rows = shapeHistory(
+        (byProfile.data ?? []) as unknown as HistoryRentalRow[],
+        (byEmail.data ?? []) as unknown as HistoryRentalRow[],
+        (byPhoneRentals.data ?? []) as unknown as HistoryRentalRow[],
+      );
+      tickets = ((tix ?? []) as { ticket_number: string; subject: string | null; category: string; state: string; created_at: string; email: string }[]).map((t) => {
+        const tok = signAccess(t.ticket_number, t.email);
+        return {
+          number: t.ticket_number,
+          subject: t.subject,
+          category: t.category,
+          state: t.state,
+          createdAt: t.created_at,
+          href: subUrl("support", `/ticket/${t.ticket_number}${tok ? `?t=${tok}` : ""}`),
+        };
+      });
+    }
     privacy.smsOptIn = (prof as { notify_sms?: boolean } | null)?.notify_sms === true;
     const { data: del } = await db
       .from("customer_data_requests")
@@ -108,6 +146,23 @@ export default async function Account() {
                     </li>
                   ))}
                 </ul>
+              )}
+
+              {!unavailable && tickets.length > 0 && (
+                <div className="rounded-xl bg-white p-6">
+                  <h2 className="text-lg font-bold">Support tickets</h2>
+                  <ul className="mt-3 divide-y divide-mist">
+                    {tickets.map((t) => (
+                      <li key={t.number} className="flex flex-wrap items-center justify-between gap-2 py-3 first:pt-0 last:pb-0">
+                        <div>
+                          <a href={t.href} className="font-bold underline underline-offset-4">{t.number}</a>
+                          <p className="text-sm text-graphite">{t.subject ?? t.category} · opened {when(t.createdAt)}</p>
+                        </div>
+                        <Badge tone={t.state === "resolved" || t.state === "closed" ? "lime" : "amber"}>{t.state.replace(/_/g, " ")}</Badge>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               )}
 
               {privacy.session && (
