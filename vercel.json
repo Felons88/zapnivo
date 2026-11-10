@@ -1,6 +1,6 @@
 {
   "crons": [
     { "path": "/api/cron/rentals", "schedule": "0 12 * * *" },
-    { "path": "/api/cron/inbound", "schedule": "*/5 * * * *" }
+    { "path": "/api/cron/inbound", "schedule": "0 13 * * *" }
   ]
 }
