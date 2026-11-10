@@ -62,11 +62,10 @@ export async function GET() {
     });
   }
 
-  const { data, error } = await db
-    .from("inbound_emails")
-    .select("*")
-    .order("created_at", { ascending: false })
-    .limit(MAX_ROWS);
+  const [{ data, error }, queue] = await Promise.all([
+    db.from("inbound_emails").select("*").order("created_at", { ascending: false }).limit(MAX_ROWS),
+    db.from("inbound_jobs").select("status").in("status", ["queued", "processing", "dead"]),
+  ]);
 
   if (error) {
     return NextResponse.json({
@@ -77,6 +76,12 @@ export async function GET() {
     });
   }
 
+  const jobs = (queue.data ?? []) as { status: string }[];
+  const queueStats = {
+    queued: jobs.filter((j) => j.status === "queued").length,
+    processing: jobs.filter((j) => j.status === "processing").length,
+    dead: jobs.filter((j) => j.status === "dead").length,
+  };
   const emails = ((data ?? []) as InboundDbRow[]).map(toRow);
-  return NextResponse.json({ ok: true, available: true, emails, cap: MAX_ROWS });
+  return NextResponse.json({ ok: true, available: true, emails, cap: MAX_ROWS, queue: queueStats });
 }

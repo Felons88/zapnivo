@@ -281,6 +281,10 @@ describe("triggers API", () => {
 function dbWithInbound(result: { data?: unknown[] | null; error?: { message: string } | null }) {
   return {
     from: (table: string) => {
+      if (table === "inbound_jobs") {
+        // queue-stats probe: .select("status").in("status", [...]) → empty
+        return { select: () => ({ in: async () => ({ data: [], error: null }) }) };
+      }
       if (table !== "inbound_emails") throw new Error(`unexpected table ${table}`);
       const q: Record<string, unknown> = {};
       q.select = () => q;

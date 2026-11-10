@@ -107,6 +107,14 @@ Outbound uses the 11-department sender registry (`src/lib/email/senders.ts`) —
 
 Replay/duplicate protection: `Message-ID` has a unique index (second delivery → `duplicate`), and a content-hash dedupe window (15 min) catches retries without a Message-ID. Payloads over 2 MB are rejected with 413 before parsing. Every request — accepted, quarantined, rejected, ignored, duplicate, error — is written to `inbound_emails` (migration 0022) with auth method, DMARC/SPF/DKIM results, latency, and a 200-char body preview. Staff read it in Admin → Email Center → **Inbound**; only the service role writes.
 
+### Inbound pipeline architecture (async, durable — migration 0023)
+
+The webhook is split into two stages so Brevo always gets a fast ack:
+
+- **Stage A — ingestion** (`/api/webhooks/email/inbound`): auth → size limit → normalize each `items[]` message → insert one `inbound_jobs` row per message (Message-ID unique = enqueue dedupe) → return `{queued, duplicates}` immediately. No ticket lookups, AI, or outbound email happen here.
+- **Stage B — worker** (`/lib/inbound/worker.ts` via `/api/cron/inbound`, Vercel cron `*/5 * * * *`, plus a post-response `after()` kick): claims due jobs with an atomic `queued→processing` update (concurrent-worker safe), runs the full ticket pipeline (`/lib/inbound/processor.ts` — reply token, sender match, DMARC quarantine, legacy fallback, `requesterMessage`), then marks `done`. Errors retry with exponential backoff (30s·2^attempts, max 5) then `dead`; jobs stuck in `processing` >5min are recovered. Every outcome lands in `inbound_emails` as before.
+- Queue depth (`queued`/`processing`/`dead`) shows in Admin → Email Center → Inbound.
+
 ### Brevo inbound parsing setup (manual, one-time)
 
 Verified against https://developers.brevo.com/docs/inbound-parse-webhooks. Google Workspace stays the primary mail host on the apex — **do not touch the apex MX records** (`smtp.google.com`).

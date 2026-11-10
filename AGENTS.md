@@ -32,6 +32,11 @@ Next.js 16 (App Router, Turbopack) + TypeScript + Tailwind v4 + Supabase.
   The AI can never approve/issue refunds — only draft replies, and only where `triage.ts` allows.
 - `HELPDESK_DEV_STORE=1` (dev only) = JSON store at `.data/helpdesk.json` + demo rentals +
   `/api/dev/as?role=` switcher. Routes/pages must handle `ctx === null` with an honest 503/empty state.
+- Inbound email is a durable queue: webhook = Stage A enqueue only (`inbound_jobs`, migration 0023);
+  all ticket processing runs in the worker (`src/lib/inbound/worker.ts`, cron `/api/cron/inbound`).
+  Never add ticket logic back into the webhook route. Realtime: `support_messages`/`support_tickets`
+  are in the supabase_realtime publication; client updates go through `router.refresh()` in
+  `TicketLive`/`InboxLive` — DB stays the source of truth.
 
 <!-- BEGIN:nextjs-agent-rules -->
 
