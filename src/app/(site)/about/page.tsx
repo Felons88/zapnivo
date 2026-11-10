@@ -46,7 +46,7 @@ export default function About() {
             { number: "01", title: "Start with the hardware", text: "The first Zapnivo kiosk is an eight-slot self-service station for portable power-bank rentals." },
             { number: "02", title: "Build the venue network", text: "We work with Minnesota venues on placement, installation, and ongoing support." },
             { number: "03", title: "Show what is live", text: "Every published map pin represents a verified, operating station." },
-          ].map(item => <div key={item.number} className="rounded-xl bg-white p-7"><span className="font-display text-5xl font-bold text-forest/25">{item.number}</span><h3 className="mt-9 font-display text-2xl font-bold">{item.title}</h3><p className="mt-3 leading-7 text-graphite">{item.text}</p></div>)}
+          ].map(item => <div key={item.number} className="rounded-xl bg-white p-7"><span className="font-display text-5xl font-bold text-forest">{item.number}</span><h3 className="mt-9 font-display text-2xl font-bold">{item.title}</h3><p className="mt-3 leading-7 text-graphite">{item.text}</p></div>)}
         </div>
       </Section>
       <Section dark>

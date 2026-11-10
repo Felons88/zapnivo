@@ -47,7 +47,7 @@ export function LoginForm({ configured, oauthError }: { configured: boolean; oau
         </svg>
         Continue with Google
       </a>
-      <div className="flex items-center gap-3 text-xs font-bold uppercase tracking-widest text-graphite/60">
+      <div className="flex items-center gap-3 text-xs font-bold uppercase tracking-widest text-graphite/80">
         <span className="h-px flex-1 bg-mist" aria-hidden />or email<span className="h-px flex-1 bg-mist" aria-hidden />
       </div>
       <form onSubmit={sendLink} className="space-y-3" aria-label="Email me a sign-in link">
@@ -57,7 +57,7 @@ export function LoginForm({ configured, oauthError }: { configured: boolean; oau
         <p role="alert" className="text-sm font-semibold text-red-700 empty:hidden">{linkErr}</p>
         <button type="submit" disabled={linkSending} className={btnClass("light", "w-full border border-mist")}>{linkSending ? "Sending..." : "Send sign-in link"}</button>
       </form>
-      <div className="flex items-center gap-3 text-xs font-bold uppercase tracking-widest text-graphite/60">
+      <div className="flex items-center gap-3 text-xs font-bold uppercase tracking-widest text-graphite/80">
         <span className="h-px flex-1 bg-mist" aria-hidden />or password<span className="h-px flex-1 bg-mist" aria-hidden />
       </div>
       <form onSubmit={submit} className="space-y-5">
@@ -65,7 +65,7 @@ export function LoginForm({ configured, oauthError }: { configured: boolean; oau
         <div><label htmlFor="password" className="mb-1.5 block text-sm font-bold">Password</label><input id="password" name="password" type="password" required autoComplete="current-password" className={inputCls} /></div>
         {err && <p role="alert" className="text-sm font-semibold text-red-700">{err}</p>}
         <button type="submit" disabled={sending} className={btnClass("dark", "w-full")}>{sending ? "Signing in…" : "Sign in"}</button>
-        <p className="text-xs text-graphite/70">Admins: multi-factor authentication is required for elevated roles in production.</p>
+        <p className="text-xs text-graphite/80">Admins: multi-factor authentication is required for elevated roles in production.</p>
       </form>
     </div>
   );

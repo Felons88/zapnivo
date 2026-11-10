@@ -15,7 +15,7 @@ const STATE_LABEL: Record<string, string> = { open: "Received", pending_customer
 const TONE = { ok: "bg-lime text-ink", info: "bg-cyan text-ink", warn: "bg-gold text-ink" } as const;
 
 const Label = ({ id, children, hint }: { id: string; children: React.ReactNode; hint?: string }) => (
-  <div className="mb-1.5"><label htmlFor={id} className="block text-sm font-bold">{children}</label>{hint && <p className="text-xs text-graphite/70">{hint}</p>}</div>
+  <div className="mb-1.5"><label htmlFor={id} className="block text-sm font-bold">{children}</label>{hint && <p className="text-xs text-graphite/80">{hint}</p>}</div>
 );
 
 export function RentalCard({ r }: { r: RentalResult }) {
@@ -27,11 +27,11 @@ export function RentalCard({ r }: { r: RentalResult }) {
         <span className={`rounded-full px-3 py-1 text-xs font-extrabold uppercase tracking-wider ${TONE[r.tone]}`}>{r.status}</span>
       </div>
       <dl className="mt-5 grid gap-x-8 gap-y-3 text-sm sm:grid-cols-2">
-        <div><dt className="font-bold text-graphite/70">Station</dt><dd>{r.station}</dd></div>
-        <div><dt className="font-bold text-graphite/70">Started</dt><dd>{when(r.startedAt)}</dd></div>
-        <div><dt className="font-bold text-graphite/70">Returned</dt><dd>{r.returnedAt ? when(r.returnedAt) : "Not recorded"}</dd></div>
-        <div><dt className="font-bold text-graphite/70">Charge</dt><dd>{r.charge}</dd></div>
-        {r.expectedCents != null && <div><dt className="font-bold text-graphite/70">Published rate for this period</dt><dd>{fmt(r.expectedCents)} before taxes</dd></div>}
+        <div><dt className="font-bold text-graphite/80">Station</dt><dd>{r.station}</dd></div>
+        <div><dt className="font-bold text-graphite/80">Started</dt><dd>{when(r.startedAt)}</dd></div>
+        <div><dt className="font-bold text-graphite/80">Returned</dt><dd>{r.returnedAt ? when(r.returnedAt) : "Not recorded"}</dd></div>
+        <div><dt className="font-bold text-graphite/80">Charge</dt><dd>{r.charge}</dd></div>
+        {r.expectedCents != null && <div><dt className="font-bold text-graphite/80">Published rate for this period</dt><dd>{fmt(r.expectedCents)} before taxes</dd></div>}
       </dl>
       <p className="mt-5 rounded-lg bg-mist/70 p-4 text-sm leading-6 text-graphite">{r.explanation}</p>
       <div className="mt-5 flex flex-wrap gap-3">

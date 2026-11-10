@@ -14,7 +14,9 @@ export function Header({ heroDark = false }: { heroDark?: boolean }) {
   const [menu, setMenu] = useState<"rent" | "venues" | "explore" | null>(null);
   const bar = useRef<HTMLDivElement>(null);
   const solid = scrolled || open || menu !== null;
-  const onDark = heroDark && !solid && !path.startsWith("/admin") && !path.startsWith("/partners");
+  // Pages whose top section is light need the light header variant even though the layout defaults to dark-hero.
+  const lightTop = path.startsWith("/support/articles") || path.startsWith("/support/ticket");
+  const onDark = heroDark && !solid && !lightTop && !path.startsWith("/admin") && !path.startsWith("/partners");
 
   useEffect(() => {
     const on = () => {

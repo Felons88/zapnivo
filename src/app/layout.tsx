@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Manrope, Space_Grotesk } from "next/font/google";
 import "./globals.css";
-import { SITE } from "@/lib/site";
+import { SITE, subUrl } from "@/lib/site";
 import { Analytics } from "@vercel/analytics/next";
 
 const manrope = Manrope({ subsets: ["latin"], variable: "--font-manrope", display: "swap" });
@@ -24,7 +24,7 @@ const org = {
       "@type": "Organization", "@id": `${SITE.url}/#org`, name: "Zapnivo", url: SITE.url, slogan: SITE.tagline,
       description: SITE.description,
       areaServed: { "@type": "AdministrativeArea", name: "Minnesota" },
-      contactPoint: { "@type": "ContactPoint", contactType: "customer support", url: `${SITE.url}/support` },
+      contactPoint: { "@type": "ContactPoint", contactType: "customer support", url: subUrl("support", "/", SITE.url) },
     },
     { "@type": "WebSite", "@id": `${SITE.url}/#site`, url: SITE.url, name: "Zapnivo", publisher: { "@id": `${SITE.url}/#org` }, inLanguage: "en-US" },
   ],

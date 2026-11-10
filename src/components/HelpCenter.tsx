@@ -23,7 +23,7 @@ function ArticleCard({ a, open, onToggle }: { a: Article; open: boolean; onToggl
     <div className="border-b border-mist last:border-0">
       <h3>
         <button type="button" aria-expanded={open} aria-controls={`art-${a.id}`} onClick={onToggle} className="flex w-full items-start justify-between gap-4 px-5 py-5 text-left">
-          <span><span className="eyebrow block text-forest/60">{a.category}</span><span className="mt-1 block font-display text-lg font-bold md:text-xl">{a.title}</span></span>
+          <span><span className="eyebrow block text-forest">{a.category}</span><span className="mt-1 block font-display text-lg font-bold md:text-xl">{a.title}</span></span>
           <span className={`mt-1 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-lime text-xl transition-transform ${open ? "rotate-45" : ""}`} aria-hidden>+</span>
         </button>
       </h3>
@@ -98,7 +98,7 @@ export function HelpCenter({ initialAudience = "renter", before, after }: { init
             <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {CATEGORIES[audience].map((c, i) => (
                 <button key={c.name} type="button" onClick={() => pickCat(c.name)} className="home-step group flex min-h-48 flex-col rounded-xl border border-mist bg-white p-6 text-left">
-                  <span className="font-display text-4xl font-bold text-forest/25">0{i + 1}</span>
+                  <span className="font-display text-4xl font-bold text-forest">0{i + 1}</span>
                   <span className="mt-auto font-display text-xl font-bold">{c.name}</span>
                   <span className="mt-1 text-sm text-graphite">{c.blurb}</span>
                   <span className="mt-3 text-xs font-extrabold uppercase tracking-widest text-forest">{pool.filter((a) => a.category === c.name).length} articles <span className="inline-block transition-transform group-hover:translate-x-1" aria-hidden>→</span></span>

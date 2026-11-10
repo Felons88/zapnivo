@@ -32,7 +32,7 @@ export default async function Support({ searchParams }: { searchParams: Promise<
         <div className="container-z grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {QUICK.map((q) => (
             <Link key={q.n} href={q.href} className="home-step group flex min-h-44 flex-col rounded-xl border border-mist bg-white p-6 shadow-lg">
-              <span className="font-display text-3xl font-bold text-forest/25">{q.n}</span>
+              <span className="font-display text-3xl font-bold text-forest">{q.n}</span>
               <span className="mt-auto font-display text-xl font-bold">{q.t}</span>
               <span className="mt-1 text-sm text-graphite">{q.d}</span>
               <span className="mt-3 text-xs font-extrabold uppercase tracking-widest text-forest">Go <span className="inline-block transition-transform group-hover:translate-x-1" aria-hidden>→</span></span>
@@ -53,13 +53,12 @@ export default async function Support({ searchParams }: { searchParams: Promise<
           </div>
           <dl className="overflow-hidden rounded-xl border border-mist bg-white">
             {[
-              ["First started hour", fmt(P.firstHourCents)],
-              ["Each additional started hour", fmt(P.additionalHourCents)],
-              ["Maximum for the first 24 hours", fmt(P.first24hCapCents)],
-              [`Non-return maximum after ${P.nonReturnAfterHours} hours`, fmt(P.nonReturnMaxCents)],
+              ["Each started hour", fmt(P.firstHourCents)],
+              ["Return deadline", `${P.nonReturnAfterHours} hours from activation`],
+              [`Non-return fee if unreturned`, fmt(P.nonReturnMaxCents)],
             ].map(([k, v]) => <div key={k} className="flex items-baseline justify-between gap-5 border-b border-mist px-6 py-5 last:border-0"><dt className="text-graphite">{k}</dt><dd className="shrink-0 font-display text-2xl font-bold">{v}</dd></div>)}
-            <p className="bg-mist/60 px-6 py-4 text-xs leading-5 text-graphite">Taxes are added at checkout. A temporary payment authorization may apply; only the final rental charge is captured. Pricing beyond 24 hours is being finalized.</p>
           </dl>
+          <p className="mt-3 text-xs leading-5 text-graphite">Taxes are added at checkout. A temporary payment authorization may apply; only the final rental charge is captured. The non-return fee is separate from rental charges and is never charged twice.</p>
         </div>
       </Section>
 

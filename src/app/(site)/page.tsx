@@ -9,6 +9,8 @@ import { NetworkMap } from "@/components/NetworkMap";
 import { getStations } from "@/lib/stations";
 import { IllustrativeTag } from "@/components/Illustrations";
 
+export const revalidate = 300;
+
 export const metadata: Metadata = {
   title: { absolute: "Portable Phone Charger Rentals | Zapnivo" },
   description: "Rent a portable power bank from a Zapnivo station, charge while you move, and return it to an eligible participating station. Explore rentals and venue partnerships in Minnesota.",
@@ -55,7 +57,7 @@ export default async function Home() {
 
     <Section className="section-aurora" id="how-rentals-work">
       <div className="flex flex-col justify-between gap-6 md:flex-row md:items-end"><div><Eyebrow className="text-forest">How it works</Eyebrow><h2 className="display-lg mt-5 max-w-3xl">Power for the whole plan.</h2></div><p className="lead max-w-md text-graphite">A simple rental flow built for nights out, long days, and everything between.</p></div>
-      <div className="mt-12 grid gap-4 md:grid-cols-2 xl:grid-cols-4">{STEPS.map((step, i) => <Reveal as="article" key={step.n} delay={i * 60} className="home-step rounded-xl border border-mist bg-white p-7"><span className="font-display text-5xl font-bold text-forest/25">{step.n}</span><div className="mt-12 h-1 w-12 rounded-full bg-lime" /><h3 className="mt-5 font-display text-2xl font-bold">{step.title}</h3><p className="mt-3 text-sm leading-7 text-graphite">{step.body}</p></Reveal>)}</div>
+      <div className="mt-12 grid gap-4 md:grid-cols-2 xl:grid-cols-4">{STEPS.map((step, i) => <Reveal as="article" key={step.n} delay={i * 60} className="home-step rounded-xl border border-mist bg-white p-7"><span className="font-display text-5xl font-bold text-forest">{step.n}</span><div className="mt-12 h-1 w-12 rounded-full bg-lime" /><h3 className="mt-5 font-display text-2xl font-bold">{step.title}</h3><p className="mt-3 text-sm leading-7 text-graphite">{step.body}</p></Reveal>)}</div>
       <div className="mt-9"><Button href="/how-it-works" variant="dark">Explore the rental process</Button></div>
     </Section>
 

@@ -25,7 +25,19 @@ export function NetworkMap({ stations, focus = null, className = "", interactive
     let cancelled = false;
     let map: MapboxMap | undefined;
     let loadTimeout: ReturnType<typeof setTimeout> | undefined;
-    (async () => {
+    let started = false;
+    const start = () => {
+      if (started || cancelled) return;
+      started = true;
+      io?.disconnect();
+      void init();
+    };
+    const io = typeof IntersectionObserver === "undefined" ? null : new IntersectionObserver(
+      (entries) => { if (entries.some((e) => e.isIntersecting)) start(); },
+      { rootMargin: "200px" },
+    );
+    io?.observe(box.current);
+    const init = async () => {
       try {
         const mapboxgl = (await import("mapbox-gl")).default;
         await import("mapbox-gl/dist/mapbox-gl.css");
@@ -73,8 +85,9 @@ export function NetworkMap({ stations, focus = null, className = "", interactive
       } catch {
         if (!cancelled) setStatus("error");
       }
-    })();
-    return () => { cancelled = true; clearTimeout(loadTimeout); map?.remove(); mapRef.current = null; };
+    };
+    if (!io) start(); // no IntersectionObserver — initialize immediately
+    return () => { cancelled = true; io?.disconnect(); clearTimeout(loadTimeout); map?.remove(); mapRef.current = null; };
   }, [stations, interactive]);
 
   useEffect(() => {

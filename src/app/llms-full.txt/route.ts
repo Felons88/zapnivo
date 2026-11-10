@@ -1,4 +1,4 @@
-import { PRICING_V1, fmt } from "@/lib/pricing";
+import { PRICING_V1, fmt, rentalChargeCents } from "@/lib/pricing";
 import { SITE } from "@/lib/site";
 
 export function GET() {
@@ -19,12 +19,10 @@ Hardware: a white eight-slot touchscreen charging kiosk. Each slot holds a renta
 - Legal pages are drafts pending attorney review.
 
 ## Proposed pilot pricing
-- First hour: ${fmt(p.firstHourCents)}
-- Each additional hour: ${fmt(p.additionalHourCents)}
-- First 24 hours cap: ${fmt(p.first24hCapCents)}
-- Maximum charge (non-return): ${fmt(p.nonReturnMaxCents)}
-- Multi-day pricing beyond 24h is still being finalized.
-- Examples: 3 hours ≈ ${fmt(p.firstHourCents + 2 * p.additionalHourCents)}; 7 hours ≈ ${fmt(p.first24hCapCents)} (cap).
+- ${fmt(p.firstHourCents)} per started hour — every hour or part of an hour counts as a full hour.
+- Rentals carry a 24-hour return deadline. If a power bank is not returned within that window, a ${fmt(p.nonReturnMaxCents)} non-return fee applies on top of accrued rental charges.
+- Pricing beyond 24 hours is still being finalized; the final rate is always shown before payment at a station.
+- Examples (rental time only, before tax): 3 hours ≈ ${fmt(rentalChargeCents(180)!)}; 7 hours ≈ ${fmt(rentalChargeCents(7 * 60)!)}.
 
 ## How renting works
 1. Find a station on the map or in a partner venue.

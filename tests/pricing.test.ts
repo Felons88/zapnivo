@@ -10,8 +10,7 @@ describe("rentalChargeCents", () => {
     expect(rentalChargeCents(61)).toBe(1398);  // 699 × 2 started hours
     expect(rentalChargeCents(120)).toBe(1398);
   });
-  it("caps the first 24 hours at the daily cap", () => {
-    // 7h would be 699 + 6*200 = 1899 → capped at 1299
+  it("charges flat $6.99 per started hour through 24h with no artificial cap", () => {
     expect(rentalChargeCents(7 * 60)).toBe(4893);
     expect(rentalChargeCents(24 * 60)).toBe(16776);
   });

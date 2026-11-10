@@ -7,7 +7,7 @@ import { btnClass } from "./ui";
 type Errors = Record<string, string[] | undefined>;
 type State = { status: "idle" | "sending" | "done" | "error"; message?: string; fields?: Errors; ticket?: string; threadUrl?: string };
 
-export const inputCls = "w-full min-h-12 rounded-md border border-silver/70 bg-white px-4 py-3 text-base text-ink placeholder:text-silver focus:border-ink aria-[invalid=true]:border-red-600";
+export const inputCls = "w-full min-h-12 rounded-md border border-silver/70 bg-white px-4 py-3 text-base text-ink placeholder:text-graphite focus:border-ink aria-[invalid=true]:border-red-600";
 
 function useField(errors?: Errors) {
   const e = (n: string) => errors?.[n];
@@ -16,7 +16,7 @@ function useField(errors?: Errors) {
     <div>
       <label htmlFor={n} className="mb-1.5 block text-sm font-bold">{label}</label>
       {node}
-      {hint && <p className="mt-1 text-xs text-graphite/70">{hint}</p>}
+      {hint && <p className="mt-1 text-xs text-graphite/80">{hint}</p>}
       {e(n) && <p role="alert" className="mt-1 text-sm font-semibold text-red-700">{e(n)![0]}</p>}
     </div>
   );
@@ -87,7 +87,7 @@ export function PartnerForm() {
   return (
     <form ref={ref} onSubmit={submit} onFocus={() => { if (!started.current) { started.current = true; track("venue_application_start"); } }} className="relative space-y-6">
       <ol className="flex gap-2" aria-label="Progress">
-        {STEPS.map((l, i) => <li key={l} aria-current={i === step ? "step" : undefined} className={`flex-1 border-t-4 pt-2 text-xs font-extrabold uppercase tracking-wider ${i <= step ? "border-ink" : "border-mist text-silver"}`}>{i + 1}. {l}</li>)}
+        {STEPS.map((l, i) => <li key={l} aria-current={i === step ? "step" : undefined} className={`flex-1 border-t-4 pt-2 text-xs font-extrabold uppercase tracking-wider ${i <= step ? "border-ink" : "border-mist text-graphite"}`}>{i + 1}. {l}</li>)}
       </ol>
       <Honeypot />
       <fieldset className={step === 0 ? "grid gap-5 sm:grid-cols-2" : "hidden"}>
@@ -116,7 +116,7 @@ export function PartnerForm() {
         {step > 0 && <button type="button" onClick={() => setStep(step - 1)} className={btnClass("ghost", "")}>Back</button>}
         {step < 2 ? <button type="button" onClick={next} className={btnClass("dark")}>Continue →</button> : <Submit s={s}>Submit application</Submit>}
       </div>
-      <p className="text-xs text-graphite/70">By submitting you agree we may contact you about your inquiry. See our <a className="underline" href="/legal/privacy">Privacy Policy</a>.</p>
+      <p className="text-xs text-graphite/80">By submitting you agree we may contact you about your inquiry. See our <a className="underline" href="/legal/privacy">Privacy Policy</a>.</p>
     </form>
   );
 }

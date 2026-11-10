@@ -53,7 +53,7 @@ export function IncidentForm({ rental }: { rental: string }) {
       <div>
         <label htmlFor="description" className="mb-1.5 block text-sm font-bold">Details</label>
         <textarea id="description" name="description" required minLength={10} maxLength={2000} rows={5} className={inputCls} />
-        <p className="mt-1 text-xs text-graphite/70">Please do not include payment card numbers.</p>
+        <p className="mt-1 text-xs text-graphite/80">Please do not include payment card numbers.</p>
       </div>
       <p ref={errRef} tabIndex={-1} role="alert" aria-live="assertive" className="text-sm font-semibold text-red-700 empty:hidden">{err}</p>
       <button type="submit" disabled={sending} className={btnClass("dark", "w-full")}>{sending ? "Submitting..." : "Submit report"}</button>

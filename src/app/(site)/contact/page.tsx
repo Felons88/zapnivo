@@ -22,7 +22,7 @@ export default function Contact() {
       <Section id="contact-options">
         <Eyebrow className="text-forest">Choose your route</Eyebrow><h2 className="display-lg mt-5">How can we help?</h2>
         <div className="mt-10 grid gap-4 md:grid-cols-3">
-          {ROUTES.map((r, i) => <Reveal key={r.t} className="flex min-h-64 flex-col rounded-xl bg-white p-7"><span className="font-display text-5xl font-bold text-forest/25">0{i + 1}</span><h3 className="mt-auto font-display text-2xl font-bold">{r.t}</h3><p className="mt-3 text-sm leading-6 text-graphite">{r.d}</p><a href={r.href} className="mt-5 text-sm font-bold underline underline-offset-4">{r.cta} →</a></Reveal>)}
+          {ROUTES.map((r, i) => <Reveal key={r.t} className="flex min-h-64 flex-col rounded-xl bg-white p-7"><span className="font-display text-5xl font-bold text-forest">0{i + 1}</span><h3 className="mt-auto font-display text-2xl font-bold">{r.t}</h3><p className="mt-3 text-sm leading-6 text-graphite">{r.d}</p><a href={r.href} className="mt-5 text-sm font-bold underline underline-offset-4">{r.cta} →</a></Reveal>)}
         </div>
       </Section>
       <Section id="general-message" className="bg-mist"><div className="grid gap-10 lg:grid-cols-[.75fr_1.25fr]">
