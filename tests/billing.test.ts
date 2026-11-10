@@ -88,7 +88,7 @@ vi.setConfig({ testTimeout: 30000 });
 describe("checkout 503 paths", () => {
   afterEach(() => { vi.unstubAllEnvs(); vi.resetModules(); vi.doUnmock("../src/lib/supabase"); resetRateLimits(); });
   const post = (body: unknown) => new Request("http://localhost/api/rentals/checkout", { method: "POST", headers: { "content-type": "application/json", host: "localhost" }, body: JSON.stringify(body) });
-  const ok = { station_id: "ZN-TEST1", email: "a@b.com", bank_count: 1 };
+  const ok = { station_id: "ZN-TEST1", email: "a@b.com", bank_count: 1, consent: true };
 
   it("503 payments_unconfigured without a Stripe key", async () => {
     vi.stubEnv("STRIPE_SECRET_KEY", "");
@@ -101,6 +101,8 @@ describe("checkout 503 paths", () => {
     const { POST } = await import("../src/app/api/rentals/checkout/route");
     expect((await POST(post({ ...ok, email: "nope" }))).status).toBe(422);
     expect((await POST(post({ ...ok, bank_count: 4 }))).status).toBe(422);
+    expect((await POST(post({ ...ok, consent: false }))).status).toBe(422);
+    expect((await POST(post({ ...ok, consent: undefined }))).status).toBe(422);
   });
   it("503 pricing_not_approved when no approved pricing row exists", async () => {
     vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_x");

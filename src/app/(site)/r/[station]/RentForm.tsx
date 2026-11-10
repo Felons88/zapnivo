@@ -19,7 +19,14 @@ export function RentForm({ stationId }: { stationId: string }) {
     try {
       res = await fetch("/api/rentals/checkout", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ station_id: stationId, email: String(f.get("email") ?? "").trim(), bank_count: Number(f.get("bank_count")), promo_code: String(f.get("promo_code") ?? "").trim() || undefined }),
+        body: JSON.stringify({
+          station_id: stationId,
+          email: String(f.get("email") ?? "").trim(),
+          bank_count: Number(f.get("bank_count")),
+          promo_code: String(f.get("promo_code") ?? "").trim() || undefined,
+          consent: f.get("consent") === "on",
+          sms_consent: f.get("sms_consent") === "on",
+        }),
       });
     } catch { return fail("We couldn't reach the server. Check your connection and try again."); }
     const data = await res.json().catch(() => ({}));

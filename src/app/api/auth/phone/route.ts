@@ -5,6 +5,7 @@ import { rateLimit } from "@/lib/rate-limit";
 import { normalizePhone, sendSms, smsConfigured } from "@/lib/sms";
 import { getSessionUser } from "@/lib/auth";
 import { oauthClient, serviceClient } from "@/lib/supabase";
+import { authCallbackOrigin } from "@/lib/auth-callback-origin";
 
 const secret = () => {
   const s = process.env.HELPDESK_SECRET;
@@ -16,10 +17,11 @@ const hash = (s: string) => {
   return sec ? createHash("sha256").update(`${s}.${sec}`).digest("hex") : null;
 };
 const ip = (req: Request) => req.headers.get("x-forwarded-for")?.split(",")[0].trim() || "unknown";
-const origin = (req: NextRequest) => `${req.nextUrl.protocol}//${req.headers.get("host") ?? req.nextUrl.host}`;
 
 /** Passwordless customer sign-in: SMS code proves the phone; the follow-up email link proves the mailbox. */
 export async function POST(req: NextRequest) {
+  const callbackOrigin = authCallbackOrigin(req);
+  if (!callbackOrigin) return NextResponse.json({ error: "Rejected." }, { status: 403 });
   const db = serviceClient();
   if (!db) return NextResponse.json({ error: "Backend not configured" }, { status: 503 });
   if (!secret()) return NextResponse.json({ error: "Auth is not configured." }, { status: 503 });
@@ -92,7 +94,7 @@ export async function POST(req: NextRequest) {
   // Fast path: this phone was previously verified and bound to an account.
   const { data: bound } = await db.from("profiles").select("email").eq("phone", phone).maybeSingle();
   if (bound?.email) {
-    const { data, error } = await db.auth.admin.generateLink({ type: "magiclink", email: bound.email, options: { redirectTo: `${origin(req)}/api/auth/callback` } });
+    const { data, error } = await db.auth.admin.generateLink({ type: "magiclink", email: bound.email, options: { redirectTo: `${callbackOrigin}/api/auth/callback` } });
     if (error || !data.properties?.action_link) return NextResponse.json({ error: "Couldn't create the session." }, { status: 500 });
     return NextResponse.json({ ok: true, continue_url: data.properties.action_link });
   }
@@ -114,7 +116,7 @@ export async function POST(req: NextRequest) {
   if (!oauth) return NextResponse.json({ error: "Sign-in is not configured yet." }, { status: 503 });
   const { error: otpErr } = await oauth.client.auth.signInWithOtp({
     email,
-    options: { emailRedirectTo: `${origin(req)}/api/auth/callback`, shouldCreateUser: true },
+    options: { emailRedirectTo: `${callbackOrigin}/api/auth/callback`, shouldCreateUser: true },
   });
   if (otpErr) {
     console.error(JSON.stringify({ level: "error", scope: "phone-verify", msg: otpErr.message }));

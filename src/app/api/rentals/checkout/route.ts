@@ -32,6 +32,7 @@ export async function POST(req: Request) {
   const parsed = schema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: "Please check the details you entered.", fields: parsed.error.flatten().fieldErrors }, { status: 422 });
   const { station_id, email, bank_count, promo_code, consent, sms_consent } = parsed.data;
+  if (!consent) return NextResponse.json({ error: "Please accept the rental terms to continue.", fields: { consent: ["Rental terms acceptance is required."] } }, { status: 422 });
 
   const db = serviceClient();
   if (!stripeConfigured() || !db) return NextResponse.json(PAYMENTS_UNCONFIGURED, { status: 503 });
@@ -65,7 +66,10 @@ export async function POST(req: Request) {
   const { count: out } = await db.from("rentals")
     .select("id,payments!inner(receipt_email)", { count: "exact", head: true })
     .in("state", ["active", "dispense_pending", "unreturned", "overdue"]).ilike("payments.receipt_email", likeEscape(email));
-  if ((out ?? 0) >= 2) return NextResponse.json({ error: "Limit reached — return your outstanding chargers before renting another.", code: "rental_limit" }, { status: 409 });
+  if ((out ?? 0) >= 2) {
+    await undoPromo();
+    return NextResponse.json({ error: "Limit reached — return your outstanding chargers before renting another.", code: "rental_limit" }, { status: 409 });
+  }
   const hold = holdCents(pricing, bank_count);
 
   const { data: rental, error: rErr } = await db.from("rentals").insert({

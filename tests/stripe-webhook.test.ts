@@ -39,6 +39,7 @@ describe("webhook route", () => {
     vi.stubEnv("STRIPE_WEBHOOK_SECRET", SECRET);
     const seen = new Set<string>();
     const updates: { table: string; patch: unknown }[] = [];
+    let failWriteTable: string | null = null;
     const db = {
       from: (table: string) => {
         const q: Record<string, unknown> = {};
@@ -47,8 +48,16 @@ describe("webhook route", () => {
           if (seen.has(row.id)) return { error: { code: "23505" } };
           seen.add(row.id); return { error: null };
         };
-        q.update = (patch: unknown) => { updates.push({ table, patch }); return q; };
-        q.select = () => q; q.eq = () => q; q.in = () => q; q.delete = () => q;
+        q.update = (patch: unknown) => {
+          updates.push({ table, patch });
+          q.then = (resolve: (value: unknown) => void) => resolve({ error: table === failWriteTable ? { message: "db unavailable" } : null });
+          return q;
+        };
+        q.select = () => q; q.eq = () => q; q.in = () => q;
+        q.delete = () => {
+          q.eq = (column: string, id: string) => { if (table === "stripe_events" && column === "id") seen.delete(id); return q; };
+          return q;
+        };
         q.maybeSingle = async () => ({ data: null });
         q.upsert = async () => ({ error: null });
         return q;
@@ -56,7 +65,7 @@ describe("webhook route", () => {
     };
     vi.doMock("../src/lib/supabase", () => ({ serviceClient: () => db }));
     vi.doMock("../src/lib/email-triggers", () => ({ triggerPaymentReceipt: async () => true, triggerPaymentFailed: async () => true }));
-    return { updates };
+    return { updates, failWritesFor: (table: string | null) => { failWriteTable = table; } };
   }
   const req = (payload: string, sig: string) => new Request("http://localhost/api/webhooks/stripe", { method: "POST", headers: { "stripe-signature": sig }, body: payload });
   const evt = (id: string, type: string, object: Record<string, unknown> = { id: "pi_1" }) => JSON.stringify({ id, type, data: { object } });
@@ -80,6 +89,15 @@ describe("webhook route", () => {
     const second = await POST(req(p, header(p, now())));
     expect(await second.json()).toEqual({ ok: true, duplicate: true });
     expect(updates.length).toBe(n);
+  });
+  it("returns 500 and permits a retry when payment reconciliation fails", async () => {
+    const { failWritesFor } = setup();
+    const { POST } = await import("../src/app/api/webhooks/stripe/route");
+    const p = evt("evt_retry", "payment_intent.succeeded", { id: "pi_1", amount_received: 700 });
+    failWritesFor("payments");
+    expect((await POST(req(p, header(p, now())))).status).toBe(500);
+    failWritesFor(null);
+    expect((await POST(req(p, header(p, now())))).status).toBe(200);
   });
   it("answers 200 ignored for unknown events", async () => {
     setup();

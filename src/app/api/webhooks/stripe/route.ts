@@ -38,6 +38,11 @@ type Obj = Record<string, unknown> & { id: string };
 type StripeEvent = { id: string; type: string; data: { object: Obj } };
 type Db = NonNullable<ReturnType<typeof serviceClient>>;
 
+async function requireWrite(result: PromiseLike<{ error: { message: string } | null }>): Promise<void> {
+  const { error } = await result;
+  if (error) throw new Error("stripe_webhook_database_write_failed");
+}
+
 const metaRental = (o: Obj) => ((o.metadata as Record<string, string> | undefined)?.rental_id ?? null);
 const iso = (unix: unknown) => (typeof unix === "number" ? new Date(unix * 1000).toISOString() : null);
 const CLOSED_DISPUTE = new Set(["won", "lost", "warning_closed"]);
@@ -56,11 +61,11 @@ async function handleEvent(db: Db, event: StripeEvent): Promise<boolean> {
       const target = pay ?? (rentalId ? (await db.from("payments").select("id,rental_id,state").eq("rental_id", rentalId).maybeSingle()).data : null);
       if (!target) return true;
       const revived = target.state === "failed"; // customer retried inside the same Checkout session
-      await db.from("payments").update({
+      await requireWrite(db.from("payments").update({
         stripe_checkout_session_id: o.id, stripe_payment_intent_id: piId ?? undefined, tax_cents: tax,
         ...(email ? { receipt_email: email } : {}), ...(phone ? { customer_phone: phone } : {}), ...(revived ? { state: "authorized", failure_code: null } : {}),
-      }).eq("id", target.id);
-      await db.from("rentals").update({ state: "dispense_pending" }).eq("id", target.rental_id).in("state", revived ? ["authorized", "cancelled"] : ["authorized"]);
+      }).eq("id", target.id));
+      await requireWrite(db.from("rentals").update({ state: "dispense_pending" }).eq("id", target.rental_id).in("state", revived ? ["authorized", "cancelled"] : ["authorized"]));
       // NOTE: checkout phone/email are customer-typed and unverified — never bind them to a profile here.
       return true;
     }
@@ -70,16 +75,16 @@ async function handleEvent(db: Db, event: StripeEvent): Promise<boolean> {
       if (kind === "non_return_fee") {
         // Separate fee PI: reconcile billing_ledger + rental fee flag. Never touches the payments row.
         const chargeId = typeof pi.latest_charge === "string" ? pi.latest_charge : null;
-        await db.from("billing_ledger").update({ status: "succeeded", ...(chargeId ? { stripe_charge_id: chargeId } : {}) })
-          .eq("stripe_payment_intent_id", pi.id).in("status", ["pending", "failed"]);
+        await requireWrite(db.from("billing_ledger").update({ status: "succeeded", ...(chargeId ? { stripe_charge_id: chargeId } : {}) })
+          .eq("stripe_payment_intent_id", pi.id).in("status", ["pending", "failed"]));
         const rentalId = metaRental(o);
-        if (rentalId) await db.from("rentals").update({ non_return_fee_status: "charged" }).eq("id", rentalId);
+        if (rentalId) await requireWrite(db.from("rentals").update({ non_return_fee_status: "charged" }).eq("id", rentalId));
         return true;
       }
-      await db.from("payments").update({
+      await requireWrite(db.from("payments").update({
         state: "captured", amount_captured_cents: pi.amount_received ?? null,
         receipt_email: pi.receipt_email ?? undefined, captured_at: new Date().toISOString(),
-      }).eq("stripe_payment_intent_id", pi.id);
+      }).eq("stripe_payment_intent_id", pi.id));
       await triggerPaymentReceipt(pi.id);
       return true;
     }
@@ -87,10 +92,10 @@ async function handleEvent(db: Db, event: StripeEvent): Promise<boolean> {
       const kind = (o.metadata as Record<string, string> | undefined)?.kind;
       if (kind === "non_return_fee") {
         // Fee PI declined: mark the ledger attempt failed. The rental's own payment/hold is untouched.
-        await db.from("billing_ledger").update({ status: "failed" })
-          .eq("stripe_payment_intent_id", o.id).eq("status", "pending");
+        await requireWrite(db.from("billing_ledger").update({ status: "failed" })
+          .eq("stripe_payment_intent_id", o.id).eq("status", "pending"));
         const rentalId = metaRental(o);
-        if (rentalId) await db.from("rentals").update({ non_return_fee_status: "failed" }).eq("id", rentalId);
+        if (rentalId) await requireWrite(db.from("rentals").update({ non_return_fee_status: "failed" }).eq("id", rentalId));
         return true;
       }
       const rentalId = metaRental(o);
@@ -98,8 +103,8 @@ async function handleEvent(db: Db, event: StripeEvent): Promise<boolean> {
       const { data: byPi } = await db.from("payments").select("id,rental_id").eq("stripe_payment_intent_id", o.id).maybeSingle();
       const pay = byPi ?? (rentalId ? (await db.from("payments").select("id,rental_id").eq("rental_id", rentalId).maybeSingle()).data : null);
       if (!pay) return true;
-      await db.from("payments").update({ state: "failed", failure_code: code?.decline_code ?? code?.code ?? "payment_failed", stripe_payment_intent_id: o.id }).eq("id", pay.id).eq("state", "authorized");
-      await db.from("rentals").update({ state: "cancelled" }).eq("id", pay.rental_id).eq("state", "authorized");
+      await requireWrite(db.from("payments").update({ state: "failed", failure_code: code?.decline_code ?? code?.code ?? "payment_failed", stripe_payment_intent_id: o.id }).eq("id", pay.id).eq("state", "authorized"));
+      await requireWrite(db.from("rentals").update({ state: "cancelled" }).eq("id", pay.rental_id).eq("state", "authorized"));
       await triggerPaymentFailed(pay.rental_id);
       return true;
     }
@@ -127,9 +132,9 @@ async function handleEvent(db: Db, event: StripeEvent): Promise<boolean> {
       if (!piId) return true;
       const refunded = typeof o.amount_refunded === "number" ? o.amount_refunded : 0;
       const captured = typeof o.amount_captured === "number" ? o.amount_captured : typeof o.amount === "number" ? o.amount : 0;
-      await db.from("payments").update({
+      await requireWrite(db.from("payments").update({
         amount_refunded_cents: refunded, state: refunded > 0 && refunded >= captured ? "refunded" : "partially_refunded",
-      }).eq("stripe_payment_intent_id", piId);
+      }).eq("stripe_payment_intent_id", piId));
       return true;
     }
     default:
