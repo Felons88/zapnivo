@@ -44,8 +44,24 @@ export async function POST(req: Request) {
   }
   await db.from("phone_otps").update({ used: true }).eq("id", row.id);
 
-  const { data: profile } = await db.from("profiles").select("id,email,role").eq("phone", phone).maybeSingle();
-  if (!profile?.email) return NextResponse.json({ error: "No account on that number yet — rent first to create one.", code: "no_account" }, { status: 404 });
+  let { data: profile } = await db.from("profiles").select("id,email,role").eq("phone", phone).maybeSingle();
+  if (!profile?.email) {
+    // Kiosk renter: their phone lives on payments.customer_phone — resolve the receipt email.
+    const { data: pay } = await db.from("payments").select("receipt_email").eq("customer_phone", phone).not("receipt_email", "is", null).limit(1);
+    const email = (pay?.[0] as { receipt_email?: string } | undefined)?.receipt_email ?? null;
+    if (!email) return NextResponse.json({ error: "No rentals on that number yet.", code: "no_account" }, { status: 404 });
+    ({ data: profile } = await db.from("profiles").select("id,email,role").ilike("email", email).maybeSingle());
+    if (profile?.id) await db.from("profiles").update({ phone }).eq("id", profile.id).is("phone", null);
+  }
+  if (!profile?.email) {
+    // Brand-new user from a kiosk receipt — magiclink generates the auth user on first use.
+    const { data: pay } = await db.from("payments").select("receipt_email").eq("customer_phone", phone).not("receipt_email", "is", null).limit(1);
+    const email = (pay?.[0] as { receipt_email?: string } | undefined)?.receipt_email ?? null;
+    if (!email) return NextResponse.json({ error: "No rentals on that number yet.", code: "no_account" }, { status: 404 });
+    const { data: link, error: lErr } = await db.auth.admin.generateLink({ type: "magiclink", email, options: { redirectTo: `${new URL(req.url).origin}/api/auth/callback` } });
+    if (lErr || !link.properties?.action_link) return NextResponse.json({ error: "Couldn't create the session." }, { status: 500 });
+    return NextResponse.json({ ok: true, continue_url: link.properties.action_link });
+  }
   const { data, error } = await db.auth.admin.generateLink({ type: "magiclink", email: profile.email, options: { redirectTo: `${new URL(req.url).origin}/api/auth/callback` } });
   if (error || !data.properties?.action_link) return NextResponse.json({ error: "Couldn't create the session." }, { status: 500 });
   return NextResponse.json({ ok: true, continue_url: data.properties.action_link });
