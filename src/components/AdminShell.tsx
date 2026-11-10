@@ -57,6 +57,7 @@ const NAV_ITEMS = {
   promos: { href: "/admin/promos", label: "Promo codes", icon: icons.tag, group: "Finance" },
   disputes: { href: "/admin/disputes", label: "Disputes", icon: icons.alert, group: "Finance" },
   users: { href: "/admin/users", label: "Users & roles", icon: icons.users, group: "System" },
+  observability: { href: "/admin/observability", label: "Observability", icon: icons.alert, group: "System" },
   audit: { href: "/admin/audit", label: "Audit log", icon: icons.scroll, group: "System" },
 } as const;
 

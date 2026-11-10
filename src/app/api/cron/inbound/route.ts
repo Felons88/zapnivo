@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { getSessionUser, isStaff } from "@/lib/auth";
 import { runInboundWorker } from "@/lib/inbound/worker";
+import { recordCron } from "@/lib/fleet-sweep";
 import { serviceClient } from "@/lib/supabase";
 
 /**
@@ -32,6 +33,10 @@ export async function GET(req: Request) {
     requeued = data?.length ?? 0;
   }
 
-  const result = await runInboundWorker(50);
-  return NextResponse.json({ ok: result.errors.length === 0, requeued, ...result });
+  const result = await recordCron(db, "inbound", async () => {
+    const r = await runInboundWorker(50);
+    if (r.errors.length) throw new Error(`${r.errors.length} job(s) failed: ${r.errors[0]?.slice(0, 120)}`);
+    return { ...r, requeued };
+  });
+  return NextResponse.json(result);
 }

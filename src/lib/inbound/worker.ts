@@ -1,6 +1,7 @@
 import { defaultCtx, type Ctx } from "../helpdesk/service";
 import { serviceClient } from "../supabase";
 import { processInboundMail, type Parsed } from "./processor";
+import { reportError } from "../observability";
 
 /**
  * Durable inbound-email worker (Stage B). Claims queued jobs with a
@@ -65,6 +66,7 @@ export async function runInboundWorker(limit = BATCH): Promise<{ claimed: number
       const msg = e instanceof Error ? e.message.slice(0, 300) : "unknown";
       if (attempts >= j.max_attempts) {
         await finishJob(db, j.id, { status: "dead", last_error: msg });
+        reportError(e, { route: "inbound/worker", severity: "critical", attrs: { jobId: j.id, attempts } });
         out.dead++;
       } else {
         const backoff = BASE_BACKOFF_MS * 2 ** attempts;

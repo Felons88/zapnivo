@@ -5,6 +5,7 @@ import { fmt } from "@/lib/pricing";
 import { verifyStripeSignature } from "@/lib/stripe";
 import { serviceClient } from "@/lib/supabase";
 import { trackServer } from "@/lib/analytics";
+import { reportError } from "@/lib/observability";
 
 /** Stripe webhook — verifies the signature (no SDK) and fires the payment_receipt email on success. */
 export async function POST(req: Request) {
@@ -31,7 +32,8 @@ export async function POST(req: Request) {
   try {
     const handled = await handleEvent(db, event);
     return NextResponse.json(handled ? { ok: true } : { ok: true, ignored: event.type });
-  } catch {
+  } catch (e) {
+    reportError(e, { route: "webhooks/stripe", severity: "critical", attrs: { eventType: event.type } });
     await db.from("stripe_events").delete().eq("id", event.id); // let Stripe retry
     return NextResponse.json({ error: "Handler failed" }, { status: 500 });
   }

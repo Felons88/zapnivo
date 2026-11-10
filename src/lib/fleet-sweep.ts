@@ -18,7 +18,7 @@ export async function staffRecipients(db: SupabaseClient, pref: Pref): Promise<s
   return ((staff ?? []) as { id: string; email: string }[]).filter((s) => !off.has(s.id)).map((s) => s.email);
 }
 
-async function alertStaff(db: SupabaseClient, pref: Pref, subject: string, body: string, html: string | null = null, meta: { sender?: string | null; template?: string | null; event?: string | null } = {}) {
+export async function alertStaff(db: SupabaseClient, pref: Pref, subject: string, body: string, html: string | null = null, meta: { sender?: string | null; template?: string | null; event?: string | null } = {}) {
   const repo = await getRepo();
   if (!repo) return 0;
   const to = await staffRecipients(db, pref);
