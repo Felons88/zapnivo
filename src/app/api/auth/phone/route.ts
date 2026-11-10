@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomInt } from "node:crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { rateLimit } from "@/lib/rate-limit";
@@ -23,7 +23,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Too many attempts — try again later." }, { status: 429 });
     }
     if (!smsConfigured()) return NextResponse.json({ error: "SMS sign-in isn't available yet." }, { status: 503 });
-    const code = String(Math.floor(100000 + Math.random() * 900000));
+    const code = String(randomInt(100000, 1000000));
     await db.from("phone_otps").insert({ phone, code_hash: hash(code), expires_at: new Date(Date.now() + 10 * 60_000).toISOString() });
     const res = await sendSms(db, { to: phone, body: `Your Zapnivo sign-in code is ${code}. It expires in 10 minutes.` });
     return NextResponse.json({ ok: true, delivered: res.sent });

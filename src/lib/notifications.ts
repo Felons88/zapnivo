@@ -82,14 +82,16 @@ export async function runSmsSweep(db: SupabaseClient, now = new Date()) {
     if (!claimed) continue; // another sweeper took it
 
     const { data: r } = await db.from("rentals")
-      .select("id,reference,state,started_at,dispensed_at,non_return_deadline,returned_at,payments(customer_phone)")
+      .select("id,reference,state,started_at,dispensed_at,non_return_deadline,returned_at,sms_consent,payments(customer_phone)")
       .eq("id", job.rental_id).maybeSingle();
-    const rental = r as { id: string; reference: string; state: string; started_at: string | null; dispensed_at: string | null; non_return_deadline: string | null; returned_at: string | null; payments: { customer_phone: string | null }[] | { customer_phone: string | null } | null } | null;
+    const rental = r as { id: string; reference: string; state: string; started_at: string | null; dispensed_at: string | null; non_return_deadline: string | null; returned_at: string | null; sms_consent: boolean; payments: { customer_phone: string | null }[] | { customer_phone: string | null } | null } | null;
     const phone = rental?.payments ? (Array.isArray(rental.payments) ? rental.payments[0]?.customer_phone : rental.payments.customer_phone) : null;
     const terminal = !rental || rental.returned_at || ["returned", "closed", "cancelled", "disputed"].includes(rental.state);
 
     // Never send reminders/warnings for returned or closed rentals.
     if (terminal) { await db.from("notification_jobs").update({ status: "cancelled" }).eq("id", job.id); continue; }
+    // Consent gate: only customers who accepted SMS at checkout get texts.
+    if (!rental.sms_consent) { await db.from("notification_jobs").update({ status: "cancelled", last_error: "no_sms_consent" }).eq("id", job.id); continue; }
 
     // Deadline/warning jobs re-verify the rental is actually still out past the mark.
     const elapsedMin = rental ? (now.getTime() - new Date(rental.dispensed_at ?? rental.started_at ?? now.toISOString()).getTime()) / 60_000 : 0;

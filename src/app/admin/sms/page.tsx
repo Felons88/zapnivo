@@ -9,6 +9,7 @@ import { serviceClient } from "@/lib/supabase";
 export const metadata: Metadata = { title: "SMS log", robots: { index: false, follow: false } };
 const when = (iso: string) => new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 const TONE = { inbound: "cyan", outbound: "mist" } as const;
+const mask = (n: string) => n.length > 6 ? `${n.slice(0, 4)}••••${n.slice(-3)}` : "••••";
 
 export default async function SmsLog({ searchParams }: { searchParams: Promise<{ result?: string }> }) {
   const sp = await searchParams;
@@ -71,7 +72,7 @@ export default async function SmsLog({ searchParams }: { searchParams: Promise<{
                 <tr key={m.id} className="border-b border-mist/70 align-top last:border-0">
                   <td className="whitespace-nowrap px-4 py-3 text-xs text-graphite">{when(m.created_at)}</td>
                   <td className="px-4 py-3"><Pill tone={TONE[m.direction]}>{m.direction}</Pill></td>
-                  <td className="px-4 py-3 text-xs font-semibold">{m.from_number} → {m.to_number}</td>
+                  <td className="px-4 py-3 text-xs font-semibold">{mask(m.from_number)} → {mask(m.to_number)}</td>
                   <td className={`px-4 py-3 text-xs font-bold ${m.status === "failed" ? "text-red-700" : m.status === "delivered" || m.status === "received" ? "text-forest" : ""}`}>{m.status}</td>
                   <td className="max-w-md px-4 py-3 text-xs">{m.body}</td>
                 </tr>

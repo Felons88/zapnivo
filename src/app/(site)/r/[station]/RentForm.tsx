@@ -41,6 +41,10 @@ export function RentForm({ stationId }: { stationId: string }) {
       </div>
       <div><label htmlFor="promo_code" className="mb-1.5 block text-sm font-bold">Promo code (optional)</label><input id="promo_code" name="promo_code" maxLength={40} autoComplete="off" className={inputCls} /></div>
       <label className="flex items-start gap-3 text-sm">
+        <input type="checkbox" name="sms_consent" className="mt-1 h-5 w-5" />
+        <span className="text-graphite">Text me rental status updates and deadline reminders at the phone I enter at checkout <span className="text-xs">(optional — msg &amp; data rates may apply, reply STOP to opt out)</span></span>
+      </label>
+      <label className="flex items-start gap-3 text-sm">
         <input type="checkbox" name="consent" required className="mt-1 h-5 w-5" />
         <span>I agree to the <a className="underline" href="/legal/rental-terms" target="_blank" rel="noopener">rental terms</a> and have read the <a className="underline" href="/legal/privacy" target="_blank" rel="noopener">privacy policy</a>.</span>
       </label>

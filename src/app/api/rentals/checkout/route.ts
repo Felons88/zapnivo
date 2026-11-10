@@ -13,6 +13,8 @@ const schema = z.object({
   email: z.string().trim().toLowerCase().email().max(200),
   bank_count: z.coerce.number().int().min(1).max(3).default(1),
   promo_code: z.string().trim().regex(PROMO_CODE_RE).optional().or(z.literal("").transform(() => undefined)),
+  consent: z.union([z.literal("on"), z.boolean()]).optional().transform((v) => v === true || v === "on"),
+  sms_consent: z.union([z.literal("on"), z.boolean()]).optional().transform((v) => v === true || v === "on"),
 });
 
 const clientIp = (req: Request) => req.headers.get("x-forwarded-for")?.split(",")[0].trim() || req.headers.get("x-real-ip") || "unknown";
@@ -28,7 +30,7 @@ export async function POST(req: Request) {
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid request body." }, { status: 400 }); }
   const parsed = schema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: "Please check the details you entered.", fields: parsed.error.flatten().fieldErrors }, { status: 422 });
-  const { station_id, email, bank_count, promo_code } = parsed.data;
+  const { station_id, email, bank_count, promo_code, consent, sms_consent } = parsed.data;
 
   const db = serviceClient();
   if (!stripeConfigured() || !db) return NextResponse.json(PAYMENTS_UNCONFIGURED, { status: 503 });
@@ -66,7 +68,7 @@ export async function POST(req: Request) {
   const hold = holdCents(pricing, bank_count);
 
   const { data: rental, error: rErr } = await db.from("rentals").insert({
-    kiosk_id: kiosk.id, state: "authorized", pricing_version: pricing.id, bank_count, promo_code: promoCode, customer_id: customerId,
+    kiosk_id: kiosk.id, state: "authorized", pricing_version: pricing.id, bank_count, promo_code: promoCode, customer_id: customerId, sms_consent: Boolean(sms_consent),
   }).select("id,reference").single();
   if (rErr || !rental) { await undoPromo(); return NextResponse.json({ error: "We couldn't start your rental. Please try again." }, { status: 500 }); }
 
