@@ -59,6 +59,10 @@ export async function POST(req: Request) {
 
   const user = await getSessionUser().catch(() => null);
   const customerId = user && user.role === "customer" && user.email.toLowerCase() === email && /^[0-9a-f-]{36}$/i.test(user.id) ? user.id : null;
+  const { count: out } = await db.from("rentals")
+    .select("id,payments!inner(receipt_email)", { count: "exact", head: true })
+    .in("state", ["active", "dispense_pending", "unreturned", "overdue"]).ilike("payments.receipt_email", email);
+  if ((out ?? 0) >= 2) return NextResponse.json({ error: "Limit reached — return your outstanding chargers before renting another.", code: "rental_limit" }, { status: 409 });
   const hold = holdCents(pricing, bank_count);
 
   const { data: rental, error: rErr } = await db.from("rentals").insert({

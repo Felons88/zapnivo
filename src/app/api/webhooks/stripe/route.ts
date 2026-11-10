@@ -61,6 +61,7 @@ async function handleEvent(db: Db, event: StripeEvent): Promise<boolean> {
         ...(email ? { receipt_email: email } : {}), ...(phone ? { customer_phone: phone } : {}), ...(revived ? { state: "authorized", failure_code: null } : {}),
       }).eq("id", target.id);
       await db.from("rentals").update({ state: "dispense_pending" }).eq("id", target.rental_id).in("state", revived ? ["authorized", "cancelled"] : ["authorized"]);
+      if (phone && email) await db.from("profiles").update({ phone }).ilike("email", email).is("phone", null);
       return true;
     }
     case "payment_intent.succeeded": {
