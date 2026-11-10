@@ -151,3 +151,14 @@ Verified against https://developers.brevo.com/docs/inbound-parse-webhooks. Googl
 | `noreply@` | Send-only; never accepts support conversations |
 
 Only mail that resolves to a ticket (reply token or `Z-<n>` + requester match) becomes a ticket message — departmental inboxes stay plain mail until a workflow explicitly calls for ticketing.
+
+## BIMI (Brand Indicators for Message Identification)
+
+- **Logo asset**: `public/bimi/zapnivo.svg` — SVG Tiny PS, 256×256, lime `#D9FF73` rounded mark + `#11122B` bolt (matches `src/components/Logo.tsx`). Live at `https://www.zapnivo.com/bimi/zapnivo.svg` (200, `image/svg+xml`).
+- **DNS record** (Vercel DNS, uid `rec_e1149ce859f8232c212ebddd`): `default._bimi.zapnivo.com TXT "v=BIMI1; l=https://www.zapnivo.com/bimi/zapnivo.svg"` — logo assertion only; **no `a=` certificate tag yet**.
+- **DMARC**: currently `v=DMARC1; p=none; rua=mailto:rua@dmarc.brevo.com`. BIMI requires `p=quarantine` or `p=reject` — do **not** enforce until all legitimate senders align.
+- **Alignment audit (2026-11-10, real message)**: Brevo transactional send `From: support@zapnivo.com` → Google Workspace → forwarded inbound. Google's `Authentication-Results` recorded in `inbound_emails`: **SPF pass, DKIM pass, DMARC pass**. Brevo signs DKIM with `d=zapnivo.com` (selectors `brevo1`/`brevo2` → `*.dkim.brevo.com`); SPF covers Google Workspace only (`include:_spf.google.com ~all`) — Brevo uses its own envelope domain, so DMARC alignment rides on DKIM.
+- **Still required before logo display**:
+  1. **CMC or VMC certificate** — Gmail only renders BIMI with a certificate. CMC (DigiCert/CSC) is the lower-cost option and does not strictly require a registered trademark; VMC (DigiCert) requires trademark registration. Both require: enforced DMARC (`p=quarantine` minimum), the hosted SVG, and organization verification. Zapnivo has no registered trademark on file — CMC is the realistic path.
+  2. **DMARC enforcement** — move `p=none` → `p=quarantine` (then `reject`) only after confirming every sender aligns. Verified aligned: Brevo transactional (all 11 `@zapnivo.com` sender identities share the same path). **Unverified**: Google Workspace *outbound* user mail — `google._domainkey` DKIM exists but signing must be enabled in Admin → Apps → Google Workspace → Gmail → Authenticate email; confirm before enforcing.
+  3. Once the cert is issued: host the `.pem` at `https://www.zapnivo.com/bimi/zapnivo-cert.pem`, update the TXT to `v=BIMI1; l=...; a=...`, and re-verify.
