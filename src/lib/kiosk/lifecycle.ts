@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { triggerRentalReturned } from "../email-triggers";
 import { notifyReturnFailed } from "../notifications";
 import { assertTransition, type RentalState } from "../rental-state";
+import { trackServer } from "../analytics";
 
 /** Device event types that mean "a power bank was physically docked". Vendor aliases land here. */
 export const RETURN_EVENT_TYPES = new Set(["power_bank_docked", "bank_returned"]);
@@ -163,6 +164,7 @@ export async function processKioskEvent(
     kiosk_id: kiosk.id, event_id: ev.eventId, occurred_at: ev.occurredAt, returned_at: returnedAt,
     ...(late ? { non_return_deadline: rental.non_return_deadline } : {}),
   });
+  trackServer({ name: "rental_completed", entityType: "rental", entityId: rental.id, props: { late } });
 
   try {
     await (deps.notifyReturned ?? triggerRentalReturned)(rental.id);

@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import type { RentalResult } from "@/lib/rental-lookup";
+import { trackEvent } from "@/components/Analytics";
 import { RentalCard } from "./SupportTools";
 
 type Msg = { role: "user" | "assistant"; content: string; rentals?: RentalResult[]; error?: boolean };
@@ -19,7 +20,7 @@ export function AssistantChat() {
   const abort = useRef<AbortController | null>(null);
 
   useEffect(() => {
-    const openIt = () => setOpen(true);
+    const openIt = () => { setOpen(true); trackEvent("support_chat_opened"); };
     window.addEventListener("zapnivo:open-assistant", openIt);
     return () => window.removeEventListener("zapnivo:open-assistant", openIt);
   }, []);
@@ -38,6 +39,7 @@ export function AssistantChat() {
     if (!q || busy) return;
     const next: Msg[] = [...msgs, { role: "user", content: q }];
     setMsgs(next); setText(""); setBusy(true);
+    trackEvent("support_question_submitted");
     abort.current?.abort();
     abort.current = new AbortController();
     try {

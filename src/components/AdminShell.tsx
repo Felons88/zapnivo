@@ -37,6 +37,7 @@ export type AdminNavKey = keyof typeof NAV_ITEMS;
 
 const NAV_ITEMS = {
   dashboard: { href: "/admin", label: "Dashboard", icon: icons.dashboard, group: "Overview" },
+  analytics: { href: "/admin/analytics", label: "Analytics", icon: icons.chart, group: "Growth" },
   inbox: { href: "/admin/support", label: "Inbox", icon: icons.inbox, group: "Support" },
   partner: { href: "/admin/support?queue=partner", label: "Partner relations", icon: icons.building, group: "Support" },
   safety: { href: "/admin/support?queue=safety", label: "Safety", icon: icons.shield, group: "Support" },
@@ -59,7 +60,7 @@ const NAV_ITEMS = {
   audit: { href: "/admin/audit", label: "Audit log", icon: icons.scroll, group: "System" },
 } as const;
 
-const GROUPS = ["Overview", "Support", "Operations", "Finance", "System"] as const;
+const GROUPS = ["Overview", "Growth", "Support", "Operations", "Finance", "System"] as const;
 
 function NavLink({ item, active }: { item: (typeof NAV_ITEMS)[AdminNavKey]; active: boolean }) {
   return (

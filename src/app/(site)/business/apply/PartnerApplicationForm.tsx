@@ -1,6 +1,7 @@
 "use client";
 import { useRef, useState, type ReactNode } from "react";
 import { track } from "@/lib/analytics";
+import { trackEvent } from "@/components/Analytics";
 import { VENUE_TYPES } from "@/lib/validation";
 import { btnClass } from "@/components/ui";
 import { inputCls } from "@/components/forms";
@@ -61,7 +62,7 @@ export function PartnerApplicationForm() {
 
   const next = () => {
     if (!stepValid()) return;
-    setStep((v) => Math.min(v + 1, STEP_FIELDS.length - 1));
+    setStep((v) => { const n = Math.min(v + 1, STEP_FIELDS.length - 1); trackEvent("partner_application_step", { step: n }); return n; });
   };
   const back = () => setStep((v) => Math.max(v - 1, 0));
 
@@ -87,6 +88,7 @@ export function PartnerApplicationForm() {
       if (res.ok && result.ok) {
         setS({ status: "done" });
         track("venue_application_complete");
+        trackEvent("partner_application_submitted");
         return;
       }
       const fieldErrors: FieldErrors = {};
@@ -124,7 +126,7 @@ export function PartnerApplicationForm() {
     <form
       ref={ref}
       onSubmit={submit}
-      onFocus={() => { if (!started.current) { started.current = true; track("venue_application_start"); } }}
+      onFocus={() => { if (!started.current) { started.current = true; track("venue_application_start"); trackEvent("partner_application_started"); } }}
       className="relative space-y-6"
       noValidate
     >

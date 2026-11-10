@@ -21,6 +21,18 @@ export const DEV_COOKIE = "zapnivo_dev_as";
 
 export const authConfigured = () => devAuth() || Boolean(anonClient() && serviceClient());
 
+/** Absolute session ceiling: no authenticated session may outlive 24h from the JWT's issued-at, regardless of provider token lifetime or refresh. */
+export const SESSION_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+/** Reads `iat` from an already-signature-verified JWT payload; null when absent/malformed. */
+export const jwtIssuedAt = (token: string): number | null => {
+  try {
+    const payload = token.split(".")[1];
+    const iat = payload ? (JSON.parse(Buffer.from(payload, "base64url").toString()) as { iat?: number }).iat : undefined;
+    return typeof iat === "number" && Number.isFinite(iat) ? iat * 1000 : null;
+  } catch { return null; }
+};
+
 /** Verifies the access token with Supabase and loads the role server-side. Returns null when unauthenticated. */
 export async function getSessionUser(): Promise<SessionUser | null> {
   if (devAuth()) {
@@ -31,6 +43,8 @@ export async function getSessionUser(): Promise<SessionUser | null> {
   const anon = anonClient();
   const svc = serviceClient();
   if (!token || !anon || !svc) return null;
+  const issuedAt = jwtIssuedAt(token);
+  if (issuedAt === null || Date.now() - issuedAt > SESSION_MAX_AGE_MS) return null;
   const { data, error } = await anon.auth.getUser(token);
   if (error || !data.user) return null;
   const { data: profile } = await svc.from("profiles").select("role, organization_id").eq("id", data.user.id).single();

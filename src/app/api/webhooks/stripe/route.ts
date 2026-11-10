@@ -4,6 +4,7 @@ import { triggerPaymentDispute, triggerPaymentFailedHtml } from "@/lib/email-ext
 import { fmt } from "@/lib/pricing";
 import { verifyStripeSignature } from "@/lib/stripe";
 import { serviceClient } from "@/lib/supabase";
+import { trackServer } from "@/lib/analytics";
 
 /** Stripe webhook — verifies the signature (no SDK) and fires the payment_receipt email on success. */
 export async function POST(req: Request) {
@@ -68,6 +69,7 @@ async function handleEvent(db: Db, event: StripeEvent): Promise<boolean> {
         ...(email ? { receipt_email: email } : {}), ...(phone ? { customer_phone: phone } : {}), ...(revived ? { state: "authorized", failure_code: null } : {}),
       }).eq("id", target.id));
       await requireWrite(db.from("rentals").update({ state: "dispense_pending" }).eq("id", target.rental_id).in("state", revived ? ["authorized", "cancelled"] : ["authorized"]));
+      trackServer({ name: "rental_started", entityType: "rental", entityId: target.rental_id });
       // NOTE: checkout phone/email are customer-typed and unverified — never bind them to a profile here.
       return true;
     }
@@ -107,6 +109,7 @@ async function handleEvent(db: Db, event: StripeEvent): Promise<boolean> {
       if (!pay) return true;
       await requireWrite(db.from("payments").update({ state: "failed", failure_code: code?.decline_code ?? code?.code ?? "payment_failed", stripe_payment_intent_id: o.id }).eq("id", pay.id).eq("state", "authorized"));
       await requireWrite(db.from("rentals").update({ state: "cancelled" }).eq("id", pay.rental_id).eq("state", "authorized"));
+      trackServer({ name: "rental_payment_failed", entityType: "rental", entityId: pay.rental_id, props: { failure_code: code?.decline_code ?? code?.code ?? "payment_failed" } });
       await triggerPaymentFailedHtml(pay.rental_id);
       return true;
     }

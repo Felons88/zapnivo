@@ -5,6 +5,7 @@ import { getRefundProvider, type RefundProvider } from "../payments/source";
 import { describeRental, type RentalResult } from "../rental-lookup";
 import { SITE, subUrl } from "../site";
 import { signAccess } from "./access";
+import { trackServer } from "../analytics";
 import { renderEmail } from "../email-templates";
 import { ticketReplyAddress } from "../email/inbound";
 import { flushOutbox, getMailer, type Mailer } from "./mailer";
@@ -76,6 +77,7 @@ export async function createTicket(c: Ctx, input: NewTicketInput): Promise<{ tic
   });
   await c.repo.addMessage({ ticketId: ticket.id, authorType: input.requesterType, authorId: null, authorName: input.name, internal: false, body: input.description });
   await audit(c, ticket.id, { kind: "system" }, "created", { queue: cls.queue, priority: cls.priority, safety: cls.safety });
+  trackServer({ name: "support_ticket_created", entityType: "ticket", entityId: ticket.number, props: { queue: cls.queue, requester_type: input.requesterType } });
 
   const decision = await triage(ticket, input.description, cls, { chat: c.chat, link: ticketLink(c, ticket) }).catch(() => null);
   const d = decision ?? { reply: "", kind: "system" as const, aiState: "needs_human" as const, summary: null };
