@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { renderEmail } from "./email-templates";
 import { flushOutbox, getMailer } from "./helpdesk/mailer";
 import { getRepo } from "./helpdesk/repo";
 import { expireStaleCommands } from "./kiosk/commands";
@@ -17,11 +18,11 @@ export async function staffRecipients(db: SupabaseClient, pref: Pref): Promise<s
   return ((staff ?? []) as { id: string; email: string }[]).filter((s) => !off.has(s.id)).map((s) => s.email);
 }
 
-async function alertStaff(db: SupabaseClient, pref: Pref, subject: string, body: string) {
+async function alertStaff(db: SupabaseClient, pref: Pref, subject: string, body: string, html: string | null = null) {
   const repo = await getRepo();
   if (!repo) return 0;
   const to = await staffRecipients(db, pref);
-  for (const t of to) await repo.queueEmail({ ticketId: null, to: t, subject, body, html: null });
+  for (const t of to) await repo.queueEmail({ ticketId: null, to: t, subject, body, html });
   if (to.length) await flushOutbox(repo, getMailer());
   return to.length;
 }
@@ -29,13 +30,27 @@ async function alertStaff(db: SupabaseClient, pref: Pref, subject: string, body:
 /** Marks silent stations offline and alerts staff once per outage; flags low batteries; expires dead commands. */
 export async function runFleetSweep(db: SupabaseClient, now = new Date()) {
   const cutoff = new Date(now.getTime() - OFFLINE_AFTER_MIN * 60_000).toISOString();
-  const { data: stale } = await db.from("kiosks").select("id,station_id,last_seen_at,venues(name)")
+  const { data: stale } = await db.from("kiosks").select("id,station_id,last_seen_at,venues(name,city)")
     .eq("state", "online").lt("last_seen_at", cutoff).is("offline_alerted_at", null);
-  const stations = (stale ?? []) as unknown as { id: string; station_id: string; last_seen_at: string | null; venues: { name: string } | { name: string }[] | null }[];
+  const stations = (stale ?? []) as unknown as { id: string; station_id: string; last_seen_at: string | null; venues: { name: string; city: string | null } | { name: string; city: string | null }[] | null }[];
   for (const k of stations) await db.from("kiosks").update({ state: "offline", offline_alerted_at: now.toISOString() }).eq("id", k.id);
   if (stations.length) {
     const lines = stations.map((k) => { const v = Array.isArray(k.venues) ? k.venues[0] : k.venues; return `• ${k.station_id}${v ? ` (${v.name})` : ""} — last seen ${k.last_seen_at ?? "never"}`; });
-    await alertStaff(db, "offline_alerts", `${stations.length} station${stations.length === 1 ? "" : "s"} offline`, `No heartbeat for ${OFFLINE_AFTER_MIN}+ minutes:\n\n${lines.join("\n")}\n\nFleet: ${subUrl("internal", "/fleet")}`);
+    const venueOf = (k: (typeof stations)[number]) => { const v = Array.isArray(k.venues) ? k.venues[0] : k.venues; return v ?? null; };
+    const detected = now.toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+    const html = stations.length === 1
+      ? renderEmail("station_offline", {
+          station_id: stations[0].station_id,
+          station_name: venueOf(stations[0])?.name ?? stations[0].station_id,
+          venue_name: venueOf(stations[0])?.name ?? "—",
+          city: venueOf(stations[0])?.city ?? "—",
+          detected_at: detected, admin_url: subUrl("internal", "/fleet"), year: String(now.getFullYear()),
+        })
+      : renderEmail("station_offline", {
+          station_id: "fleet", station_name: `${stations.length} stations`, venue_name: "Multiple venues",
+          city: "—", detected_at: detected, admin_url: subUrl("internal", "/fleet"), year: String(now.getFullYear()),
+        });
+    await alertStaff(db, "offline_alerts", `${stations.length} station${stations.length === 1 ? "" : "s"} offline`, `No heartbeat for ${OFFLINE_AFTER_MIN}+ minutes:\n\n${lines.join("\n")}\n\nFleet: ${subUrl("internal", "/fleet")}`, html);
   }
 
   const dayAgo = new Date(now.getTime() - 24 * 3600_000).toISOString();

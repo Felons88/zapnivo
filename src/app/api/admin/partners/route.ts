@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { auditLog } from "@/lib/audit";
 import { getSessionUser, isStaff } from "@/lib/auth";
+import { triggerPartnerApproved } from "@/lib/email-extra-triggers";
 import { serviceClient } from "@/lib/supabase";
 
 const back = (req: Request, result: string, detail?: string) => {
@@ -76,9 +77,13 @@ export async function POST(req: Request) {
   if (action === "update_application") {
     const p = statusSchema.safeParse({ application_id: form.get("application_id"), status: form.get("status") });
     if (!p.success) return back(req, "error", "Choose a valid application status.");
-    const { data, error } = await db.from("partner_applications").update({ status: p.data.status }).eq("id", p.data.application_id).select("id").maybeSingle();
+    const { data, error } = await db.from("partner_applications").update({ status: p.data.status }).eq("id", p.data.application_id).select("id,email,business_name").maybeSingle();
     if (error || !data) return back(req, "error", "Application status could not be saved.");
     await auditLog(user!.id, "update_application", "partner_application", p.data.application_id, { status: p.data.status });
+    if (p.data.status === "approved") {
+      const app = data as { email?: string; business_name?: string };
+      if (app.email) await triggerPartnerApproved(app.email, app.business_name ?? "your venue").catch(() => false);
+    }
     return back(req, "application");
   }
 

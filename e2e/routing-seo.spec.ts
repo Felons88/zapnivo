@@ -212,12 +212,16 @@ test.describe("map fallback without NEXT_PUBLIC_MAPBOX_TOKEN", () => {
     await expect(page.getByText(/coming soon|temporarily unavailable/i).first()).toBeVisible();
     // Locator search must degrade honestly, not call Mapbox.
     const finder = page.locator("form", { has: page.locator("#station-search") });
-    await finder.locator("#station-search").fill("Minneapolis");
-    // The click can land before hydration finishes — retry until the status message mounts.
+    const input = finder.locator("#station-search");
+    // Give React time to hydrate before the first click: a pre-hydration submit natively
+    // reloads the page (the input has no `name`, so the GET is a no-op) and resets the clock.
+    await page.waitForLoadState("load");
+    await page.waitForTimeout(2500);
     const searchMsg = page.getByRole("status").filter({ hasText: /temporarily unavailable/i });
     for (let i = 0; i < 10 && !(await searchMsg.first().isVisible().catch(() => false)); i++) {
+      await input.fill("Minneapolis");
       await finder.getByRole("button", { name: "Search", exact: true }).click();
-      await page.waitForTimeout(400);
+      await page.waitForTimeout(500);
     }
     await expect(searchMsg.first()).toBeVisible();
     expect(mapboxRequests).toEqual([]);

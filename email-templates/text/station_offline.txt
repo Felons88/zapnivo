@@ -1,0 +1,13 @@
+HIGH severity alert — Zapnivo station offline
+
+Station {{station_id}} ({{station_name}}) at {{venue_name}}, {{city}} stopped reporting.
+
+Detected: {{detected_at}}
+Severity: HIGH
+
+Stations that stay offline stop serving rentals and earn no revenue. Check power/connectivity, then acknowledge in the admin console.
+
+Open admin console: {{admin_url}}
+
+— Zapnivo automated monitoring
+{{year}}

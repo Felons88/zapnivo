@@ -1,0 +1,14 @@
+New partner application — Zapnivo admin
+
+A new partnership application needs review.
+
+Applicant: {{contact_name}}
+Business: {{business_name}}
+Location: {{business_location}}
+Inquiry ID: {{inquiry_id}}
+Submitted: {{submitted_at}}
+
+Review in the admin console: {{admin_url}}
+
+— Zapnivo automated notification
+{{year}}

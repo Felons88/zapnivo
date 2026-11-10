@@ -1,0 +1,15 @@
+Reminder: your Zapnivo rental is active
+
+Your portable charger rental is still active.
+
+Rental: {{rental_id}}
+Status: {{rental_status}}
+Started: {{start_time}}
+Pricing: {{pricing_summary}}
+
+Return the power bank to any eligible Zapnivo station to end the rental.
+
+Check your rental: {{rental_url}}
+
+— Zapnivo Team
+{{year}}

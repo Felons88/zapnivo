@@ -1,0 +1,13 @@
+Update on Zapnivo ticket {{ticket_id}}
+
+There is new activity on your Zapnivo support ticket.
+
+Ticket: {{ticket_id}}
+Subject: {{ticket_subject}}
+Status: {{ticket_status}}
+Updated: {{updated_at}}
+
+View or reply to your ticket: {{ticket_url}}
+
+— Zapnivo Support
+{{year}}

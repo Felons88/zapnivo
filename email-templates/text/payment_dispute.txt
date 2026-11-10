@@ -1,0 +1,18 @@
+ACTION REQUIRED — payment dispute on Zapnivo
+
+A payment dispute needs a response.
+
+Dispute ID: {{dispute_id}}
+Amount: {{amount}}
+Rental: {{rental_ref}}
+Customer: {{customer_email}}
+Reason: {{reason}}
+Opened: {{opened_at}}
+Respond by: {{respond_by}}
+
+Gather rental and return evidence, then respond in the admin console before the deadline — unanswered disputes are typically lost automatically.
+
+Open admin console: {{admin_url}}
+
+— Zapnivo automated notification
+{{year}}

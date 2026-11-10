@@ -1,0 +1,15 @@
+Your Zapnivo refund was issued
+
+We have issued your refund.
+
+Refund: {{refund_id}}
+Amount: {{refund_amount}}
+Rental: {{rental_id}}
+Processed: {{processed_at}}
+
+Your bank or card provider controls when funds become visible — please allow a few business days.
+
+View details: {{refund_url}}
+
+— Zapnivo Team
+{{year}}

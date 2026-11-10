@@ -1,0 +1,13 @@
+Your Zapnivo return is confirmed
+
+We confirmed your charger return. Thanks for keeping power moving.
+
+Rental: {{rental_id}}
+Return time: {{return_time}}
+Return venue: {{return_venue}}
+Total: {{rental_total}}
+
+View your rental: {{rental_url}}
+
+— Zapnivo Team
+{{year}}

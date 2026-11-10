@@ -1,6 +1,8 @@
 import { renderEmail } from "@/lib/email-templates";
+import { triggerPartnerApplicationReceived } from "@/lib/email-extra-triggers";
 import { flushOutbox, getMailer } from "@/lib/helpdesk/mailer";
 import { getRepo } from "@/lib/helpdesk/repo";
+import { serviceClient } from "@/lib/supabase";
 import { handleSubmission } from "@/lib/submit";
 import { partnerApplicationSchema } from "@/lib/validation";
 
@@ -26,5 +28,14 @@ export const POST = (req: Request) =>
         }),
       });
       await flushOutbox(repo, getMailer());
+      const db = serviceClient();
+      if (db) {
+        const { data: staff } = await db.from("profiles").select("email").in("role", ["admin", "staff"]).limit(50);
+        const app = {
+          contactName: d.contactName, businessName: d.businessName,
+          businessLocation: `${d.city}, ${d.state}`, inquiryId: row.id.slice(0, 8).toUpperCase(),
+        };
+        for (const s of (staff ?? []) as { email: string }[]) await triggerPartnerApplicationReceived(s.email, app).catch(() => false);
+      }
     },
   });

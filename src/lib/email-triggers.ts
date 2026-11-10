@@ -17,12 +17,15 @@ type RentalRow = {
   payments: { receipt_email: string | null; amount_captured_cents: number | null; stripe_payment_intent_id: string | null; customer_phone: string | null; tax_cents?: number | null; discount_cents?: number | null }[];
 };
 
-const stamp = (iso: string | null) => iso ? new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }) : "—";
-const year = () => String(new Date().getFullYear());
-const pricingSummary = () => `${fmt(PRICING_V1.firstHourCents)} first hour · ${fmt(PRICING_V1.additionalHourCents)}/hr after · ${fmt(PRICING_V1.first24hCapCents)}/day cap`;
+export const stamp = (iso: string | null) => iso ? new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }) : "—";
+export const year = () => String(new Date().getFullYear());
+// Confirmed pricing: flat $6.99 per started hour, uncapped; $45 non-return fee after 24h.
+const pricingSummary = () => `${fmt(PRICING_V1.firstHourCents)} first hour · ${fmt(PRICING_V1.additionalHourCents)} per started hour · ${fmt(PRICING_V1.nonReturnMaxCents)} non-return fee after ${PRICING_V1.nonReturnAfterHours}h`;
+
+export type { RentalRow };
 
 /** Fetches a rental with venue + payment context, scoped to a single row. */
-async function loadRental(where: { id?: string; stripeId?: string }): Promise<RentalRow | null> {
+export async function loadRental(where: { id?: string; stripeId?: string }): Promise<RentalRow | null> {
   const db = serviceClient();
   if (!db) return null;
   const sel = "id,reference,state,started_at,dispensed_at,returned_at,non_return_deadline,kiosks(station_id,venues(name,city)),payments(receipt_email,amount_captured_cents,stripe_payment_intent_id,tax_cents,discount_cents)";
@@ -33,7 +36,7 @@ async function loadRental(where: { id?: string; stripeId?: string }): Promise<Re
   return (data as unknown as RentalRow) ?? null;
 }
 
-async function sendToCustomer(email: string, subject: string, body: string, html: string | null, ticketId = null as string | null) {
+export async function sendToCustomer(email: string, subject: string, body: string, html: string | null, ticketId = null as string | null) {
   const repo = await getRepo();
   if (!repo) return false;
   await repo.queueEmail({ ticketId, to: email, subject, body, html });
@@ -41,10 +44,10 @@ async function sendToCustomer(email: string, subject: string, body: string, html
   return true;
 }
 
-const emailFor = (r: RentalRow) => r.payments?.[0]?.receipt_email ?? null;
+export const emailFor = (r: RentalRow) => r.payments?.[0]?.receipt_email ?? null;
+export const rentalUrl = () => subUrl("support", "/#find-rental");
 const phoneFor = (r: RentalRow) => r.payments?.[0]?.customer_phone ?? null;
-const smsFor = async (r: RentalRow, body: string) => { const phone = phoneFor(r); if (!phone) return; const db = serviceClient(); if (db) await sendSms(db, { to: phone, body, rentalId: r.id }); };
-const rentalUrl = () => subUrl("support", "/#find-rental");
+export const smsFor = async (r: RentalRow, body: string) => { const phone = phoneFor(r); if (!phone) return; const db = serviceClient(); if (db) await sendSms(db, { to: phone, body, rentalId: r.id }); };
 
 export async function triggerRentalStarted(rentalId: string) {
   const r = await loadRental({ id: rentalId });

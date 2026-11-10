@@ -1,0 +1,15 @@
+ACTION NEEDED — Zapnivo rental {{rental_id}}
+
+We have not yet confirmed a return for this rental.
+
+Rental: {{rental_id}}
+Status: {{rental_status}}
+Started: {{start_time}}
+Return deadline: {{return_deadline}}
+
+Please return the power bank to any eligible Zapnivo station, or contact support if you need help.
+
+Check your rental: {{rental_url}}
+
+— Zapnivo Team
+{{year}}

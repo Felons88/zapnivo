@@ -1,0 +1,16 @@
+Security alert — Zapnivo
+
+Severity: {{severity}}
+Type: {{alert_type}}
+Account: {{account_ref}}
+Source: {{source_ref}}
+Occurred: {{occurred_at}}
+
+Details: {{details}}
+
+Review the event in the admin console and follow the security runbook if this looks suspicious.
+
+Open admin console: {{admin_url}}
+
+— Zapnivo automated security monitoring
+{{year}}

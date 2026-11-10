@@ -1,0 +1,16 @@
+Zapnivo revenue statement — {{org_name}}
+
+Statement period: {{period}}
+
+Rentals this period: {{rentals_count}}
+Gross rental revenue: {{gross_amount}}
+Refunds issued: {{refunds_amount}}
+Revenue share: {{revenue_share}}
+Net payout: {{net_amount}}
+Payout status: {{payout_status}}
+{{payout_date}}
+
+View the full statement in the partner portal: {{portal_url}}
+
+— Zapnivo Partnerships
+{{year}}

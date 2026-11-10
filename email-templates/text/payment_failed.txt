@@ -1,0 +1,12 @@
+ACTION NEEDED — your Zapnivo payment didn't go through
+
+We couldn't authorize the payment for rental {{rental_id}} at {{venue_name}}, so no power bank was released and you have not been charged.
+
+What you can do:
+- Try again from the station's QR code, or
+- Contact support at support.zapnivo.com with reference {{rental_id}}.
+
+Check your rental: {{rental_url}}
+
+— Zapnivo Team
+{{year}}

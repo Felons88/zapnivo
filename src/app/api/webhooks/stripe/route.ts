@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
-import { triggerPaymentFailed, triggerPaymentReceipt } from "@/lib/email-triggers";
+import { triggerPaymentReceipt } from "@/lib/email-triggers";
+import { triggerPaymentDispute, triggerPaymentFailedHtml } from "@/lib/email-extra-triggers";
+import { fmt } from "@/lib/pricing";
 import { verifyStripeSignature } from "@/lib/stripe";
 import { serviceClient } from "@/lib/supabase";
 
@@ -105,7 +107,7 @@ async function handleEvent(db: Db, event: StripeEvent): Promise<boolean> {
       if (!pay) return true;
       await requireWrite(db.from("payments").update({ state: "failed", failure_code: code?.decline_code ?? code?.code ?? "payment_failed", stripe_payment_intent_id: o.id }).eq("id", pay.id).eq("state", "authorized"));
       await requireWrite(db.from("rentals").update({ state: "cancelled" }).eq("id", pay.rental_id).eq("state", "authorized"));
-      await triggerPaymentFailed(pay.rental_id);
+      await triggerPaymentFailedHtml(pay.rental_id);
       return true;
     }
     case "charge.dispute.created":
@@ -113,7 +115,7 @@ async function handleEvent(db: Db, event: StripeEvent): Promise<boolean> {
     case "charge.dispute.closed": {
       const piId = typeof o.payment_intent === "string" ? o.payment_intent : null;
       if (!piId) return true;
-      const { data: pay } = await db.from("payments").select("id").eq("stripe_payment_intent_id", piId).maybeSingle();
+      const { data: pay } = await db.from("payments").select("id,rental_id").eq("stripe_payment_intent_id", piId).maybeSingle();
       if (!pay) return true;
       const status = String(o.status ?? "");
       const closed = event.type === "charge.dispute.closed" || CLOSED_DISPUTE.has(status);
@@ -125,6 +127,23 @@ async function handleEvent(db: Db, event: StripeEvent): Promise<boolean> {
       };
       const { error } = await db.from("disputes").upsert(row, { onConflict: "stripe_dispute_id" });
       if (error) throw new Error("dispute_upsert_failed");
+      if (event.type === "charge.dispute.created") {
+        const [{ data: staff }, rental, payDetail] = await Promise.all([
+          db.from("profiles").select("email").in("role", ["admin", "staff"]).limit(50),
+          pay.rental_id ? db.from("rentals").select("reference").eq("id", pay.rental_id).maybeSingle() : Promise.resolve({ data: null }),
+          db.from("payments").select("receipt_email").eq("id", pay.id).maybeSingle(),
+        ]);
+        const fields = {
+          disputeId: String(o.id ?? ""),
+          amount: typeof o.amount === "number" ? fmt(o.amount) : "unknown",
+          rentalRef: (rental.data as { reference?: string } | null)?.reference ?? "—",
+          customerEmail: (payDetail.data as { receipt_email?: string } | null)?.receipt_email ?? "—",
+          reason: typeof o.reason === "string" ? o.reason : "—",
+          openedAt: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }),
+          respondBy: row.evidence_due_by ? new Date(String(row.evidence_due_by)).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : undefined,
+        };
+        for (const s of (staff ?? []) as { email: string }[]) await triggerPaymentDispute(s.email, fields).catch(() => false);
+      }
       return true;
     }
     case "charge.refunded": {

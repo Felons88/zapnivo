@@ -1,0 +1,13 @@
+We received your Zapnivo support request
+
+Your support request is in our system. Keep your ticket reference handy.
+
+Ticket: {{ticket_id}}
+Subject: {{ticket_subject}}
+Status: {{ticket_status}}
+Opened: {{created_at}}
+
+View or reply to your ticket: {{ticket_url}}
+
+— Zapnivo Support
+{{year}}

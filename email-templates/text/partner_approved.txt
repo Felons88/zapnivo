@@ -1,0 +1,14 @@
+Welcome to Zapnivo, {{org_name}}!
+
+Great news — your partnership application has been approved. Your organization is now set up to host Zapnivo charging stations.
+
+Getting started checklist:
+1. Sign in to the partner portal: {{portal_url}}
+2. Complete your venue profile and station preferences.
+3. Review installation and launch scheduling with our team.
+4. Download the partner app or bookmark the portal for day-to-day ops.
+
+Questions? Reply to this email or visit the partner portal for support resources.
+
+— Zapnivo Partnerships
+{{year}}

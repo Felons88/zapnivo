@@ -44,6 +44,7 @@ const NAV_ITEMS = {
   metrics: { href: "/admin/support/metrics", label: "Metrics", icon: icons.chart, group: "Support" },
   inquiries: { href: "/admin/inquiries", label: "Inquiries", icon: icons.mail, group: "Support" },
   sms: { href: "/admin/sms", label: "SMS log", icon: icons.chat, group: "Support" },
+  emailStudio: { href: "/admin/email-studio", label: "Email studio", icon: icons.mail, group: "Support" },
   fleet: { href: "/admin/fleet", label: "Fleet", icon: icons.battery, group: "Operations" },
   rentals: { href: "/admin/rentals", label: "Rentals", icon: icons.swap, group: "Operations" },
   partners: { href: "/admin/partners", label: "Partners", icon: icons.store, group: "Operations" },

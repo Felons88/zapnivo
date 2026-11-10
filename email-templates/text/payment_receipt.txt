@@ -1,0 +1,16 @@
+Your Zapnivo payment receipt
+
+Thanks for charging with Zapnivo. Here is your payment summary.
+
+Receipt: {{receipt_id}}
+Rental: {{rental_id}}
+Subtotal: {{subtotal}}
+Sales tax: {{tax}}
+Total paid: {{total_paid}}
+
+View your receipt: {{receipt_url}}
+
+This receipt reflects a completed payment. Any separate authorization is not a charge.
+
+— Zapnivo Team
+{{year}}
