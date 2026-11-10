@@ -19,9 +19,9 @@ describe("rental charge", () => {
     expect(rentalChargeCents(T0, after(61), P)).toBe(900);
     expect(rentalChargeCents(T0, after(180), P)).toBe(1100);
   });
-  it("caps at the first-24h cap", () => {
-    expect(rentalChargeCents(T0, after(600), P)).toBe(1300);
-    expect(rentalChargeCents(T0, after(24 * 60), P)).toBe(1300);
+  it("bills every started hour flat (no artificial cap)", () => {
+    expect(rentalChargeCents(T0, after(600), P)).toBe(2500);
+    expect(rentalChargeCents(T0, after(24 * 60), P)).toBe(5300);
   });
   it("refuses to auto-capture beyond 24h while additional-day pricing is unset", () => {
     expect(rentalChargeCents(T0, after(24 * 60 + 1), P)).toBeNull();

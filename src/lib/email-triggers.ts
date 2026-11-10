@@ -2,6 +2,7 @@ import { renderEmail } from "./email-templates";
 import { flushOutbox, getMailer } from "./helpdesk/mailer";
 import { getRepo } from "./helpdesk/repo";
 import { fmt, PRICING_V1 } from "./pricing";
+import { cancelRentalSms, scheduleRentalSms } from "./notifications";
 import { sendSms } from "./sms";
 import { serviceClient } from "./supabase";
 import { SITE, subUrl } from "./site";
@@ -11,7 +12,7 @@ import { signReceipt } from "./billing";
 
 type RentalRow = {
   id: string; reference: string; state: string;
-  started_at: string | null; returned_at: string | null; non_return_deadline: string | null;
+  started_at: string | null; dispensed_at: string | null; returned_at: string | null; non_return_deadline: string | null;
   kiosks: { station_id: string; venues: { name: string; city: string } | null } | null;
   payments: { receipt_email: string | null; amount_captured_cents: number | null; stripe_payment_intent_id: string | null; customer_phone: string | null; tax_cents?: number | null; discount_cents?: number | null }[];
 };
@@ -24,7 +25,7 @@ const pricingSummary = () => `${fmt(PRICING_V1.firstHourCents)} first hour · ${
 async function loadRental(where: { id?: string; stripeId?: string }): Promise<RentalRow | null> {
   const db = serviceClient();
   if (!db) return null;
-  const sel = "id,reference,state,started_at,returned_at,non_return_deadline,kiosks(station_id,venues(name,city)),payments(receipt_email,amount_captured_cents,stripe_payment_intent_id,tax_cents,discount_cents)";
+  const sel = "id,reference,state,started_at,dispensed_at,returned_at,non_return_deadline,kiosks(station_id,venues(name,city)),payments(receipt_email,amount_captured_cents,stripe_payment_intent_id,tax_cents,discount_cents)";
   const q = where.id
     ? db.from("rentals").select(sel).eq("id", where.id)
     : db.from("rentals").select(sel + ",payments!inner(stripe_payment_intent_id)").eq("payments.stripe_payment_intent_id", where.stripeId!);
@@ -48,7 +49,10 @@ const rentalUrl = () => subUrl("support", "/#find-rental");
 export async function triggerRentalStarted(rentalId: string) {
   const r = await loadRental({ id: rentalId });
   const to = r && emailFor(r);
-  if (!r || !to) return false;
+  if (!r) return false;
+  const db0 = serviceClient();
+  if (db0) await scheduleRentalSms(db0, rentalId, new Date(r.dispensed_at ?? r.started_at ?? Date.now()));
+  if (!to) return false;
   return sendToCustomer(to, "Your Zapnivo rental is active",
     `Your rental ${r.reference} is active${r.kiosks?.venues ? ` from ${r.kiosks.venues.name}` : ""}. Keep the power bank with you — return it to any eligible station when you're done.`,
     renderEmail("rental_started", {
@@ -61,7 +65,10 @@ export async function triggerRentalStarted(rentalId: string) {
 export async function triggerRentalReturned(rentalId: string) {
   const r = await loadRental({ id: rentalId });
   const to = r && emailFor(r);
-  if (!r || !to) return false;
+  if (!r) return false;
+  const db0 = serviceClient();
+  if (db0) await cancelRentalSms(db0, rentalId);
+  if (!to) return false;
   return sendToCustomer(to, "Your Zapnivo return is confirmed",
     `Rental ${r.reference} is returned. Thanks for using Zapnivo.`,
     renderEmail("rental_returned", {
@@ -129,7 +136,7 @@ export async function runRentalSweep(now = new Date()) {
   const db = serviceClient();
   if (!db) return { reminders: 0, notices: 0 };
   const soon = new Date(now.getTime() + 26 * 3600_000).toISOString();
-  const sel = "id,reference,state,started_at,returned_at,non_return_deadline,kiosks(station_id,venues(name,city)),payments(receipt_email,amount_captured_cents,stripe_payment_intent_id,customer_phone)";
+  const sel = "id,reference,state,started_at,dispensed_at,returned_at,non_return_deadline,kiosks(station_id,venues(name,city)),payments(receipt_email,amount_captured_cents,stripe_payment_intent_id,customer_phone)";
   const [due, overdue] = await Promise.all([
     db.from("rentals").select(sel).eq("state", "active").not("non_return_deadline", "is", null).lte("non_return_deadline", soon).gt("non_return_deadline", now.toISOString()),
     db.from("rentals").select(sel).eq("state", "active").not("non_return_deadline", "is", null).lte("non_return_deadline", now.toISOString()),

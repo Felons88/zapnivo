@@ -67,7 +67,7 @@ export function createCheckoutSession(i: CheckoutInput) {
         ...(taxEnabled() ? { tax_behavior: "exclusive" } : {}),
       },
     }],
-    payment_intent_data: { capture_method: "manual", receipt_email: i.email, metadata: { rental_id: i.rentalId, rental_reference: i.reference } },
+    payment_intent_data: { capture_method: "manual", setup_future_usage: "off_session", receipt_email: i.email, metadata: { rental_id: i.rentalId, rental_reference: i.reference } },
     metadata: { rental_id: i.rentalId, rental_reference: i.reference, station_id: i.stationId },
   };
   if (taxEnabled()) body.automatic_tax = { enabled: true };

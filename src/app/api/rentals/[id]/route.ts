@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSessionUser, isStaff } from "@/lib/auth";
+import { flag } from "@/lib/notifications";
 import { triggerRentalReturned, triggerRentalStarted } from "@/lib/email-triggers";
 import { auditLog } from "@/lib/audit";
 import { applyPromo, holdCents, PRICING_SELECT, pricingFromRow, proportionalTaxCents, rentalChargeCents, type PricingRow } from "@/lib/billing";
@@ -45,6 +46,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   }
 
   if (action === "nonreturn") {
+    if (!(await flag(db, "non_return_billing_enabled"))) return NextResponse.json({ error: "Non-return billing is disabled by the kill switch." }, { status: 503 });
     // Moves funds: admin only, explicit confirmation, never automatic.
     if (user!.role !== "admin") return NextResponse.json({ error: "Only an admin can charge off a rental." }, { status: 403 });
     if ((form as { confirm?: string }).confirm !== "yes") return done("unchanged", { status: "error", detail: "Tick the confirmation box to charge a non-return." });

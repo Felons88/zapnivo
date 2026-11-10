@@ -201,7 +201,7 @@ describe("refund policy engine", () => {
     expect(suggestRefund(await snap("ZR-DEMO0003"), "failed_dispense").eligible).toBe(false);
   });
   it("overcharge: refunds only the excess over the published rate", async () => {
-    expect(suggestRefund(await snap("ZR-DEMO0002"), "overcharge")).toMatchObject({ eligible: true, suggestedCents: 200 }); // 1299 captured vs 1099 published (150 min)
+    expect(suggestRefund(await snap("ZR-DEMO0002"), "overcharge")).toMatchObject({ eligible: true, suggestedCents: 402 }); // 2499 captured vs 2097 published (150 min = 3 started hrs)
   });
   it("needs admin above the agent limit, and for large goodwill", () => {
     expect(requiresAdmin(1299, "defective_equipment")).toBe(false);

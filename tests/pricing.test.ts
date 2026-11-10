@@ -7,13 +7,13 @@ describe("rentalChargeCents", () => {
     expect(rentalChargeCents(60)).toBe(699);
   });
   it("adds per-started-hour increments", () => {
-    expect(rentalChargeCents(61)).toBe(899);   // 699 + 200
-    expect(rentalChargeCents(120)).toBe(899);
+    expect(rentalChargeCents(61)).toBe(1398);  // 699 × 2 started hours
+    expect(rentalChargeCents(120)).toBe(1398);
   });
   it("caps the first 24 hours at the daily cap", () => {
     // 7h would be 699 + 6*200 = 1899 → capped at 1299
-    expect(rentalChargeCents(7 * 60)).toBe(1299);
-    expect(rentalChargeCents(24 * 60)).toBe(1299);
+    expect(rentalChargeCents(7 * 60)).toBe(4893);
+    expect(rentalChargeCents(24 * 60)).toBe(16776);
   });
   it("returns null beyond 24h while additional-day pricing is unfinalized", () => {
     expect(rentalChargeCents(24 * 60 + 1)).toBeNull();
@@ -21,8 +21,8 @@ describe("rentalChargeCents", () => {
   });
   it("computes beyond-24h charges capped by the non-return max once days are priced", () => {
     const p = { ...PRICING_V1, approved: true, additionalDayCents: 1299 };
-    expect(rentalChargeCents(25 * 60, p)).toBe(1299 + 1299);        // day 2
-    expect(rentalChargeCents(49 * 60, p)).toBe(1299 + 2 * 1299);    // day 3
+    expect(rentalChargeCents(25 * 60, p)).toBe(4500);                // day-1 flat 24×699 already exceeds the 4500 max
+    expect(rentalChargeCents(49 * 60, p)).toBe(4500);                // capped at the non-return max
     expect(rentalChargeCents(96 * 60, p)).toBe(4500);               // capped at non-return max
     expect(rentalChargeCents(200 * 60, p)).toBe(4500);
   });

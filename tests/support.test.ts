@@ -73,11 +73,11 @@ describe("describeRental", () => {
   });
   it("2.5h rental charged the matching published amount is fine (no refund nudge)", () => {
     const r = describeRental(row()); // 150 min → 3 started hours → 699+400 = 1099, capped 1299
-    expect(r.expectedCents).toBe(1099);
+    expect(r.expectedCents).toBe(2097);
     expect(r.suggestRefund).toBe(false);
   });
   it("flags a charge above the published rate and routes to refund review", () => {
-    const r = describeRental(row({ payments: [{ state: "captured", amount_captured_cents: 1299 }] }));
+    const r = describeRental(row({ payments: [{ state: "captured", amount_captured_cents: 2499 }] }));
     expect(r.suggestRefund).toBe(true);
     expect(r.ticketCategory).toBe("Refund request");
     expect(r.tone).toBe("warn");

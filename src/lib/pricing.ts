@@ -19,10 +19,10 @@ export const PRICING_V1: PricingVersion = {
   id: "pilot-2026-v1",
   approved: false,
   firstHourCents: 699,
-  additionalHourCents: 200,
-  first24hCapCents: 1299,
-  nonReturnMaxCents: 4500,
-  nonReturnAfterHours: 72,
+  additionalHourCents: 699,       // CONFIRMED: $6.99 per STARTED hour, flat
+  first24hCapCents: 24 * 699,     // no artificial cap — full 24h of hourly rates
+  nonReturnMaxCents: 4500,        // CONFIRMED: $45 non-return fee (separate from rental charges)
+  nonReturnAfterHours: 24,        // CONFIRMED: 24-hour return deadline
   additionalDayCents: null,
 };
 
@@ -34,7 +34,7 @@ export function rentalChargeCents(minutes: number, p: PricingVersion = PRICING_V
   if (!Number.isFinite(minutes) || minutes < 0) throw new RangeError("minutes must be >= 0");
   const hours = Math.max(1, Math.ceil(minutes / 60));
   const raw = p.firstHourCents + (hours - 1) * p.additionalHourCents;
-  if (minutes <= 24 * 60) return Math.min(raw, p.first24hCapCents);
+  if (minutes <= 24 * 60) return raw; // flat per-started-hour; the 24h cap was retired with confirmed pricing
   if (p.additionalDayCents === null) return null;
   const extraDays = Math.ceil((minutes - 24 * 60) / (24 * 60));
   return Math.min(p.first24hCapCents + extraDays * p.additionalDayCents, p.nonReturnMaxCents);

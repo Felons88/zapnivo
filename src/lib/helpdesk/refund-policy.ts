@@ -7,8 +7,8 @@ import type { RefundReason } from "./types";
  * and VALIDATES; a human always decides. Amounts are integer cents.
  */
 
-/** Agents may approve up to the first-24-hour cap. Above this (or large goodwill) needs an admin AND a second person. */
-export const AGENT_APPROVAL_LIMIT_CENTS = PRICING_V1.first24hCapCents;
+/** Agents may approve up to a fixed $12.99 policy limit. Above this (or large goodwill) needs an admin AND a second person. */
+export const AGENT_APPROVAL_LIMIT_CENTS = 1299;
 export const GOODWILL_AGENT_LIMIT_CENTS = PRICING_V1.firstHourCents;
 
 export const REASON_LABEL: Record<RefundReason, string> = {
