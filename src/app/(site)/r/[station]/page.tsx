@@ -26,6 +26,21 @@ export default async function StationPage({ params, searchParams }: { params: Pr
   const others = (await getStations()).filter((s) => s.id !== station);
   const P = PRICING_V1;
 
+  // Sponsored charging: show the customer any active sponsor covering this station BEFORE checkout.
+  let sponsor: { sponsor_name: string; minutes: number } | null = null;
+  if (avail.ok && db && STATION_ID_RE.test(station)) {
+    const { data: kiosk } = await db.from("kiosks")
+      .select("id,venue_id,venues(id,city,venue_type)")
+      .eq("station_id", station).maybeSingle();
+    if (kiosk) {
+      const v = (kiosk as { venues?: { id: string; city: string | null; venue_type: string | null } | { id: string; city: string | null; venue_type: string | null }[] | null }).venues;
+      const venue = Array.isArray(v) ? v[0] ?? null : v ?? null;
+      const { activeSponsorsForKiosk } = await import("@/lib/ads/sponsored");
+      const offers = await activeSponsorsForKiosk(db, kiosk.id, venue ? { id: venue.id, city: venue.city, venue_type: venue.venue_type } : null);
+      if (offers.length) sponsor = { sponsor_name: offers[0].sponsor_name, minutes: Math.min(offers[0].per_customer_minutes, offers[0].credit_minutes) };
+    }
+  }
+
   return (
     <>
       <PageHero eyebrow="Zapnivo station" title={<>Rent a power bank.</>}>
@@ -52,6 +67,9 @@ export default async function StationPage({ params, searchParams }: { params: Pr
                 </ul>
                 <div className="mt-4"><Notice title="Final pricing pending.">These figures may change before rentals go live. Applicable taxes are added at checkout; a temporary payment authorization may apply.</Notice></div>
               </div>
+              {sponsor && (
+                <div role="status"><Notice title={`Sponsored by ${sponsor.sponsor_name}`}>The first {sponsor.minutes} minutes of your rental are covered by this venue's sponsor. You still authorize the standard hold; the sponsored portion is removed from your final charge automatically.</Notice></div>
+              )}
               <div className="rounded-xl bg-white p-6 md:p-8"><RentForm stationId={station} /></div>
             </>
           ) : (

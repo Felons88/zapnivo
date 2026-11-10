@@ -10,6 +10,7 @@ import { cancelPaymentIntent, capturePaymentIntent, PAYMENTS_UNCONFIGURED, strip
 import { chargeNonReturnFee } from "@/lib/payments/nonreturn";
 import { notifyFeeCharged } from "@/lib/notifications";
 import { appendLedger } from "@/lib/payments/ledger";
+import { sponsoredDiscountCents, recordSponsorSpend } from "@/lib/ads/sponsored";
 import { serviceClient } from "@/lib/supabase";
 
 /** Staff rental lifecycle actions. Dispense/return confirmations fire the branded customer emails. */
@@ -91,7 +92,27 @@ async function captureOnReturn(db: NonNullable<ReturnType<typeof serviceClient>>
     return { status: "flagged", detail: "Rental ran past 24 hours and additional-day pricing is not finalised. Not captured; review manually." };
   }
   const promo = r.promo_code ? await lookupPromo(db, r.promo_code) : null;
-  const { discountCents, netCents } = applyPromo(gross, promo);
+  const { discountCents: promoDiscount, netCents: afterPromo } = applyPromo(gross, promo);
+
+  // Sponsored charging: discount the sponsor-funded minutes from what the customer pays.
+  let sponsorDiscount = 0;
+  let sponsorCampaignId: string | null = null;
+  try {
+    const { data: red } = await db.from("sponsored_redemptions")
+      .select("id,campaign_id,minutes_covered,status").eq("rental_id", id).eq("status", "applied").maybeSingle();
+    if (red) {
+      const rr = red as { id: string; campaign_id: string; minutes_covered: number };
+      const elapsedMin = Math.max(0, (new Date(r.returned_at ?? now).getTime() - new Date(start).getTime()) / 60000);
+      sponsorDiscount = sponsoredDiscountCents({
+        elapsedMinutes: elapsedMin, minutesCovered: rr.minutes_covered, bankCount: r.bank_count,
+        pricing, capCents: afterPromo,
+      });
+      if (sponsorDiscount > 0) sponsorCampaignId = rr.campaign_id;
+    }
+  } catch { /* sponsored discount is best-effort; never block settlement */ }
+
+  const discountCents = promoDiscount + sponsorDiscount;
+  const netCents = afterPromo - sponsorDiscount;
   const tax = taxEnabled() ? proportionalTaxCents(pay.tax_cents ?? 0, holdCents(pricing, r.bank_count), netCents) : 0;
   const total = netCents + tax;
 
@@ -99,15 +120,17 @@ async function captureOnReturn(db: NonNullable<ReturnType<typeof serviceClient>>
     const c = await cancelPaymentIntent(pay.stripe_payment_intent_id, `release_${pay.id}`);
     if (!c.ok) return { status: "error", detail: "Couldn't release the hold." };
     await db.from("payments").update({ state: "released", amount_captured_cents: 0, discount_cents: discountCents, tax_cents: 0 }).eq("id", pay.id);
-    await appendLedger(db, { rentalId: id, kind: "rental_charge", amountCents: 0, stripePaymentIntentId: pay.stripe_payment_intent_id, status: "succeeded", idempotencyKey: `release:${pay.id}`, metadata: { discount_cents: discountCents, reason: "hold_released_fully_discounted" } });
+    await appendLedger(db, { rentalId: id, kind: "rental_charge", amountCents: 0, stripePaymentIntentId: pay.stripe_payment_intent_id, status: "succeeded", idempotencyKey: `release:${pay.id}`, metadata: { discount_cents: discountCents, sponsor_discount_cents: sponsorDiscount, reason: "hold_released_fully_discounted" } });
+    if (sponsorCampaignId && sponsorDiscount > 0) await recordSponsorSpend(db, sponsorCampaignId, sponsorDiscount).catch(() => undefined);
     await auditLog(actor, "release_hold", "payment", pay.id, { discountCents });
     return { status: "released", detail: "Fully discounted; the hold was released.", cents: 0 };
   }
   const cap = await capturePaymentIntent(pay.stripe_payment_intent_id, total, `capture_${pay.id}`);
   if (!cap.ok) return { status: "error", detail: `Capture failed (${cap.code}). The payment stays authorized.` };
   await db.from("payments").update({ state: "captured", amount_captured_cents: total, discount_cents: discountCents, tax_cents: tax, captured_at: now.toISOString() }).eq("id", pay.id);
-  await appendLedger(db, { rentalId: id, kind: "rental_charge", amountCents: total, stripePaymentIntentId: pay.stripe_payment_intent_id, status: "succeeded", idempotencyKey: `capture:${pay.id}`, metadata: { discount_cents: discountCents, tax_cents: tax, bank_count: r.bank_count } });
-  await auditLog(actor, "capture_on_return", "payment", pay.id, { total, discountCents, tax, banks: r.bank_count });
+  await appendLedger(db, { rentalId: id, kind: "rental_charge", amountCents: total, stripePaymentIntentId: pay.stripe_payment_intent_id, status: "succeeded", idempotencyKey: `capture:${pay.id}`, metadata: { discount_cents: discountCents, sponsor_discount_cents: sponsorDiscount, tax_cents: tax, bank_count: r.bank_count } });
+  if (sponsorCampaignId && sponsorDiscount > 0) await recordSponsorSpend(db, sponsorCampaignId, sponsorDiscount).catch(() => undefined);
+  await auditLog(actor, "capture_on_return", "payment", pay.id, { total, discountCents, sponsorDiscount, tax, banks: r.bank_count });
   return { status: "captured", detail: "Charge captured.", cents: total };
 }
 

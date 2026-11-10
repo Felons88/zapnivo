@@ -3,6 +3,7 @@ import { triggerPaymentReceipt } from "@/lib/email-triggers";
 import { triggerPaymentDispute, triggerPaymentFailedHtml } from "@/lib/email-extra-triggers";
 import { fmt } from "@/lib/pricing";
 import { verifyStripeSignature } from "@/lib/stripe";
+import { handleAdChargeRefunded, handleAdCheckoutCompleted, handleAdPaymentIntent } from "@/lib/ads/billing";
 import { serviceClient } from "@/lib/supabase";
 import { trackServer } from "@/lib/analytics";
 import { reportError } from "@/lib/observability";
@@ -56,6 +57,9 @@ async function handleEvent(db: Db, event: StripeEvent): Promise<boolean> {
   const o = event.data.object;
   switch (event.type) {
     case "checkout.session.completed": {
+      if ((o.metadata as Record<string, string> | undefined)?.kind === "ad_campaign") {
+        return handleAdCheckoutCompleted(db, o);
+      }
       const rentalId = metaRental(o);
       const piId = typeof o.payment_intent === "string" ? o.payment_intent : null;
       const email = (o.customer_details as { email?: string } | undefined)?.email ?? null;
@@ -78,6 +82,7 @@ async function handleEvent(db: Db, event: StripeEvent): Promise<boolean> {
     case "payment_intent.succeeded": {
       const pi = o as Obj & { amount_received?: number; receipt_email?: string; latest_charge?: unknown };
       const kind = (o.metadata as Record<string, string> | undefined)?.kind;
+      if (kind === "ad_campaign") return handleAdPaymentIntent(db, o, "succeeded");
       if (kind === "non_return_fee") {
         // Separate fee PI: reconcile billing_ledger + rental fee flag. Never touches the payments row.
         const chargeId = typeof pi.latest_charge === "string" ? pi.latest_charge : null;
@@ -96,6 +101,7 @@ async function handleEvent(db: Db, event: StripeEvent): Promise<boolean> {
     }
     case "payment_intent.payment_failed": {
       const kind = (o.metadata as Record<string, string> | undefined)?.kind;
+      if (kind === "ad_campaign") return handleAdPaymentIntent(db, o, "failed");
       if (kind === "non_return_fee") {
         // Fee PI declined: mark the ledger attempt failed. The rental's own payment/hold is untouched.
         await requireWrite(db.from("billing_ledger").update({ status: "failed" })
@@ -152,6 +158,7 @@ async function handleEvent(db: Db, event: StripeEvent): Promise<boolean> {
       return true;
     }
     case "charge.refunded": {
+      if (await handleAdChargeRefunded(db, o)) return true;
       const piId = typeof o.payment_intent === "string" ? o.payment_intent : null;
       if (!piId) return true;
       const refunded = typeof o.amount_refunded === "number" ? o.amount_refunded : 0;

@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { PartnerGate } from "@/components/PartnerShell";
 import { serviceClient } from "@/lib/supabase";
+import { SponsorPanel } from "./SponsorPanel";
 
 export const metadata: Metadata = { title: "Settings", robots: { index: false, follow: false } };
 
@@ -10,6 +11,7 @@ const TABS = [
   { key: "profile", label: "Profile" },
   { key: "venues", label: "Business & venues" },
   { key: "agreements", label: "Agreements" },
+  { key: "sponsored", label: "Sponsored charging" },
 ] as const;
 type Tab = (typeof TABS)[number]["key"];
 
@@ -99,6 +101,14 @@ export default async function PartnerSettings({ searchParams }: { searchParams: 
                           </form>
                         );
                       })}
+                  </section>
+                )}
+
+                {tab === "sponsored" && (
+                  <section aria-label="Sponsored charging" className="max-w-2xl">
+                    <h2 className="font-display text-xl font-bold">Sponsored charging</h2>
+                    <p className="mt-1 text-sm text-graphite">Fund free minutes for your customers at your venues. Campaigns go live only after Zapnivo approves them — you'll see the status here.</p>
+                    <SponsorPanel venues={venues.map((v) => ({ id: v.id, name: v.name }))} />
                   </section>
                 )}
 

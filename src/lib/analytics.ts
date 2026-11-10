@@ -58,6 +58,9 @@ export const SERVER_EVENT_NAMES = [
   "partner_application_approved", "partner_application_submitted",
   "rental_started", "rental_completed", "rental_refunded", "rental_payment_failed",
   "support_ticket_created", "support_ai_resolved", "support_human_escalated",
+  // advertising lifecycle (server-authoritative; payment/activation transitions only)
+  "ad_campaign_created", "ad_campaign_paid", "ad_campaign_activated", "ad_campaign_completed",
+  "ad_creative_submitted", "ad_creative_approved", "ad_impression_verified", "ad_qr_scanned",
 ] as const;
 export type ServerEventName = (typeof SERVER_EVENT_NAMES)[number];
 

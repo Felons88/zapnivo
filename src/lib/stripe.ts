@@ -74,6 +74,43 @@ export function createCheckoutSession(i: CheckoutInput) {
   return stripeCall<{ id: string; url: string | null }>("POST", "/checkout/sessions", body, `checkout_${i.rentalId}`);
 }
 
+export type AdCheckoutInput = {
+  campaignId: string; orgId: string | null; amountCents: number; email: string;
+  orgName: string; campaignName: string; successUrl: string; cancelUrl: string;
+};
+
+/**
+ * Checkout Session in payment mode for an advertising campaign prepayment.
+ * metadata.kind='ad_campaign' routes webhook events to the ad ledger; the campaign
+ * row itself is always re-read server-side — client metadata is never trusted.
+ */
+export function createAdCheckoutSession(i: AdCheckoutInput) {
+  const metadata: Record<string, string> = { kind: "ad_campaign", campaign_id: i.campaignId };
+  if (i.orgId) metadata.advertiser_org_id = i.orgId;
+  const body: Record<string, unknown> = {
+    mode: "payment",
+    customer_email: i.email,
+    client_reference_id: i.campaignId,
+    phone_number_collection: { enabled: true }, success_url: i.successUrl,
+    cancel_url: i.cancelUrl,
+    line_items: [{
+      quantity: 1,
+      price_data: {
+        currency: "usd", unit_amount: i.amountCents,
+        product_data: {
+          name: `Zapnivo advertising — ${i.campaignName}`.slice(0, 250),
+          description: `Advertising campaign for ${i.orgName}`.slice(0, 500),
+        },
+        ...(taxEnabled() ? { tax_behavior: "exclusive" } : {}),
+      },
+    }],
+    payment_intent_data: { receipt_email: i.email, metadata },
+    metadata,
+  };
+  if (taxEnabled()) body.automatic_tax = { enabled: true };
+  return stripeCall<{ id: string; url: string | null }>("POST", "/checkout/sessions", body, `adcheckout_${i.campaignId}`);
+}
+
 export const capturePaymentIntent = (pi: string, amountCents: number, idem: string) =>
   stripeCall<{ id: string; status: string; amount_received?: number }>("POST", `/payment_intents/${encodeURIComponent(pi)}/capture`, { amount_to_capture: amountCents }, idem);
 

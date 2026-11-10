@@ -44,8 +44,8 @@ export async function POST(req: Request) {
 
   // Station must be online, venue published, and have enough ready banks.
   const unavailable = () => NextResponse.json({ error: "This station isn't available right now.", code: "station_unavailable" }, { status: 409 });
-  const { data: kiosk } = await db.from("kiosks").select("id,state,venues(published)").eq("station_id", station_id).maybeSingle();
-  const venue = (kiosk as unknown as { venues: { published: boolean } | null } | null)?.venues;
+  const { data: kiosk } = await db.from("kiosks").select("id,state,venues(id,city,venue_type,published)").eq("station_id", station_id).maybeSingle();
+  const venue = (kiosk as unknown as { venues: { id: string; city: string | null; venue_type: string | null; published: boolean } | null } | null)?.venues;
   if (!kiosk || kiosk.state !== "online" || !venue?.published) return unavailable();
   const { count } = await db.from("kiosk_slots").select("slot_number", { count: "exact", head: true }).eq("kiosk_id", kiosk.id).eq("state", "ready");
   if ((count ?? 0) < bank_count) return unavailable();
@@ -76,6 +76,19 @@ export async function POST(req: Request) {
     kiosk_id: kiosk.id, state: "authorized", pricing_version: pricing.id, bank_count, promo_code: promoCode, customer_id: customerId, sms_consent: Boolean(sms_consent),
   }).select("id,reference").single();
   if (rErr || !rental) { await undoPromo(); return NextResponse.json({ error: "We couldn't start your rental. Please try again." }, { status: 500 }); }
+
+  // Sponsored charging: if an active sponsor covers this kiosk, record the redemption.
+  // The hold is unchanged — the sponsored minutes are discounted at settlement.
+  try {
+    const { activeSponsorsForKiosk, applySponsorAtCheckout } = await import("@/lib/ads/sponsored");
+    const sponsors = await activeSponsorsForKiosk(db, kiosk.id, venue ? { id: venue.id, city: venue.city, venue_type: venue.venue_type } : null);
+    if (sponsors.length) {
+      await applySponsorAtCheckout(db, {
+        campaignId: sponsors[0].id, rentalId: rental.id, customerRef: email,
+        kioskId: kiosk.id, venue: venue ? { id: venue.id, city: venue.city, venue_type: venue.venue_type } : null,
+      });
+    }
+  } catch { /* sponsorship must never block a rental */ }
 
   const { data: pay, error: pErr } = await db.from("payments").insert({
     rental_id: rental.id, state: "authorized", amount_authorized_cents: hold, currency: "usd", receipt_email: email,
