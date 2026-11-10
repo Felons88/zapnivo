@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE } from "@/lib/auth";
 import { apexCookieDomain } from "@/lib/subdomains";
+import { homeFor } from "@/lib/customer";
 import { oauthClient, serviceClient } from "@/lib/supabase";
 
 const toLogin = (req: NextRequest, error = "oauth") => NextResponse.redirect(`${req.nextUrl.protocol}//${req.headers.get("host") ?? new URL(req.url).host}/login?error=${error}`);
@@ -22,7 +23,7 @@ export async function GET(req: NextRequest) {
   const { data: profile } = svc
     ? await svc.from("profiles").select("role").eq("id", data.user.id).single()
     : { data: null };
-  const dest = profile?.role === "partner" ? "/partners" : profile?.role ? "/admin" : "/";
+  const dest = homeFor(profile?.role);
 
   const res = NextResponse.redirect(`${req.nextUrl.protocol}//${req.headers.get("host") ?? new URL(req.url).host}${dest}`);
   res.cookies.set(SESSION_COOKIE, data.session.access_token, {

@@ -1,10 +1,11 @@
 export const dynamic = "force-dynamic";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { AdminGate } from "@/components/AdminShell";
 import { EmptyCard, Metric } from "@/components/PortalShell";
 import { Pill } from "@/components/SupportNav";
+import { getSessionUser, isStaff } from "@/lib/auth";
 import { serviceClient } from "@/lib/supabase";
 
 export const metadata: Metadata = { title: "Station", robots: { index: false, follow: false } };
@@ -16,6 +17,9 @@ const input = "min-h-10 w-full rounded-lg border border-silver/70 px-3 text-sm";
 export default async function StationDetail({ params, searchParams }: { params: Promise<{ station: string }>; searchParams: Promise<{ result?: string; detail?: string }> }) {
   const { station } = await params;
   const fb = await searchParams;
+  const viewer = await getSessionUser();
+  if (!viewer) redirect("/login");
+  if (!isStaff(viewer)) redirect("/partners");
   const db = serviceClient();
   if (!db) return <AdminGate title="Station" nav="fleet"><EmptyCard title="Fleet data not connected">Connect Supabase.</EmptyCard></AdminGate>;
 

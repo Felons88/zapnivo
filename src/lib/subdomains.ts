@@ -32,7 +32,7 @@ export const apexCookieDomain = (host: string) => {
 /** Top-level sections owned by the marketing site — on a subdomain these bounce to apex. */
 const APEX_SECTIONS = new Set([
   "about", "advertise", "business", "contact", "how-it-works", "legal", "locations",
-  "llms.txt", "llms-full.txt", "opengraph-image",
+  "llms.txt", "llms-full.txt", "opengraph-image", "r", "account",
 ]);
 
 export type RouteDecision =

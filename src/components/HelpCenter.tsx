@@ -2,6 +2,8 @@
 import Link from "next/link";
 import { useMemo, useRef, useState, type ReactNode } from "react";
 import { ARTICLES, CATEGORIES, searchArticles, type Article, type Audience } from "@/lib/support-content";
+import { PUBLIC_ARTICLES } from "@/lib/support-articles";
+import { subUrl } from "@/lib/site";
 import { inputCls } from "./forms";
 import { Eyebrow } from "./ui";
 
@@ -16,6 +18,7 @@ const POPULAR: Record<Audience, string[]> = {
 
 function ArticleCard({ a, open, onToggle }: { a: Article; open: boolean; onToggle: () => void }) {
   const ticket = a.audience === "renter" ? `/support/new?category=${encodeURIComponent(a.ticket ?? "Other")}` : "/contact?topic=partnerships";
+  const publicArticle = PUBLIC_ARTICLES.find(({ article }) => article.id === a.id);
   return (
     <div className="border-b border-mist last:border-0">
       <h3>
@@ -27,6 +30,7 @@ function ArticleCard({ a, open, onToggle }: { a: Article; open: boolean; onToggl
       <div id={`art-${a.id}`} hidden={!open} className="px-5 pb-6">
         <div className="max-w-2xl space-y-3 leading-7 text-graphite">{a.body.map((p, i) => <p key={i}>{p}</p>)}</div>
         <div className="mt-5 flex flex-wrap gap-4 text-sm font-bold">
+          {publicArticle && <Link href={subUrl("support", `/articles/${publicArticle.slug}`)} className="underline underline-offset-4">Read this article →</Link>}
           {a.audience === "renter" && <a href="#find-rental" className="underline underline-offset-4">Find my rental →</a>}
           <Link href={ticket} className="underline underline-offset-4">{a.audience === "renter" ? "Still need help? Open a ticket →" : "Talk to the partnerships team →"}</Link>
         </div>

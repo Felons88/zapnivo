@@ -27,7 +27,7 @@ Copy values from local `.env.local`; **never commit them**.
 | `HELPDESK_SECRET` | from `.env.local` — required for customer thread links |
 | `KIOSK_ADAPTER` | `none` |
 
-Optional / later: `NEXT_PUBLIC_MAPBOX_TOKEN` (map), `OPENROUTER_API_KEY` (+`OPENROUTER_MODEL`), `RESEND_API_KEY` or `BREVO_API_KEY` + `SUPPORT_FROM_EMAIL` (email — Brevo wins if both set), `STRIPE_*` (payments).
+Optional / later: `NEXT_PUBLIC_MAPBOX_TOKEN` (map), `OPENROUTER_API_KEY` (+`OPENROUTER_MODEL`), `RESEND_API_KEY` or `BREVO_API_KEY` + `SUPPORT_FROM_EMAIL` (email — Brevo wins if both set), `STRIPE_*` (payments: `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` are server-only; set `STRIPE_TAX_ENABLED=1` only once Stripe Tax is configured. Webhook endpoint: `/api/webhooks/stripe` with events `checkout.session.completed`, `payment_intent.succeeded`, `payment_intent.payment_failed`, `charge.refunded`, `charge.dispute.created`, `charge.dispute.updated`, `charge.dispute.closed`. Checkout refuses until a `pricing_versions` row has `approved = true`.)
 
 **Do NOT set `HELPDESK_DEV_STORE`** — it's dev-only and ignored in production builds anyway.
 

@@ -3,7 +3,8 @@ import { flushOutbox, getMailer } from "./helpdesk/mailer";
 import { getRepo } from "./helpdesk/repo";
 import { fmt, PRICING_V1 } from "./pricing";
 import { serviceClient } from "./supabase";
-import { subUrl } from "./site";
+import { SITE, subUrl } from "./site";
+import { signReceipt } from "./billing";
 
 /** Rental lifecycle email triggers — queue into the helpdesk outbox (so delivery state is visible), then flush. */
 
@@ -11,7 +12,7 @@ type RentalRow = {
   id: string; reference: string; state: string;
   started_at: string | null; returned_at: string | null; non_return_deadline: string | null;
   kiosks: { station_id: string; venues: { name: string; city: string } | null } | null;
-  payments: { receipt_email: string | null; amount_captured_cents: number | null; stripe_payment_intent_id: string | null }[];
+  payments: { receipt_email: string | null; amount_captured_cents: number | null; stripe_payment_intent_id: string | null; tax_cents?: number | null; discount_cents?: number | null }[];
 };
 
 const stamp = (iso: string | null) => iso ? new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }) : "—";
@@ -22,7 +23,7 @@ const pricingSummary = () => `${fmt(PRICING_V1.firstHourCents)} first hour · ${
 async function loadRental(where: { id?: string; stripeId?: string }): Promise<RentalRow | null> {
   const db = serviceClient();
   if (!db) return null;
-  const sel = "id,reference,state,started_at,returned_at,non_return_deadline,kiosks(station_id,venues(name,city)),payments(receipt_email,amount_captured_cents,stripe_payment_intent_id)";
+  const sel = "id,reference,state,started_at,returned_at,non_return_deadline,kiosks(station_id,venues(name,city)),payments(receipt_email,amount_captured_cents,stripe_payment_intent_id,tax_cents,discount_cents)";
   const q = where.id
     ? db.from("rentals").select(sel).eq("id", where.id)
     : db.from("rentals").select(sel + ",payments!inner(stripe_payment_intent_id)").eq("payments.stripe_payment_intent_id", where.stripeId!);
@@ -98,9 +99,26 @@ export async function triggerPaymentReceipt(stripePaymentIntentId: string) {
   return sendToCustomer(to, "Your Zapnivo payment receipt",
     `Receipt for rental ${r.reference}: ${paid} captured on ${stamp(null)}.`,
     renderEmail("payment_receipt", {
-      receipt_id: r.reference, receipt_url: rentalUrl(), rental_id: r.reference,
-      subtotal: paid, tax: "included", total_paid: paid, year: year(),
+      receipt_id: r.reference, receipt_url: receiptUrl(r.reference, to) ?? rentalUrl(), rental_id: r.reference,
+      subtotal: fmt((p.amount_captured_cents ?? 0) + (p.discount_cents ?? 0) - (p.tax_cents ?? 0)),
+      tax: (p.tax_cents ?? 0) > 0 ? fmt(p.tax_cents ?? 0) : "Not applied", total_paid: paid, year: year(),
     }));
+}
+
+/** Signed link to the PDF receipt endpoint (null when no signing secret is available). */
+function receiptUrl(reference: string, email: string) {
+  const t = signReceipt(reference, email);
+  return t ? `${SITE.url.replace(/\/$/, "")}/api/receipts/${encodeURIComponent(reference)}?t=${encodeURIComponent(t)}` : null;
+}
+
+/** Plain-text only: there is no designed template for failed payments. */
+export async function triggerPaymentFailed(rentalId: string) {
+  const r = await loadRental({ id: rentalId });
+  const to = r && emailFor(r);
+  if (!r || !to) return false;
+  return sendToCustomer(to, "Your Zapnivo payment didn't go through",
+    `We couldn't authorize the payment for rental ${r.reference}, so no power bank was released and you have not been charged. You can try again from the station's QR code, or contact support at support.zapnivo.com with reference ${r.reference}.`,
+    null);
 }
 
 /** Daily cron sweep: reminders inside the deadline window, notices for overdue rentals. */

@@ -307,3 +307,36 @@ export async function getStaffThread(c: Ctx, actor: Actor, number: string) {
   }
   return { ticket: t, messages, events, refunds, rental, remainingCents };
 }
+
+/* ───────────────────────── Bulk ticket actions ───────────────────────── */
+
+export const BULK_MAX = 100;
+export type BulkPatch = { assigneeId?: string | null; state?: Extract<TicketState, "resolved" | "closed">; priority?: Priority };
+export type BulkResult = { number: string; ok: boolean; error?: string };
+
+/**
+ * Applies one patch to many tickets by looping the single-ticket service functions, so authorization,
+ * audit events and SLA handling are identical to the single-ticket path. Never touches refunds.
+ * Failures are reported per ticket; callers must not claim success for tickets that failed.
+ */
+export async function bulkUpdateTickets(c: Ctx, actor: Actor, numbers: string[], patch: BulkPatch): Promise<BulkResult[]> {
+  staffOnly(actor);
+  const list = [...new Set(numbers)];
+  if (list.length === 0) throw new HelpdeskError("invalid", "Select at least one ticket.");
+  if (list.length > BULK_MAX) throw new HelpdeskError("invalid", `Bulk actions are limited to ${BULK_MAX} tickets at a time.`);
+  const has = (k: keyof BulkPatch) => Object.prototype.hasOwnProperty.call(patch, k) && patch[k] !== undefined;
+  if (!has("assigneeId") && !has("state") && !has("priority")) throw new HelpdeskError("invalid", "Choose an action to apply.");
+  if (has("state") && patch.state !== "resolved" && patch.state !== "closed") throw new HelpdeskError("invalid", "Bulk state changes may only resolve or close tickets.");
+  const out: BulkResult[] = [];
+  for (const number of list) {
+    try {
+      if (has("assigneeId")) await assign(c, actor, number, patch.assigneeId ?? null);
+      if (has("priority")) await setPriority(c, actor, number, patch.priority!);
+      if (has("state")) await setState(c, actor, number, patch.state!);
+      out.push({ number, ok: true });
+    } catch (e) {
+      out.push({ number, ok: false, error: e instanceof HelpdeskError ? e.message : "Unexpected error" });
+    }
+  }
+  return out;
+}

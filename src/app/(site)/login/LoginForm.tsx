@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { btnClass } from "@/components/ui";
 import { inputCls } from "@/components/forms";
+import { homeFor } from "@/lib/customer";
 
 export function LoginForm({ configured, oauthError }: { configured: boolean; oauthError?: boolean }) {
   const [err, setErr] = useState<string | null>(oauthError ? "Google sign-in didn't complete. Please try again." : null);
@@ -10,6 +11,19 @@ export function LoginForm({ configured, oauthError }: { configured: boolean; oau
   const router = useRouter();
   if (!configured) {
     return <p className="text-sm text-graphite">Sign-in is not configured in this environment yet. Connect Supabase (see .env.example) and create staff/partner accounts to enable it.</p>;
+  }
+  const [linkMsg, setLinkMsg] = useState<string | null>(null);
+  const [linkErr, setLinkErr] = useState<string | null>(null);
+  const [linkSending, setLinkSending] = useState(false);
+  async function sendLink(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setLinkSending(true); setLinkErr(null); setLinkMsg(null);
+    const body = Object.fromEntries(new FormData(e.currentTarget).entries());
+    const res = await fetch("/api/auth/email-link", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).catch(() => null);
+    const data = await res?.json().catch(() => ({})) ?? {};
+    setLinkSending(false);
+    if (!res || !res.ok) return setLinkErr(data.error ?? "We couldn't send the link. Please try again.");
+    setLinkMsg("Check your email for a sign-in link. It works on this device and browser only.");
   }
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -19,7 +33,7 @@ export function LoginForm({ configured, oauthError }: { configured: boolean; oau
     const data = await res.json().catch(() => ({}));
     setSending(false);
     if (!res.ok) return setErr(data.error ?? "Sign-in failed.");
-    router.push(data.role === "partner" ? "/partners" : data.role ? "/admin" : "/");
+    router.push(homeFor(data.role));
     router.refresh();
   }
   return (
@@ -35,6 +49,16 @@ export function LoginForm({ configured, oauthError }: { configured: boolean; oau
       </a>
       <div className="flex items-center gap-3 text-xs font-bold uppercase tracking-widest text-graphite/60">
         <span className="h-px flex-1 bg-mist" aria-hidden />or email<span className="h-px flex-1 bg-mist" aria-hidden />
+      </div>
+      <form onSubmit={sendLink} className="space-y-3" aria-label="Email me a sign-in link">
+        <div className="hidden" aria-hidden><label>Website<input name="website" tabIndex={-1} autoComplete="off" /></label></div>
+        <div><label htmlFor="link-email" className="mb-1.5 block text-sm font-bold">Email me a sign-in link</label><input id="link-email" name="email" type="email" required autoComplete="email" className={inputCls} /></div>
+        <p role="status" aria-live="polite" className="text-sm font-semibold text-forest empty:hidden">{linkMsg}</p>
+        <p role="alert" className="text-sm font-semibold text-red-700 empty:hidden">{linkErr}</p>
+        <button type="submit" disabled={linkSending} className={btnClass("light", "w-full border border-mist")}>{linkSending ? "Sending..." : "Send sign-in link"}</button>
+      </form>
+      <div className="flex items-center gap-3 text-xs font-bold uppercase tracking-widest text-graphite/60">
+        <span className="h-px flex-1 bg-mist" aria-hidden />or password<span className="h-px flex-1 bg-mist" aria-hidden />
       </div>
       <form onSubmit={submit} className="space-y-5">
         <div><label htmlFor="email" className="mb-1.5 block text-sm font-bold">Email</label><input id="email" name="email" type="email" required autoComplete="email" className={inputCls} /></div>

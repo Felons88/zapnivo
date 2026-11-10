@@ -7,10 +7,12 @@ import { AssistantChat } from "@/components/AssistantChat";
 import { fmt, PRICING_V1 } from "@/lib/pricing";
 import { OpenAssistant } from "@/components/OpenAssistant";
 import type { Audience } from "@/lib/support-content";
+import { subUrl } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: { absolute: "Phone Charger Rental Support | Zapnivo" },
   description: "Zapnivo help center for renters and venue partners: find a past rental, request a refund review, track a ticket, and search answers about rentals, returns and billing.",
+  alternates: { canonical: subUrl("support", "/") },
 };
 
 const P = PRICING_V1;

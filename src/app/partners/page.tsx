@@ -42,6 +42,8 @@ export default async function PartnerPortal() {
               <Metric label="Open requests" value={openTickets.length} sub="With Zapnivo support" />
             </section>
 
+            <p className="text-sm text-graphite"><Link href="/partners/onboarding" className="font-bold underline">Onboarding progress</Link> · <Link href="/partners/documents" className="font-bold underline">Documents</Link></p>
+
             <section aria-label="Your stations" className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
               <div className="border-b border-mist px-6 py-4"><h2 className="font-display text-lg font-bold">Your stations</h2></div>
               {kioskRows.length === 0 ? (

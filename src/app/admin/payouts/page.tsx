@@ -30,7 +30,7 @@ export default async function Payouts({ searchParams }: { searchParams: Promise<
   const input = "min-h-10 rounded-lg border border-silver/70 px-3 text-sm";
 
   return (
-    <AdminGate title="Ledgers & payouts" nav="partners">
+    <AdminGate title="Ledgers & payouts" nav="payouts">
       {!db ? <EmptyCard title="Finance data not connected">Connect Supabase.</EmptyCard> : (
         <div className="space-y-6">
           {sp.gen != null && <p className="rounded-xl bg-lime px-4 py-2.5 text-sm font-bold text-ink">Generated {sp.gen} ledger(s){Number(sp.norate) > 0 ? ` · ${sp.norate} venue(s) skipped — no private commission rate on their agreement` : ""}{Number(sp.locked) > 0 ? ` · ${sp.locked} locked (payout exists)` : ""}.</p>}
@@ -81,6 +81,7 @@ export default async function Payouts({ searchParams }: { searchParams: Promise<
               </table>
             )}
           </section>
+          <p className="text-xs text-graphite"><a href="/admin/onboarding" className="font-bold underline">Partner onboarding</a> · <a href="/admin/sla" className="font-bold underline">Partner support SLA</a></p>
           <p className="text-xs text-graphite">Payouts are recorded manually after you pay the venue (ACH, check, etc.). The app tracks status and never claims an automated transfer.</p>
         </div>
       )}

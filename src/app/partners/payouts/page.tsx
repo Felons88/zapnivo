@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { PartnerGate } from "@/components/PartnerShell";
 import { EmptyCard, Metric } from "@/components/PortalShell";
 import { Pill } from "@/components/SupportNav";
+import { monthlyCommission } from "@/lib/partner-ops";
 import { fmt } from "@/lib/pricing";
 import { serviceClient } from "@/lib/supabase";
 
@@ -27,8 +28,33 @@ export default async function Payouts() {
         const scheduled = payoutRows.filter((p) => p.status === "scheduled").reduce((a, p) => a + p.amount_cents, 0);
         const paidTotal = payoutRows.filter((p) => p.status === "paid").reduce((a, p) => a + p.amount_cents, 0);
 
+        const since = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth() - 5, 1)).toISOString().slice(0, 10);
+        const { data: chartData } = orgId && db ? await db.from("commission_ledgers").select("period,commission_cents,venues!inner(organization_id)").eq("venues.organization_id", orgId).gte("period", since).limit(500) : { data: null };
+        const bars = monthlyCommission((chartData ?? []) as { period: string; commission_cents: number }[]);
+        const maxBar = Math.max(1, ...bars.map((b) => b.cents));
+
         return (
           <div className="space-y-6">
+            <section aria-label="Commission by month" className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+              <h2 className="font-display text-lg font-bold">Commission by month</h2>
+              {bars.every((b) => b.cents === 0) ? (
+                <p className="mt-3 text-sm text-graphite">No commission recorded in the last 6 months.</p>
+              ) : (
+                <svg role="img" aria-label={`Commission per month, last 6 months: ${bars.map((b) => `${b.label} ${fmt(b.cents)}`).join(", ")}`} viewBox="0 0 360 160" className="mt-4 w-full max-w-xl">
+                  {bars.map((b, i) => {
+                    const h = Math.round((b.cents / maxBar) * 110);
+                    return (
+                      <g key={b.key}>
+                        <rect x={i * 60 + 12} y={125 - h} width={36} height={h} rx={4} className="fill-forest" />
+                        <text x={i * 60 + 30} y={120 - h} textAnchor="middle" fontSize="10" className="fill-ink">{b.cents ? fmt(b.cents) : ""}</text>
+                        <text x={i * 60 + 30} y={145} textAnchor="middle" fontSize="11" className="fill-graphite">{b.label}</text>
+                      </g>
+                    );
+                  })}
+                </svg>
+              )}
+            </section>
+
             <section aria-label="Payout summary" className="grid gap-4 sm:grid-cols-3">
               <Metric label="Scheduled" value={fmt(scheduled)} sub="Upcoming payout total" />
               <Metric label="Paid to date" value={fmt(paidTotal)} />

@@ -26,6 +26,10 @@ const icons = {
   users: <I><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20a6.5 6.5 0 0 1 13 0" /><path d="M16 4.5a3.5 3.5 0 0 1 0 7M21.5 20a6.5 6.5 0 0 0-4-6" /></I>,
   scroll: <I><path d="M8 3h11v14a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3v-1h13" /><path d="M8 8h6M8 12h6" /></I>,
   mail: <I><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3 7 9 6 9-6" /></I>,
+  steps: <I><path d="M4 19V9m6 10V5m6 14v-7" /><path d="M3 19h18" /></I>,
+  clock: <I><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></I>,
+  tag: <I><path d="M3 12V4h8l10 10-8 8L3 12Z" /><circle cx="7.5" cy="8.5" r="1" /></I>,
+  alert: <I><path d="M12 3 2 20h20L12 3Z" /><path d="M12 10v4M12 17h.01" /></I>,
 } satisfies Record<string, ReactNode>;
 
 export type AdminNavKey = keyof typeof NAV_ITEMS;
@@ -41,12 +45,17 @@ const NAV_ITEMS = {
   fleet: { href: "/admin/fleet", label: "Fleet", icon: icons.battery, group: "Operations" },
   rentals: { href: "/admin/rentals", label: "Rentals", icon: icons.swap, group: "Operations" },
   partners: { href: "/admin/partners", label: "Partners", icon: icons.store, group: "Operations" },
+  onboarding: { href: "/admin/onboarding", label: "Onboarding", icon: icons.steps, group: "Operations" },
+  sla: { href: "/admin/sla", label: "Partner SLA", icon: icons.clock, group: "Operations" },
   advertising: { href: "/admin/advertising", label: "Advertising", icon: icons.megaphone, group: "Operations" },
+  payouts: { href: "/admin/payouts", label: "Ledgers & payouts", icon: icons.coins, group: "Finance" },
+  promos: { href: "/admin/promos", label: "Promo codes", icon: icons.tag, group: "Finance" },
+  disputes: { href: "/admin/disputes", label: "Disputes", icon: icons.alert, group: "Finance" },
   users: { href: "/admin/users", label: "Users & roles", icon: icons.users, group: "System" },
   audit: { href: "/admin/audit", label: "Audit log", icon: icons.scroll, group: "System" },
 } as const;
 
-const GROUPS = ["Overview", "Support", "Operations", "System"] as const;
+const GROUPS = ["Overview", "Support", "Operations", "Finance", "System"] as const;
 
 function NavLink({ item, active }: { item: (typeof NAV_ITEMS)[AdminNavKey]; active: boolean }) {
   return (
@@ -103,15 +112,19 @@ export async function AdminGate({ title, nav, children }: { title: string; nav: 
           <Link href="/admin" aria-label="Zapnivo internal"><Logo className="text-[1.25rem]!" /></Link>
           <span className="rounded-full bg-forest px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-widest text-lime">Internal</span>
         </div>
-        <nav aria-label="Console" className="flex-1 space-y-4 px-4 py-4">
-          {GROUPS.map((g) => (
-            <div key={g}>
-              <p className="eyebrow px-3.5 pb-1.5 text-[10px] text-silver">{g}</p>
-              <div className="space-y-0.5">
-                {all.filter(([, i]) => i.group === g).map(([key, item]) => <NavLink key={key} item={item} active={nav === key} />)}
-              </div>
-            </div>
-          ))}
+        <nav aria-label="Console" className="flex-1 space-y-2 px-4 py-4">
+          {GROUPS.map((g) => {
+            const items = all.filter(([, i]) => i.group === g);
+            if (g === "Overview") return <div key={g} className="space-y-0.5">{items.map(([key, item]) => <NavLink key={key} item={item} active={nav === key} />)}</div>;
+            return (
+              <details key={g} open={items.some(([key]) => key === nav)} className="group">
+                <summary className="eyebrow flex cursor-pointer list-none items-center justify-between rounded-lg px-3.5 py-1.5 text-[10px] text-silver hover:text-ink [&::-webkit-details-marker]:hidden">
+                  {g}<span aria-hidden className="transition-transform group-open:rotate-90">›</span>
+                </summary>
+                <div className="mt-0.5 space-y-0.5">{items.map(([key, item]) => <NavLink key={key} item={item} active={nav === key} />)}</div>
+              </details>
+            );
+          })}
         </nav>
         <div className="border-t border-mist p-3">
           <div className="rounded-xl bg-mist/60 p-3">

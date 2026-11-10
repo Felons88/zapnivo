@@ -4,6 +4,7 @@ import { AdminGate } from "@/components/AdminShell";
 import { EmptyCard, Metric } from "@/components/PortalShell";
 import { Pill } from "@/components/SupportNav";
 import { fmt } from "@/lib/pricing";
+import { getSessionUser } from "@/lib/auth";
 import { serviceClient } from "@/lib/supabase";
 
 export const metadata: Metadata = { title: "Rentals", robots: { index: false, follow: false } };
@@ -11,7 +12,9 @@ export const metadata: Metadata = { title: "Rentals", robots: { index: false, fo
 const STATE_TONE = { active: "lime", dispense_pending: "cyan", authorized: "cyan", returned: "mist", unreturned: "red", cancelled: "mist", charged_off: "gold" } as const;
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "—");
 
-export default async function Rentals() {
+export default async function Rentals({ searchParams }: { searchParams: Promise<{ result?: string; detail?: string }> }) {
+  const feedback = await searchParams;
+  const isAdmin = (await getSessionUser())?.role === "admin";
   const db = serviceClient();
   const [rentals, payments] = db ? await Promise.all([
     db.from("rentals").select("id,reference,state,started_at,dispensed_at,returned_at,non_return_deadline,created_at,kiosks!rentals_kiosk_id_fkey(station_id,venues(name,city))").order("created_at", { ascending: false }).limit(200),
@@ -33,6 +36,11 @@ export default async function Rentals() {
         <EmptyCard title="Rental data not connected">Connect Supabase to see live rental records.</EmptyCard>
       ) : (
         <div className="space-y-6">
+          {feedback.result && (
+            <div role="status" className={`rounded-xl px-5 py-3 text-sm font-bold ${feedback.result === "error" || feedback.result === "flagged" ? "bg-red-100 text-red-900" : "bg-lime text-ink"}`}>
+              {feedback.detail ?? "Done."}
+            </div>
+          )}
           <section aria-label="Rental summary" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <Metric label="Total rentals" value={rows.length} />
             <Metric label="Active now" value={active} />
@@ -68,6 +76,13 @@ export default async function Rentals() {
                           )}
                           {(r.state === "active" || r.state === "unreturned") && (
                             <form method="post" action={`/api/rentals/${r.id}`}><input type="hidden" name="action" value="return" /><button className="min-h-8 rounded-full border border-silver/60 px-3 text-xs font-bold hover:border-ink">Record return</button></form>
+                          )}
+                          {isAdmin && (overdue || r.state === "unreturned") && payBy.get(r.id)?.state === "authorized" && (
+                            <form method="post" action={`/api/rentals/${r.id}`} className="mt-2 space-y-1 rounded-lg border border-red-200 p-2">
+                              <input type="hidden" name="action" value="nonreturn" />
+                              <label className="flex items-center gap-1 text-xs"><input type="checkbox" name="confirm" value="yes" required /> I confirm this bank was not returned and the non-return maximum should be charged.</label>
+                              <button className="min-h-8 rounded-full bg-red-700 px-3 text-xs font-bold text-white">Charge non-return</button>
+                            </form>
                           )}
                         </td>
                       </tr>
