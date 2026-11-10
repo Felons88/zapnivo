@@ -18,11 +18,11 @@ export async function staffRecipients(db: SupabaseClient, pref: Pref): Promise<s
   return ((staff ?? []) as { id: string; email: string }[]).filter((s) => !off.has(s.id)).map((s) => s.email);
 }
 
-async function alertStaff(db: SupabaseClient, pref: Pref, subject: string, body: string, html: string | null = null) {
+async function alertStaff(db: SupabaseClient, pref: Pref, subject: string, body: string, html: string | null = null, meta: { sender?: string | null; template?: string | null; event?: string | null } = {}) {
   const repo = await getRepo();
   if (!repo) return 0;
   const to = await staffRecipients(db, pref);
-  for (const t of to) await repo.queueEmail({ ticketId: null, to: t, subject, body, html });
+  for (const t of to) await repo.queueEmail({ ticketId: null, to: t, subject, body, html, sender: meta.sender ?? null, replyTo: null, template: meta.template ?? null, event: meta.event ?? null });
   if (to.length) await flushOutbox(repo, getMailer());
   return to.length;
 }
@@ -50,7 +50,7 @@ export async function runFleetSweep(db: SupabaseClient, now = new Date()) {
           station_id: "fleet", station_name: `${stations.length} stations`, venue_name: "Multiple venues",
           city: "—", detected_at: detected, admin_url: subUrl("internal", "/fleet"), year: String(now.getFullYear()),
         });
-    await alertStaff(db, "offline_alerts", `${stations.length} station${stations.length === 1 ? "" : "s"} offline`, `No heartbeat for ${OFFLINE_AFTER_MIN}+ minutes:\n\n${lines.join("\n")}\n\nFleet: ${subUrl("internal", "/fleet")}`, html);
+    await alertStaff(db, "offline_alerts", `${stations.length} station${stations.length === 1 ? "" : "s"} offline`, `No heartbeat for ${OFFLINE_AFTER_MIN}+ minutes:\n\n${lines.join("\n")}\n\nFleet: ${subUrl("internal", "/fleet")}`, html, { sender: "operations", template: "station_offline", event: "station.offline" });
   }
 
   const dayAgo = new Date(now.getTime() - 24 * 3600_000).toISOString();
@@ -59,7 +59,7 @@ export async function runFleetSweep(db: SupabaseClient, now = new Date()) {
   const banks = (low ?? []) as { id: string; serial: string; battery_pct: number }[];
   if (banks.length) {
     await db.from("power_banks").update({ low_battery_alerted_at: now.toISOString() }).in("id", banks.map((b) => b.id));
-    await alertStaff(db, "low_battery_alerts", `${banks.length} power bank${banks.length === 1 ? "" : "s"} below ${LOW_BATTERY_PCT}%`, banks.map((b) => `• ${b.serial} — ${b.battery_pct}%`).join("\n"));
+    await alertStaff(db, "low_battery_alerts", `${banks.length} power bank${banks.length === 1 ? "" : "s"} below ${LOW_BATTERY_PCT}%`, banks.map((b) => `• ${b.serial} — ${b.battery_pct}%`).join("\n"), null, { sender: "operations", event: "station.low_battery" });
   }
 
   const expired = await expireStaleCommands(db, now);
@@ -75,7 +75,7 @@ export async function recordCron(db: SupabaseClient, job: string, run: () => Pro
   } catch (e) {
     const msg = e instanceof Error ? e.message : "error";
     await db.from("cron_runs").insert({ job, ok: false, detail: { error: msg } });
-    await alertStaff(db, "offline_alerts", `Cron job failed: ${job}`, `The ${job} job failed: ${msg}\n\nCheck runtime logs in Vercel.`).catch(() => 0);
+    await alertStaff(db, "offline_alerts", `Cron job failed: ${job}`, `The ${job} job failed: ${msg}\n\nCheck runtime logs in Vercel.`, null, { sender: "admin", event: "admin.cron_failed" }).catch(() => 0);
     return { ok: false as const, detail: { error: msg } };
   }
 }

@@ -26,6 +26,7 @@ export const POST = (req: Request) =>
           business_location: `${d.city}, ${d.state}`, inquiry_id: row.id.slice(0, 8).toUpperCase(),
           year: String(new Date().getFullYear()),
         }),
+        sender: "partners", replyTo: null, template: "partner_inquiry", event: "partner.application.received",
       });
       await flushOutbox(repo, getMailer());
       const db = serviceClient();

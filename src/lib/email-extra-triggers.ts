@@ -1,5 +1,5 @@
 import { renderEmail, renderEmailText } from "./email-templates";
-import { emailFor, loadRental, rentalUrl, sendToCustomer, stamp, year } from "./email-triggers";
+import { emailFor, loadRental, rentalUrl, sendToCustomer, stamp, year, type EmailMeta } from "./email-triggers";
 import { queueJob } from "./notifications";
 import { serviceClient } from "./supabase";
 import { subUrl } from "./site";
@@ -13,8 +13,8 @@ import { subUrl } from "./site";
 const adminUrl = () => subUrl("internal", "/");
 const partnerPortalUrl = () => subUrl("partners", "/");
 
-const send = (to: string, subject: string, name: Parameters<typeof renderEmail>[0], vars: Record<string, string>) =>
-  sendToCustomer(to, subject, renderEmailText(name, vars), renderEmail(name, vars));
+const send = (to: string, subject: string, name: Parameters<typeof renderEmail>[0], vars: Record<string, string>, meta: EmailMeta) =>
+  sendToCustomer(to, subject, renderEmailText(name, vars), renderEmail(name, vars), null, meta);
 
 /**
  * Branded HTML version of the failed-payment email. The legacy `triggerPaymentFailed`
@@ -32,7 +32,7 @@ export async function triggerPaymentFailedHtml(rentalId: string) {
     venue_name: r.kiosks?.venues?.name ?? r.kiosks?.station_id ?? "Zapnivo station",
     rental_url: rentalUrl(),
     year: year(),
-  });
+  }, { sender: "billing", template: "payment_failed", event: "rental.payment_failed" });
 }
 
 export type PartnerApplicationFields = {
@@ -53,7 +53,7 @@ export async function triggerPartnerApplicationReceived(adminEmail: string, app:
     submitted_at: app.submittedAt ?? stamp(new Date().toISOString()),
     admin_url: adminUrl(),
     year: year(),
-  });
+  }, { sender: "partners", template: "partner_application_received", event: "partner.application.staff_alert" });
 }
 
 /** Partner welcome email after an application is approved. */
@@ -62,7 +62,7 @@ export async function triggerPartnerApproved(email: string, orgName: string) {
     org_name: orgName,
     portal_url: partnerPortalUrl(),
     year: year(),
-  });
+  }, { sender: "partners", template: "partner_approved", event: "partner.approved" });
 }
 
 /**
@@ -96,7 +96,7 @@ export async function triggerRevenueStatement(email: string, s: RevenueStatement
     payout_date: s.payoutDate ?? "",
     portal_url: s.portalUrl ?? partnerPortalUrl(),
     year: year(),
-  });
+  }, { sender: "billing", template: "revenue_statement", event: "partner.revenue_statement" });
 }
 
 export type StationOfflineFields = {
@@ -117,7 +117,7 @@ export async function triggerStationOffline(email: string, st: StationOfflineFie
     detected_at: st.detectedAt ?? stamp(new Date().toISOString()),
     admin_url: adminUrl(),
     year: year(),
-  });
+  }, { sender: "operations", template: "station_offline", event: "station.offline" });
 }
 
 export type PaymentDisputeFields = {
@@ -142,7 +142,7 @@ export async function triggerPaymentDispute(adminEmail: string, d: PaymentDisput
     respond_by: d.respondBy ?? "see Stripe dashboard",
     admin_url: adminUrl(),
     year: year(),
-  });
+  }, { sender: "admin", template: "payment_dispute", event: "payment.dispute.opened" });
 }
 
 export type SecurityAlertFields = {
@@ -165,5 +165,5 @@ export async function triggerSecurityAlert(adminEmail: string, a: SecurityAlertF
     details: a.details ?? "No additional details provided.",
     admin_url: adminUrl(),
     year: year(),
-  });
+  }, { sender: "security", template: "security_alert", event: "security.alert" });
 }

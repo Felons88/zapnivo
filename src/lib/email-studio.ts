@@ -254,6 +254,69 @@ export const EMAIL_TEMPLATES: EmailTemplateSpec[] = [
 export const getEmailTemplate = (name: string): EmailTemplateSpec | undefined =>
   EMAIL_TEMPLATES.find((t) => t.name === name);
 
+/* ── Communication Center: senders / triggers / outbox log ────────────────
+ * Pure types + display helpers shared by the studio UI and the admin API
+ * routes. The actual registries live in src/lib/email/{senders,routing}.ts —
+ * routes import them server-side; these types describe the JSON they emit. */
+
+export type StudioSenderRow = {
+  id: string;
+  name: string;
+  email: string;
+  replyTo: string;
+  /** Event names from EMAIL_TRIGGER_REGISTRY that send as this identity. */
+  triggers: string[];
+};
+
+export type StudioTriggerRow = {
+  event: string;
+  sender: string;
+  template: string | null;
+  recipientKind: string;
+  description: string;
+  /** Raw registry status: "wired" | "planned" | "no_template" (unknown strings pass through). */
+  status: string;
+};
+
+export type StudioLogRow = {
+  id: string;
+  to: string;
+  subject: string;
+  status: string;
+  createdAt: string;
+  error: string | null;
+  sender: string | null;
+  senderName: string | null;
+  replyTo: string | null;
+  template: string | null;
+  event: string | null;
+};
+
+/** Registry uses "wired" for live paths; normalize to the UI's "live" bucket. Unknown statuses pass through. */
+export const normalizeTriggerStatus = (status: string): string =>
+  status === "wired" ? "live" : status;
+
+export const TRIGGER_STATUS_LABELS: Record<string, string> = {
+  live: "Live",
+  planned: "Planned",
+  no_template: "No template",
+};
+
+export const triggerStatusLabel = (status: string): string =>
+  TRIGGER_STATUS_LABELS[normalizeTriggerStatus(status)] ?? status;
+
+/** Resolves an outbox `sender` value (registry id or bare email) to a display name. */
+export function senderDisplayName(
+  sender: string | null | undefined,
+  senders: Record<string, { name: string; email: string }>,
+): string | null {
+  if (!sender) return null;
+  const byId = senders[sender];
+  if (byId) return byId.name;
+  const byEmail = Object.values(senders).find((s) => s.email.toLowerCase() === sender.toLowerCase());
+  return byEmail?.name ?? sender;
+}
+
 export const templatesByAudience = (): { audience: EmailAudience; templates: EmailTemplateSpec[] }[] =>
   EMAIL_AUDIENCES
     .map((audience) => ({ audience, templates: EMAIL_TEMPLATES.filter((t) => t.audience === audience) }))

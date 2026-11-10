@@ -33,7 +33,7 @@ const audit = (c: Ctx, ticketId: string, actor: Actor, type: string, detail?: Re
 const ticketLink = (c: Ctx, t: Ticket) => (t.requesterType === "partner" ? subUrl("partners", `/support/${t.number}`, c.siteUrl) : subUrl("support", `/ticket/${t.number}${(() => { const tok = signAccess(t.number, t.email); return tok ? `?t=${tok}` : ""; })()}`, c.siteUrl));
 
 /** Writes to the outbox, then best-effort sends. If no mailer is configured the email simply stays queued. */
-async function notify(c: Ctx, t: Ticket, subject: string, body: string, kind: "created" | "updated" = "updated", htmlOverride?: string) {
+async function notify(c: Ctx, t: Ticket, subject: string, body: string, kind: "created" | "updated" = "updated", htmlOverride?: string, meta?: { sender?: string; template?: string; event?: string }) {
   const link = ticketLink(c, t);
   const vars = {
     ticket_id: t.number, ticket_subject: t.subject, ticket_status: t.state.replace(/_/g, " "),
@@ -41,7 +41,12 @@ async function notify(c: Ctx, t: Ticket, subject: string, body: string, kind: "c
     [`${kind}_at`]: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }),
   };
   const html = htmlOverride ?? (kind === "created" ? renderEmail("support_created", vars) : renderEmail("support_updated", vars));
-  await c.repo.queueEmail({ ticketId: t.id, to: t.email, subject: `[${t.number}] ${subject}`, body: `${body}\n\n— View or reply: ${link}\n\nZapnivo Support`, html });
+  await c.repo.queueEmail({
+    ticketId: t.id, to: t.email, subject: `[${t.number}] ${subject}`, body: `${body}\n\n— View or reply: ${link}\n\nZapnivo Support`, html,
+    sender: meta?.sender ?? "support", replyTo: null,
+    template: meta?.template ?? (kind === "created" ? "support_created" : "support_updated"),
+    event: meta?.event ?? (kind === "created" ? "support.ticket.created" : "support.ticket.updated"),
+  });
   try { await flushOutbox(c.repo, c.mailer); } catch { /* recorded per-email */ }
 }
 
@@ -280,7 +285,7 @@ async function finishIssue(c: Ctx, actor: Actor, r: RefundRequest, providerId: s
       refund_amount: fmt(r.amountCents), refund_id: r.id.slice(0, 8).toUpperCase(), refund_url: ticketLink(c, t),
       rental_id: r.rentalRef ?? "—", processed_at: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric" }),
       year: String(new Date().getFullYear()),
-    }));
+    }), { sender: "billing", template: "refund_processed", event: "payment.refund" });
   }
   return { refund: done, status: "issued", message: "Refund issued." };
 }

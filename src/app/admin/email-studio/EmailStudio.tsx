@@ -2,8 +2,18 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { EMAIL_TEMPLATES, templatesByAudience, type EmailTemplateSpec } from "@/lib/email-studio";
+import { SendersPanel, TriggersPanel, LogPanel } from "./CenterPanels";
 
 type StaffRecipient = { email: string; name: string; role: string };
+type SenderOption = { id: string; name: string; email: string };
+type StudioView = "templates" | "senders" | "triggers" | "log";
+
+const VIEWS: { id: StudioView; label: string }[] = [
+  { id: "templates", label: "Templates" },
+  { id: "senders", label: "Senders" },
+  { id: "triggers", label: "Triggers" },
+  { id: "log", label: "Log" },
+];
 type Preview = {
   available: boolean;
   subject?: string;
@@ -24,6 +34,9 @@ export function EmailStudio({ staffRecipients, mailerConfigured }: { staffRecipi
   const [dark, setDark] = useState(false);
   const [tab, setTab] = useState<"preview" | "text">("preview");
   const [sendTo, setSendTo] = useState(staffRecipients[0]?.email ?? "");
+  const [sendSender, setSendSender] = useState("auto");
+  const [senderOptions, setSenderOptions] = useState<SenderOption[]>([]);
+  const [view, setView] = useState<StudioView>("templates");
   const [sending, setSending] = useState(false);
   const [sendResult, setSendResult] = useState<{ ok: boolean; msg: string } | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -51,6 +64,14 @@ export function EmailStudio({ staffRecipients, mailerConfigured }: { staffRecipi
     void loadPreview(s.name, s.sampleVars);
   };
 
+  // Sender identities for the test-send "From" picker (registry may be unavailable).
+  useEffect(() => {
+    fetch("/api/admin/email-studio/senders", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { senders?: SenderOption[] } | null) => { if (d?.senders) setSenderOptions(d.senders); })
+      .catch(() => { /* picker just stays on "Automatic" */ });
+  }, []);
+
   // initial render + debounced re-render on var edits
   useEffect(() => { void loadPreview(spec.name, vars); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
   useEffect(() => {
@@ -67,7 +88,7 @@ export function EmailStudio({ staffRecipients, mailerConfigured }: { staffRecipi
     try {
       const res = await fetch("/api/admin/email-studio/test", {
         method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ template: spec.name, to: sendTo, vars }),
+        body: JSON.stringify({ template: spec.name, to: sendTo, vars, ...(sendSender !== "auto" ? { sender: sendSender } : {}) }),
       });
       const data = await res.json();
       if (res.ok && data.ok) {
@@ -93,6 +114,30 @@ export function EmailStudio({ staffRecipients, mailerConfigured }: { staffRecipi
   const varKeys = Array.from(new Set([...(preview?.vars ?? []), ...Object.keys(spec.sampleVars)])).sort();
 
   return (
+    <div className="space-y-6">
+      {/* ── Studio section nav ── */}
+      <div className="flex flex-wrap gap-2" role="tablist" aria-label="Email studio sections">
+        {VIEWS.map((v) => (
+          <button
+            key={v.id}
+            type="button"
+            role="tab"
+            aria-selected={view === v.id}
+            onClick={() => setView(v.id)}
+            className={`rounded-full px-4 py-2 text-sm font-extrabold transition-colors ${
+              view === v.id ? "bg-ink text-white" : "border border-mist bg-white text-graphite hover:bg-mist hover:text-ink"
+            }`}
+          >
+            {v.label}
+          </button>
+        ))}
+      </div>
+
+      {view === "senders" && <SendersPanel />}
+      {view === "triggers" && <TriggersPanel />}
+      {view === "log" && <LogPanel />}
+
+      {view === "templates" && (
     <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
       {/* ── Template library ── */}
       <aside className="space-y-5">
@@ -235,6 +280,16 @@ export function EmailStudio({ staffRecipients, mailerConfigured }: { staffRecipi
                   ))}
                 </select>
               </label>
+              <label className="block">
+                <span className="mb-1 block text-xs font-bold">Sender identity</span>
+                <select value={sendSender} onChange={(e) => setSendSender(e.target.value)} className="min-h-10 w-full rounded-lg border border-silver/70 px-3 text-sm">
+                  <option value="auto">Automatic — template&apos;s natural sender</option>
+                  {senderOptions.map((s) => (
+                    <option key={s.id} value={s.id}>{s.name} — {s.email}</option>
+                  ))}
+                </select>
+                <span className="mt-1 block text-[11px] text-silver">Overrides the From/Reply-To on this test send only.</span>
+              </label>
               <button
                 type="button"
                 onClick={sendTest}
@@ -252,6 +307,8 @@ export function EmailStudio({ staffRecipients, mailerConfigured }: { staffRecipi
           </section>
         </div>
       </div>
+    </div>
+      )}
     </div>
   );
 }

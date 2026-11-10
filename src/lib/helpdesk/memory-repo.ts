@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import type { HelpdeskRepo, NewTicket } from "./repo";
+import type { HelpdeskRepo, NewOutboxEmail, NewTicket } from "./repo";
 import type { Message, OutboxEmail, RefundRequest, Ticket, TicketEvent, TicketFilter } from "./types";
 
 type State = { seq: number; tickets: Ticket[]; messages: Message[]; events: TicketEvent[]; refunds: RefundRequest[]; emails: OutboxEmail[] };
@@ -68,8 +68,8 @@ export class MemoryRepo implements HelpdeskRepo {
     if (!r || !from.includes(r.status)) return null;
     Object.assign(r, patch); this.save(); return { ...r };
   }
-  async queueEmail(e: Omit<OutboxEmail, "id" | "createdAt" | "status" | "error">) {
-    const row: OutboxEmail = { ...e, id: randomUUID(), status: "queued", error: null, createdAt: now() };
+  async queueEmail(e: NewOutboxEmail) {
+    const row: OutboxEmail = { ...e, id: randomUUID(), status: "queued", error: null, createdAt: now(), sender: e.sender ?? null, replyTo: e.replyTo ?? null, template: e.template ?? null, event: e.event ?? null };
     this.s.emails.push(row); this.save(); return { ...row };
   }
   async listEmails(status?: OutboxEmail["status"]) { return this.s.emails.filter((e) => !status || e.status === status).map((e) => ({ ...e })); }

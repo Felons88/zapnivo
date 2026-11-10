@@ -4,6 +4,8 @@ import { getSessionUser, isStaff } from "@/lib/auth";
 import { getMailer, flushOutbox, mailerConfigured } from "@/lib/helpdesk/mailer";
 import { getRepo } from "@/lib/helpdesk/repo";
 import { getEmailTemplate, htmlToText, renderStudioTemplate } from "@/lib/email-studio";
+import { EMAIL_SENDERS, type EmailSenderId } from "@/lib/email/senders";
+import { EMAIL_TRIGGER_REGISTRY } from "@/lib/email/routing";
 import { serviceClient } from "@/lib/supabase";
 
 const MAX_VARS = 60;
@@ -13,8 +15,12 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /**
  * POST /api/admin/email-studio/test — admin-only test send.
- * Body: { template, to, vars? }. The recipient MUST be the admin's own email or
- * another staff/admin profile email — customer addresses are always rejected.
+ * Body: { template, to, vars?, sender? }. `sender` is an optional sender-registry
+ * id (see src/lib/email/senders.ts); unknown ids are rejected with 422. When
+ * omitted, the template's natural sender is used (first routing-registry event
+ * that maps to this template), or null → the provider default From.
+ * The recipient MUST be the admin's own email or another staff/admin profile
+ * email — customer addresses are always rejected.
  * Queues through the helpdesk outbox + flush, exactly like the SMS test send.
  */
 export async function POST(req: Request) {
@@ -23,7 +29,7 @@ export async function POST(req: Request) {
   if (!isStaff(user)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   if (user.role !== "admin") return NextResponse.json({ error: "Admins only." }, { status: 403 });
 
-  let body: { template?: unknown; to?: unknown; vars?: unknown };
+  let body: { template?: unknown; to?: unknown; vars?: unknown; sender?: unknown };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
 
   const name = typeof body.template === "string" ? body.template : "";
@@ -69,14 +75,38 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, available: false, error: out.error }, { status: 422 });
   }
 
+  // Sender identity: explicit `sender` param validated against the registry,
+  // else the template's natural sender from the routing registry (first event
+  // mapped to this template), else null → provider default From.
+  const senderParam = typeof body.sender === "string" ? body.sender.trim() : "";
+  let senderId: EmailSenderId | null = null;
+  if (senderParam) {
+    if (!(senderParam in EMAIL_SENDERS)) {
+      return NextResponse.json({ error: "Unknown sender identity." }, { status: 422 });
+    }
+    senderId = senderParam as EmailSenderId;
+  }
+  const natural = Object.entries(EMAIL_TRIGGER_REGISTRY).find(([, t]) => t?.template === spec.name);
+  const event = natural?.[0] ?? null;
+  if (!senderId && natural && typeof natural[1]?.sender === "string" && natural[1].sender in EMAIL_SENDERS) {
+    senderId = natural[1].sender as EmailSenderId;
+  }
+  const sender = senderId ? EMAIL_SENDERS[senderId] : null;
+
   const subject = `[TEST] ${out.subject}`;
   const body_text = `This is a test send from Email Studio.\n\nTemplate: ${spec.displayName} (${spec.name})\nSubject: ${out.subject}\n\n${htmlToText(out.html)}`;
 
-  await repo.queueEmail({ ticketId: null, to, subject, body: body_text, html: out.html });
+  await repo.queueEmail({
+    ticketId: null, to, subject, body: body_text, html: out.html,
+    // Optional routing fields — NewOutboxEmail keeps them optional; the outbox
+    // stores the sender *id* (mailer resolves it via resolveSender).
+    sender: senderId, replyTo: sender?.replyTo ?? null,
+    template: spec.name, event,
+  });
   const mailer = getMailer();
   const flush = await flushOutbox(repo, mailer).catch(() => ({ sent: 0, failed: 0, queued: 0 }));
 
-  await auditLog(user.id, "email_studio_test_send", "email_template", spec.name, { to, subject });
+  await auditLog(user.id, "email_studio_test_send", "email_template", spec.name, { to, subject, sender: senderId, event });
 
   const configured = mailerConfigured();
   return NextResponse.json({
@@ -85,6 +115,7 @@ export async function POST(req: Request) {
     sent: flush.sent > 0,
     failed: flush.failed > 0,
     mailerConfigured: configured,
+    sender: senderId,
     note: configured ? undefined : "Email delivery is not configured — the test is queued in the outbox but won't send until RESEND_API_KEY/BREVO_API_KEY + SUPPORT_FROM_EMAIL are set.",
   });
 }

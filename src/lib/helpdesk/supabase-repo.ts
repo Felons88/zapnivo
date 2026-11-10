@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { serviceClient } from "../supabase";
-import type { HelpdeskRepo, NewTicket } from "./repo";
+import type { HelpdeskRepo, NewOutboxEmail, NewTicket } from "./repo";
 import type { Message, OutboxEmail, RefundRequest, Ticket, TicketEvent, TicketFilter } from "./types";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -27,7 +27,7 @@ const toRefund = (r: Row): RefundRequest => ({
   error: r.error, createdAt: r.created_at, decidedAt: r.decided_at, issuedAt: r.issued_at,
 });
 const refundCols: Record<string, string> = { decidedBy: "decided_by", decisionNote: "decision_note", providerRefundId: "provider_refund_id", decidedAt: "decided_at", issuedAt: "issued_at", paymentIntentId: "payment_intent_id", amountCents: "amount_cents" };
-const toEmail = (r: Row): OutboxEmail => ({ id: r.id, ticketId: r.ticket_id, to: r.to_email, subject: r.subject, body: r.body, html: r.html ?? null, status: r.status, error: r.error, createdAt: r.created_at });
+const toEmail = (r: Row): OutboxEmail => ({ id: r.id, ticketId: r.ticket_id, to: r.to_email, subject: r.subject, body: r.body, html: r.html ?? null, status: r.status, error: r.error, createdAt: r.created_at, sender: r.sender ?? null, replyTo: r.reply_to ?? null, template: r.template ?? null, event: r.event ?? null });
 
 /**
  * Production repository (Supabase Postgres, service role, server-side only).
@@ -116,8 +116,8 @@ export class SupabaseRepo implements HelpdeskRepo {
     this.fail(error);
     return data ? toRefund(data) : null;
   }
-  async queueEmail(e: Omit<OutboxEmail, "id" | "createdAt" | "status" | "error">) {
-    const { data, error } = await this.db().from("email_outbox").insert({ ticket_id: e.ticketId, to_email: e.to, subject: e.subject, body: e.body, html: e.html ?? null }).select("*").single();
+  async queueEmail(e: NewOutboxEmail) {
+    const { data, error } = await this.db().from("email_outbox").insert({ ticket_id: e.ticketId, to_email: e.to, subject: e.subject, body: e.body, html: e.html ?? null, sender: e.sender ?? null, reply_to: e.replyTo ?? null, template: e.template ?? null, event: e.event ?? null }).select("*").single();
     this.fail(error);
     return toEmail(data!);
   }

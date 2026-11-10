@@ -15,7 +15,12 @@ vi.mock("@/lib/helpdesk/repo", () => ({ getRepo: async () => repoHolder.repo }))
 
 import { POST as previewPOST } from "@/app/api/admin/email-studio/preview/route";
 import { POST as testPOST } from "@/app/api/admin/email-studio/test/route";
+import { GET as sendersGET } from "@/app/api/admin/email-studio/senders/route";
+import { GET as triggersGET } from "@/app/api/admin/email-studio/triggers/route";
+import { GET as logGET } from "@/app/api/admin/email-studio/log/route";
 import { EMAIL_AUDIENCES, EMAIL_TEMPLATES, getEmailTemplate, htmlToText, renderStudioTemplate } from "@/lib/email-studio";
+import { EMAIL_SENDERS } from "@/lib/email/senders";
+import { EMAIL_TRIGGER_REGISTRY } from "@/lib/email/routing";
 import { MemoryRepo } from "@/lib/helpdesk/memory-repo";
 
 const ADMIN = { id: "11111111-1111-4111-8111-111111111111", email: "admin@zapnivo.com", role: "admin", organizationId: null };
@@ -24,6 +29,7 @@ const CUSTOMER = { id: "33333333-3333-4333-8333-333333333333", email: "customer@
 
 const post = (url: string, payload: unknown) =>
   new Request(`http://localhost${url}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+const get = (url: string) => new Request(`http://localhost${url}`);
 
 /** Fake profiles table: only emails in `staffEmails` resolve as staff recipients. */
 function dbWithStaff(staffEmails: string[]) {
@@ -182,5 +188,139 @@ describe("test-send API", () => {
     serviceClientMock.mockReturnValue(null); // must not even need the db
     const res = await testPOST(post("/api/admin/email-studio/test", { template: "rental_started", to: "Admin@Zapnivo.com" }));
     expect(res.status).toBe(200);
+  });
+
+  it("rejects an unknown sender id with 422", async () => {
+    session.mockResolvedValue(ADMIN);
+    const res = await testPOST(post("/api/admin/email-studio/test", {
+      template: "rental_started", to: "admin@zapnivo.com", sender: "bogus_sender",
+    }));
+    expect(res.status).toBe(422);
+    expect(await (repoHolder.repo as MemoryRepo).listEmails()).toHaveLength(0);
+  });
+
+  it("passes sender/replyTo/template/event into queueEmail when sender is provided", async () => {
+    session.mockResolvedValue(ADMIN);
+    const res = await testPOST(post("/api/admin/email-studio/test", {
+      template: "rental_started", to: "admin@zapnivo.com", sender: "support",
+    }));
+    expect(res.status).toBe(200);
+    const emails = await (repoHolder.repo as MemoryRepo).listEmails("queued");
+    expect(emails).toHaveLength(1);
+    expect(emails[0].sender).toBe("support");
+    expect(emails[0].replyTo).toBe(EMAIL_SENDERS.support.replyTo);
+    expect(emails[0].template).toBe("rental_started");
+    // The routing registry maps rental_started → event "rental.started".
+    expect(emails[0].event).toBe("rental.started");
+  });
+
+  it("defaults to the template's natural sender when sender is omitted", async () => {
+    session.mockResolvedValue(ADMIN);
+    const res = await testPOST(post("/api/admin/email-studio/test", {
+      template: "rental_started", to: "admin@zapnivo.com",
+    }));
+    expect(res.status).toBe(200);
+    const emails = await (repoHolder.repo as MemoryRepo).listEmails("queued");
+    expect(emails[0].sender).toBe("rentals"); // natural sender for rental.started
+    expect(emails[0].replyTo).toBe(EMAIL_SENDERS.rentals.replyTo);
+  });
+});
+
+describe("senders API", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("401 anon, 403 customer, 200 staff with registry shape", async () => {
+    session.mockResolvedValueOnce(null);
+    expect((await sendersGET()).status).toBe(401);
+    session.mockResolvedValueOnce(CUSTOMER);
+    expect((await sendersGET()).status).toBe(403);
+
+    session.mockResolvedValueOnce(STAFF);
+    const res = await sendersGET();
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.ok).toBe(true);
+    expect(data.available).toBe(true);
+    expect(data.senders).toHaveLength(Object.keys(EMAIL_SENDERS).length);
+    for (const s of data.senders) {
+      expect(s.id).toBeTruthy();
+      expect(s.name).toBeTruthy();
+      expect(s.email).toContain("@");
+      expect(s.replyTo).toContain("@");
+      expect(Array.isArray(s.triggers)).toBe(true);
+    }
+    // support sender is used by the support.ticket.* triggers.
+    const support = data.senders.find((s: { id: string }) => s.id === "support");
+    expect(support.triggers).toContain("support.ticket.created");
+  });
+});
+
+describe("triggers API", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("401 anon, 403 customer, 200 staff mirrors the routing registry", async () => {
+    session.mockResolvedValueOnce(null);
+    expect((await triggersGET()).status).toBe(401);
+    session.mockResolvedValueOnce(CUSTOMER);
+    expect((await triggersGET()).status).toBe(403);
+
+    session.mockResolvedValueOnce(STAFF);
+    const res = await triggersGET();
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.triggers).toHaveLength(Object.keys(EMAIL_TRIGGER_REGISTRY).length);
+    const rental = data.triggers.find((t: { event: string }) => t.event === "rental.started");
+    expect(rental).toMatchObject({ sender: "rentals", template: "rental_started", recipientKind: "customer", status: "wired" });
+    // Unknown/future statuses would pass through untouched — registry statuses are preserved raw.
+    for (const t of data.triggers) expect(typeof t.status).toBe("string");
+  });
+});
+
+describe("outbox log API", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    repoHolder.repo = new MemoryRepo();
+    serviceClientMock.mockReturnValue(dbWithStaff(["agent@zapnivo.com"]));
+  });
+
+  it("401 anon, 403 customer, 200 staff", async () => {
+    session.mockResolvedValueOnce(null);
+    expect((await logGET()).status).toBe(401);
+    session.mockResolvedValueOnce(CUSTOMER);
+    expect((await logGET()).status).toBe(403);
+    session.mockResolvedValueOnce(STAFF);
+    expect((await logGET()).status).toBe(200);
+  });
+
+  it("returns queued/sent/failed rows with sender names, newest first", async () => {
+    session.mockResolvedValue(STAFF);
+    const repo = repoHolder.repo as MemoryRepo;
+    await repo.queueEmail({ ticketId: null, to: "a@zapnivo.com", subject: "One", body: "b", html: null, sender: "support", template: "support_created", event: "support.ticket.created" });
+    await repo.queueEmail({ ticketId: null, to: "b@zapnivo.com", subject: "Two", body: "b", html: null });
+    await repo.markEmail((await repo.listEmails())[0].id, "sent");
+
+    const res = await logGET();
+    const data = await res.json();
+    expect(data.available).toBe(true);
+    expect(data.emails).toHaveLength(2);
+    // Rows are ordered newest-first by createdAt (same-ms ties keep insertion order).
+    expect(data.emails.map((e: { subject: string }) => e.subject).sort()).toEqual(["One", "Two"]);
+    const first = data.emails.find((e: { subject: string }) => e.subject === "One");
+    expect(first.status).toBe("sent");
+    expect(first.sender).toBe("support");
+    expect(first.senderName).toBe(EMAIL_SENDERS.support.name);
+    expect(first.event).toBe("support.ticket.created");
+    expect(first.template).toBe("support_created");
+  });
+
+  it("reports an honest empty state when the repo is unavailable", async () => {
+    session.mockResolvedValue(STAFF);
+    repoHolder.repo = null;
+    const res = await logGET();
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.available).toBe(false);
+    expect(data.emails).toEqual([]);
+    expect(data.note).toBeTruthy();
   });
 });

@@ -36,10 +36,13 @@ export async function loadRental(where: { id?: string; stripeId?: string }): Pro
   return (data as unknown as RentalRow) ?? null;
 }
 
-export async function sendToCustomer(email: string, subject: string, body: string, html: string | null, ticketId = null as string | null) {
+/** Routing metadata recorded on the outbox row — resolves the department sender at flush time. */
+export type EmailMeta = { sender?: string | null; template?: string | null; event?: string | null };
+
+export async function sendToCustomer(email: string, subject: string, body: string, html: string | null, ticketId = null as string | null, meta: EmailMeta = {}) {
   const repo = await getRepo();
   if (!repo) return false;
-  await repo.queueEmail({ ticketId, to: email, subject, body, html });
+  await repo.queueEmail({ ticketId, to: email, subject, body, html, sender: meta.sender ?? null, replyTo: null, template: meta.template ?? null, event: meta.event ?? null });
   await flushOutbox(repo, getMailer());
   return true;
 }
@@ -62,7 +65,7 @@ export async function triggerRentalStarted(rentalId: string) {
       rental_id: r.reference, rental_url: rentalUrl(), start_time: stamp(r.started_at),
       venue_name: r.kiosks?.venues?.name ?? r.kiosks?.station_id ?? "Zapnivo station",
       pricing_summary: pricingSummary(), year: year(),
-    }));
+    }), null, { sender: "rentals", template: "rental_started", event: "rental.started" });
 }
 
 export async function triggerRentalReturned(rentalId: string) {
@@ -78,7 +81,7 @@ export async function triggerRentalReturned(rentalId: string) {
       rental_id: r.reference, rental_total: fmt(r.payments?.[0]?.amount_captured_cents ?? 0),
       rental_url: rentalUrl(), return_time: stamp(r.returned_at),
       return_venue: r.kiosks?.venues?.name ?? "Zapnivo station", year: year(),
-    }));
+    }), null, { sender: "rentals", template: "rental_returned", event: "rental.returned" });
 }
 
 export async function triggerRentalReminder(rental: RentalRow) {
@@ -89,7 +92,7 @@ export async function triggerRentalReminder(rental: RentalRow) {
     renderEmail("rental_reminder", {
       rental_id: rental.reference, rental_url: rentalUrl(), rental_status: "active",
       start_time: stamp(rental.started_at), pricing_summary: pricingSummary(), year: year(),
-    }));
+    }), null, { sender: "rentals", template: "rental_reminder", event: "rental.reminder" });
 }
 
 export async function triggerNonreturnNotice(rental: RentalRow) {
@@ -100,7 +103,7 @@ export async function triggerNonreturnNotice(rental: RentalRow) {
     renderEmail("nonreturn_notice", {
       rental_id: rental.reference, rental_status: "not returned", rental_url: rentalUrl(),
       return_deadline: stamp(rental.non_return_deadline), start_time: stamp(rental.started_at), year: year(),
-    }));
+    }), null, { sender: "rentals", template: "nonreturn_notice", event: "rental.nonreturn_notice" });
 }
 
 export async function triggerPaymentReceipt(stripePaymentIntentId: string) {
@@ -115,7 +118,7 @@ export async function triggerPaymentReceipt(stripePaymentIntentId: string) {
       receipt_id: r.reference, receipt_url: receiptUrl(r.reference, to) ?? rentalUrl(), rental_id: r.reference,
       subtotal: fmt((p.amount_captured_cents ?? 0) + (p.discount_cents ?? 0) - (p.tax_cents ?? 0)),
       tax: (p.tax_cents ?? 0) > 0 ? fmt(p.tax_cents ?? 0) : "Not applied", total_paid: paid, year: year(),
-    }));
+    }), null, { sender: "billing", template: "payment_receipt", event: "payment.receipt" });
 }
 
 /** Signed link to the PDF receipt endpoint (null when no signing secret is available). */
@@ -135,7 +138,7 @@ export async function triggerPaymentFailed(rentalId: string) {
   if (!r || !to) return false;
   return sendToCustomer(to, "Your Zapnivo payment didn't go through",
     `We couldn't authorize the payment for rental ${r.reference}, so no power bank was released and you have not been charged. You can try again from the station's QR code, or contact support at support.zapnivo.com with reference ${r.reference}.`,
-    null);
+    null, null, { sender: "billing", template: null, event: "rental.payment_failed" });
 }
 
 /** Daily cron sweep: reminders inside the deadline window, notices for overdue rentals. */
