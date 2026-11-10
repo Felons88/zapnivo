@@ -18,7 +18,8 @@ import { POST as testPOST } from "@/app/api/admin/email-studio/test/route";
 import { GET as sendersGET } from "@/app/api/admin/email-studio/senders/route";
 import { GET as triggersGET } from "@/app/api/admin/email-studio/triggers/route";
 import { GET as logGET } from "@/app/api/admin/email-studio/log/route";
-import { EMAIL_AUDIENCES, EMAIL_TEMPLATES, getEmailTemplate, htmlToText, renderStudioTemplate } from "@/lib/email-studio";
+import { GET as inboundGET } from "@/app/api/admin/email-studio/inbound/route";
+import { EMAIL_AUDIENCES, EMAIL_TEMPLATES, getEmailTemplate, htmlToText, inboundStatusCounts, inboundStatusLabel, renderStudioTemplate } from "@/lib/email-studio";
 import { EMAIL_SENDERS } from "@/lib/email/senders";
 import { EMAIL_TRIGGER_REGISTRY } from "@/lib/email/routing";
 import { MemoryRepo } from "@/lib/helpdesk/memory-repo";
@@ -273,6 +274,119 @@ describe("triggers API", () => {
     expect(rental).toMatchObject({ sender: "rentals", template: "rental_started", recipientKind: "customer", status: "wired" });
     // Unknown/future statuses would pass through untouched — registry statuses are preserved raw.
     for (const t of data.triggers) expect(typeof t.status).toBe("string");
+  });
+});
+
+/** Fake inbound_emails table: .select().order().limit() resolves to the canned result. */
+function dbWithInbound(result: { data?: unknown[] | null; error?: { message: string } | null }) {
+  return {
+    from: (table: string) => {
+      if (table !== "inbound_emails") throw new Error(`unexpected table ${table}`);
+      const q: Record<string, unknown> = {};
+      q.select = () => q;
+      q.order = () => q;
+      q.limit = async () => ({ data: result.data ?? [], error: result.error ?? null });
+      return q;
+    },
+  };
+}
+
+const INBOUND_DB_ROW = {
+  id: "44444444-4444-4444-8444-444444444444",
+  message_id: "<msg-1@example.com>",
+  from_email: "customer@example.com",
+  to_address: "support@zapnivo.com",
+  subject: "Re: ZN-1042",
+  ticket_number: "ZN-1042",
+  status: "accepted",
+  reason: null,
+  auth_method: "reply_token",
+  dmarc_result: "pass",
+  spf_result: "pass",
+  dkim_result: "pass",
+  body_preview: "Thanks, that fixed it.",
+  processed_ms: 42,
+  created_at: "2026-11-08T10:00:00Z",
+};
+
+describe("inbound email API", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    serviceClientMock.mockReturnValue(dbWithInbound({ data: [INBOUND_DB_ROW] }));
+  });
+
+  it("401 anon, 403 customer, 200 staff", async () => {
+    session.mockResolvedValueOnce(null);
+    expect((await inboundGET()).status).toBe(401);
+    session.mockResolvedValueOnce(CUSTOMER);
+    expect((await inboundGET()).status).toBe(403);
+
+    session.mockResolvedValueOnce(STAFF);
+    const res = await inboundGET();
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.ok).toBe(true);
+    expect(data.available).toBe(true);
+    expect(data.emails).toHaveLength(1);
+  });
+
+  it("maps snake_case db rows to the safe StudioInboundRow shape", async () => {
+    session.mockResolvedValue(STAFF);
+    const data = await (await inboundGET()).json();
+    expect(data.emails[0]).toMatchObject({
+      id: INBOUND_DB_ROW.id,
+      messageId: "<msg-1@example.com>",
+      fromEmail: "customer@example.com",
+      toAddress: "support@zapnivo.com",
+      subject: "Re: ZN-1042",
+      ticketNumber: "ZN-1042",
+      status: "accepted",
+      reason: null,
+      authMethod: "reply_token",
+      dmarcResult: "pass",
+      spfResult: "pass",
+      dkimResult: "pass",
+      bodyPreview: "Thanks, that fixed it.",
+      processedMs: 42,
+      createdAt: "2026-11-08T10:00:00Z",
+    });
+    // No raw headers or full bodies leak through.
+    expect(JSON.stringify(data.emails[0])).not.toContain("headers");
+  });
+
+  it("reports available:false when the query errors", async () => {
+    session.mockResolvedValue(STAFF);
+    serviceClientMock.mockReturnValue(dbWithInbound({ data: null, error: { message: "relation inbound_emails does not exist" } }));
+    const res = await inboundGET();
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.available).toBe(false);
+    expect(data.emails).toEqual([]);
+    expect(data.note).toBeTruthy();
+  });
+
+  it("reports available:false when the service client isn't configured", async () => {
+    session.mockResolvedValue(STAFF);
+    serviceClientMock.mockReturnValue(null);
+    const res = await inboundGET();
+    const data = await res.json();
+    expect(data.available).toBe(false);
+    expect(data.emails).toEqual([]);
+  });
+});
+
+describe("inbound status helpers", () => {
+  it("labels known statuses and passes unknowns through", () => {
+    expect(inboundStatusLabel("accepted")).toBe("Accepted");
+    expect(inboundStatusLabel("quarantined")).toBe("Quarantined");
+    expect(inboundStatusLabel("some_future_status")).toBe("some_future_status");
+  });
+
+  it("counts rows by status", () => {
+    const counts = inboundStatusCounts([
+      { status: "accepted" }, { status: "accepted" }, { status: "quarantined" }, { status: "error" },
+    ]);
+    expect(counts).toEqual({ accepted: 2, quarantined: 1, error: 1 });
   });
 });
 

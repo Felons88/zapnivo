@@ -2,17 +2,18 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { EMAIL_TEMPLATES, templatesByAudience, type EmailTemplateSpec } from "@/lib/email-studio";
-import { SendersPanel, TriggersPanel, LogPanel } from "./CenterPanels";
+import { InboundPanel, SendersPanel, TriggersPanel, LogPanel } from "./CenterPanels";
 
 type StaffRecipient = { email: string; name: string; role: string };
 type SenderOption = { id: string; name: string; email: string };
-type StudioView = "templates" | "senders" | "triggers" | "log";
+type StudioView = "templates" | "senders" | "triggers" | "log" | "inbound";
 
 const VIEWS: { id: StudioView; label: string }[] = [
   { id: "templates", label: "Templates" },
   { id: "senders", label: "Senders" },
   { id: "triggers", label: "Triggers" },
   { id: "log", label: "Log" },
+  { id: "inbound", label: "Inbound" },
 ];
 type Preview = {
   available: boolean;
@@ -136,6 +137,7 @@ export function EmailStudio({ staffRecipients, mailerConfigured }: { staffRecipi
       {view === "senders" && <SendersPanel />}
       {view === "triggers" && <TriggersPanel />}
       {view === "log" && <LogPanel />}
+      {view === "inbound" && <InboundPanel />}
 
       {view === "templates" && (
     <div className="grid gap-6 lg:grid-cols-[280px_1fr]">

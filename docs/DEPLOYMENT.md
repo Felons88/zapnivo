@@ -94,11 +94,39 @@ Local dev is unchanged: `localhost:3000/support` etc. work as paths, and
 
 ## Email routing & inbound support replies
 
-Outbound uses the 11-department sender registry (`src/lib/email/senders.ts`) — every queued email carries `sender`/`reply_to`/`template`/`event` (migration 0021). Only `support@zapnivo.com` accepts replies; the other identities are outbound-only.
+Outbound uses the 11-department sender registry (`src/lib/email/senders.ts`) — every queued email carries `sender`/`reply_to`/`template`/`event` (migration 0021). Only `support@` (and `partners@` for partner tickets) accepts ticket replies; the other identities are outbound-only.
 
-Inbound setup (manual, one-time):
-1. `EMAIL_INBOUND_SECRET` must be set (already in Vercel production + `.env.local`).
-2. Inbound mail for `support@zapnivo.com` must reach `POST https://api.zapnivo.com/webhooks/email/inbound?key=$EMAIL_INBOUND_SECRET`. Two workable paths:
-   - **Brevo Inbound Parsing**: point a parsing domain/subdomain MX at Brevo and set the parse webhook to the URL above. Requires MX changes — conflicts with the current Google Workspace MX on the apex, so use a subdomain (e.g., `in.zapnivo.com`) and forward support@ there from Google Workspace.
-   - **Google Workspace routing**: Gmail-level forwarding/routing rule for support@ → an address on the Brevo parsing domain.
-3. The endpoint only accepts mail whose `From` matches the ticket requester's email and whose subject/body contains the `Z-<n>` ticket number; everything else is ignored with 200.
+### Inbound pipeline (hardened — migration 0022)
+
+`POST https://api.zapnivo.com/webhooks/email/inbound` accepts ticket replies. Authentication is layered:
+
+1. **Shared secret** — `EMAIL_INBOUND_SECRET` (comma-separated for rotation). Accepted via `?key=`, `Authorization: Bearer <secret>`, or `X-Zapnivo-Inbound-Key`. Brevo inbound parsing cannot sign webhooks, so this secret + TLS is the provider authentication. Never logged; rotate by appending the new secret, deploying, updating the provider, then removing the old one.
+2. **Reply token** — every ticket notification email now sets `Reply-To: support+<TICKET>-<hmac>@zapnivo.com` (or `partners+…` for partner tickets). The token is an HMAC-SHA256 of ticket number + requester email + org under `HELPDESK_SECRET` — unguessable, per-ticket, expires implicitly when the ticket data changes. Replies carrying a valid token are accepted only if `From` still matches the requester; a forged or cross-ticket token is quarantined.
+3. **Legacy fallback** — mail without a plus-address still matches on `Z-<n>` in subject/body + `From` = requester email. Recorded as `auth_method=legacy_from_match` in the log so staff can see which path was used.
+4. **DMARC** — when the provider includes `Authentication-Results`, an explicit `dmarc=fail` quarantines the message for staff review instead of posting it. SPF/DKIM/DMARC are treated as signals, never as proof of identity.
+
+Replay/duplicate protection: `Message-ID` has a unique index (second delivery → `duplicate`), and a content-hash dedupe window (15 min) catches retries without a Message-ID. Payloads over 2 MB are rejected with 413 before parsing. Every request — accepted, quarantined, rejected, ignored, duplicate, error — is written to `inbound_emails` (migration 0022) with auth method, DMARC/SPF/DKIM results, latency, and a 200-char body preview. Staff read it in Admin → Email Center → **Inbound**; only the service role writes.
+
+### Brevo inbound parsing setup (manual, one-time)
+
+Google Workspace stays the primary mail host on the apex — **do not touch the apex MX records** (`smtp.google.com`).
+
+1. In Brevo → **SMTP & API → Inbound Parsing**, add the parsing domain `in.zapnivo.com`.
+2. At your DNS provider add, for `in.zapnivo.com` only:
+   - `MX 10 inbound-relay1.brevo.com` (and `inbound-relay2.brevo.com` for redundancy — Brevo's documented inbound MX set; confirm current values in the Brevo inbound-parsing panel when you set it up)
+   - No SPF/DKIM records needed on the parsing subdomain — Brevo accepts all mail there.
+3. In the same Brevo panel set the parse webhook to `https://api.zapnivo.com/webhooks/email/inbound?key=$EMAIL_INBOUND_SECRET` (use `Authorization: Bearer` header if Brevo lets you set headers instead of putting the secret in the URL — either works).
+4. In Google Workspace Admin → Gmail → Routing (or each mailbox's forwarding), forward `support@zapnivo.com` → `support@in.zapnivo.com` (the parsing domain delivers to whatever address you configure in Brevo's inbound rules — typically a wildcard `*@in.zapnivo.com` → webhook).
+5. Send a real test: reply to an actual ticket email from an approved external mailbox, confirm the reply appears in the ticket thread and as `accepted` in Admin → Email Center → Inbound. **Inbound email is not operational until this test passes.**
+
+### Departmental routing plan
+
+| Address | Destination |
+|---|---|
+| `support@zapnivo.com` | Customer support tickets (forward → Brevo inbound) |
+| `partners@zapnivo.com` | Partner correspondence — partner-ticket replies forward here too |
+| `billing@`, `operations@`, `security@`, `legal@`, `hello@`, `admin@` | Monitored mailboxes/aliases in Google Workspace; **not** auto-ticketed |
+| `rentals@`, `notifications@` | Monitored reply destinations only |
+| `noreply@` | Send-only; never accepts support conversations |
+
+Only mail that resolves to a ticket (reply token or `Z-<n>` + requester match) becomes a ticket message — departmental inboxes stay plain mail until a workflow explicitly calls for ticketing.

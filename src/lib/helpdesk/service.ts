@@ -6,6 +6,7 @@ import { describeRental, type RentalResult } from "../rental-lookup";
 import { SITE, subUrl } from "../site";
 import { signAccess } from "./access";
 import { renderEmail } from "../email-templates";
+import { ticketReplyAddress } from "../email/inbound";
 import { flushOutbox, getMailer, type Mailer } from "./mailer";
 import { requiresAdmin, snapshot, suggestRefund } from "./refund-policy";
 import { getRepo, type HelpdeskRepo } from "./repo";
@@ -43,7 +44,8 @@ async function notify(c: Ctx, t: Ticket, subject: string, body: string, kind: "c
   const html = htmlOverride ?? (kind === "created" ? renderEmail("support_created", vars) : renderEmail("support_updated", vars));
   await c.repo.queueEmail({
     ticketId: t.id, to: t.email, subject: `[${t.number}] ${subject}`, body: `${body}\n\n— View or reply: ${link}\n\nZapnivo Support`, html,
-    sender: meta?.sender ?? "support", replyTo: null,
+    sender: meta?.sender ?? "support",
+    replyTo: ticketReplyAddress(t),
     template: meta?.template ?? (kind === "created" ? "support_created" : "support_updated"),
     event: meta?.event ?? (kind === "created" ? "support.ticket.created" : "support.ticket.updated"),
   });

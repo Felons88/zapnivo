@@ -292,6 +292,49 @@ export type StudioLogRow = {
   event: string | null;
 };
 
+/**
+ * One row of the inbound_emails table (migration 0022) as exposed by
+ * GET /api/admin/email-studio/inbound. Deliberately safe: no raw headers and
+ * only body_preview — never the full body.
+ */
+export type StudioInboundRow = {
+  id: string;
+  messageId: string | null;
+  fromEmail: string | null;
+  toAddress: string | null;
+  subject: string | null;
+  ticketNumber: string | null;
+  status: string;
+  reason: string | null;
+  authMethod: string | null;
+  dmarcResult: string | null;
+  spfResult: string | null;
+  dkimResult: string | null;
+  bodyPreview: string | null;
+  processedMs: number | null;
+  createdAt: string;
+};
+
+/** Inbound processing statuses; unknown future values pass through. */
+export const INBOUND_STATUS_LABELS: Record<string, string> = {
+  accepted: "Accepted",
+  quarantined: "Quarantined",
+  rejected: "Rejected",
+  ignored: "Ignored",
+  duplicate: "Duplicate",
+  error: "Error",
+};
+
+export const inboundStatusLabel = (status: string): string =>
+  INBOUND_STATUS_LABELS[status] ?? status;
+
+/** Counts inbound rows by status for the loaded page — stable insertion order by first appearance. */
+export function inboundStatusCounts(rows: Pick<StudioInboundRow, "status">[]): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const r of rows) counts[r.status] = (counts[r.status] ?? 0) + 1;
+  return counts;
+}
+
 /** Registry uses "wired" for live paths; normalize to the UI's "live" bucket. Unknown statuses pass through. */
 export const normalizeTriggerStatus = (status: string): string =>
   status === "wired" ? "live" : status;

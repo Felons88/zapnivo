@@ -3,8 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { EMAIL_SENDERS } from "@/lib/email/senders";
 import {
+  inboundStatusCounts,
+  inboundStatusLabel,
   normalizeTriggerStatus,
   triggerStatusLabel,
+  type StudioInboundRow,
   type StudioLogRow,
   type StudioSenderRow,
   type StudioTriggerRow,
@@ -29,6 +32,20 @@ const TRIGGER_TONE: Record<string, string> = {
   live: "bg-lime/60 text-ink",
   planned: "bg-mist text-graphite",
   no_template: "bg-gold/50 text-ink",
+};
+
+const INBOUND_TONE: Record<string, string> = {
+  accepted: "bg-lime/60 text-ink",
+  quarantined: "bg-gold/50 text-ink",
+  rejected: "bg-red-50 text-red-700",
+  duplicate: "bg-red-50 text-red-700",
+  error: "bg-red-50 text-red-700",
+  ignored: "bg-mist text-graphite",
+};
+
+const AUTH_METHOD_LABELS: Record<string, string> = {
+  reply_token: "reply token",
+  legacy_from_match: "legacy from-match",
 };
 
 function Pill({ tone, children }: { tone?: string; children: React.ReactNode }) {
@@ -247,6 +264,100 @@ export function LogPanel() {
           </tbody>
         </table>
       </div>
+    </section>
+  );
+}
+
+/* ── Inbound email log ──────────────────────────────────────────────────── */
+
+const BODY_PREVIEW_MAX = 240;
+
+function bodyPreviewText(e: StudioInboundRow): string | null {
+  const p = e.bodyPreview?.trim();
+  if (!p) return null;
+  return p.length > BODY_PREVIEW_MAX ? `${p.slice(0, BODY_PREVIEW_MAX)}…` : p;
+}
+
+export function InboundPanel() {
+  const [state, setState] = useState<FetchState<{ emails: StudioInboundRow[] }>>({ loading: true, data: null, note: null });
+  useEffect(() => { void getJson<{ emails: StudioInboundRow[] }>("/api/admin/email-studio/inbound").then(setState); }, []);
+
+  if (state.loading) return <p className="text-sm text-graphite">Loading inbound email…</p>;
+  if (!state.data) return <p className="rounded-xl bg-mist/60 px-4 py-3 text-sm font-bold text-graphite">{state.note ?? "Inbound email log unavailable."}</p>;
+
+  const counts = inboundStatusCounts(state.data.emails);
+  const countEntries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+
+  return (
+    <section className={card}>
+      <h2 className="font-display text-xl font-bold">Inbound email</h2>
+      <p className="mt-1 text-sm text-graphite">
+        Support replies and inbound mail processed by the webhook, newest first (latest 100).
+        Only a short body preview is stored — full messages and raw headers are never kept here.
+      </p>
+      {countEntries.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {countEntries.map(([status, n]) => (
+            <Pill key={status} tone={INBOUND_TONE[status]}>
+              {inboundStatusLabel(status)}: {n}
+            </Pill>
+          ))}
+        </div>
+      )}
+      {state.data.emails.length === 0 ? (
+        <p className="mt-4 text-sm text-graphite">No inbound emails yet — replies sent to support addresses appear here once the inbound webhook is live.</p>
+      ) : (
+        <div className="mt-4 overflow-x-auto">
+          <table className="w-full min-w-[960px] border-collapse">
+            <thead>
+              <tr className="border-b border-mist">
+                <th className={th}>Time</th>
+                <th className={th}>From</th>
+                <th className={th}>To</th>
+                <th className={th}>Subject</th>
+                <th className={th}>Ticket</th>
+                <th className={th}>Status</th>
+                <th className={th}>Auth</th>
+                <th className={th}>DMARC</th>
+                <th className={th}>Ms</th>
+              </tr>
+            </thead>
+            <tbody>
+              {state.data.emails.map((e) => {
+                const preview = bodyPreviewText(e);
+                return (
+                  <tr key={e.id} className="border-b border-mist/60 align-top last:border-0">
+                    <td className={`${td} whitespace-nowrap text-xs text-graphite`}>{fmtDate(e.createdAt)}</td>
+                    <td className={`${td} max-w-[180px] truncate font-semibold`} title={e.fromEmail ?? ""}>{e.fromEmail ?? "—"}</td>
+                    <td className={`${td} max-w-[160px] truncate text-graphite`} title={e.toAddress ?? ""}>{e.toAddress ?? "—"}</td>
+                    <td className={`${td} max-w-[240px]`}>
+                      <span className="block truncate text-sm font-bold" title={e.subject ?? ""}>{e.subject ?? "(no subject)"}</span>
+                      {(e.reason || preview) && (
+                        <details className="mt-1">
+                          <summary className="cursor-pointer text-[11px] font-bold text-ink">details</summary>
+                          <div className="mt-1 max-w-[320px] space-y-1 rounded-lg bg-mist/50 p-2 text-xs">
+                            {e.reason && <p><span className="font-extrabold">Reason:</span> <span className="text-graphite">{e.reason}</span></p>}
+                            {preview && <p className="whitespace-pre-wrap break-words text-graphite">{preview}</p>}
+                          </div>
+                        </details>
+                      )}
+                    </td>
+                    <td className={td}>{e.ticketNumber ? <code className="rounded bg-mist px-1.5 py-0.5 text-[11px]">{e.ticketNumber}</code> : <span className="text-xs text-silver">—</span>}</td>
+                    <td className={td}><Pill tone={INBOUND_TONE[e.status]}>{inboundStatusLabel(e.status)}</Pill></td>
+                    <td className={td}>
+                      {e.authMethod ? (
+                        <code className="rounded bg-mist px-1.5 py-0.5 text-[11px]">{AUTH_METHOD_LABELS[e.authMethod] ?? e.authMethod}</code>
+                      ) : <span className="text-xs text-silver">—</span>}
+                    </td>
+                    <td className={`${td} text-xs font-semibold`}>{e.dmarcResult ?? "—"}</td>
+                    <td className={`${td} whitespace-nowrap text-xs text-graphite`}>{e.processedMs != null ? `${e.processedMs} ms` : "—"}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </section>
   );
 }
