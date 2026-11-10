@@ -20,7 +20,7 @@ Copy values from local `.env.local`; **never commit them**.
 
 | Variable | Value |
 |---|---|
-| `NEXT_PUBLIC_SITE_URL` | `https://zapnivo.com` |
+| `NEXT_PUBLIC_SITE_URL` | `https://www.zapnivo.com` |
 | `NEXT_PUBLIC_SUPABASE_URL` | `https://qidbieuvxeqtbqobjkns.supabase.co` |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | from `.env.local` |
 | `SUPABASE_SERVICE_ROLE_KEY` | from `.env.local` — **server-only** |

@@ -10,7 +10,7 @@ export default function RentalTerms() {
       <h2>Rental period and charges</h2>
       <ul>
         <li>A rental begins when a power bank is released from the station and ends when it is accepted back by an eligible station.</li>
-        <li>Charges accrue per started hour up to the stated 24-hour maximum, then at the daily rate shown at checkout for each additional started day. <strong>[REVIEW — finalize additional-day pricing]</strong></li>
+        <li>Rental charges are calculated using the pricing shown before checkout, including any applicable additional-day rate. <strong>[REVIEW — finalize additional-day pricing before launch]</strong></li>
         <li>Applicable taxes are added at checkout.</li>
       </ul>
       <h2>Payment authorization</h2>
@@ -18,7 +18,7 @@ export default function RentalTerms() {
       <h2>Returns</h2>
       <ul>
         <li>Power banks must be returned to an eligible participating Zapnivo station listed in your rental.</li>
-        <li>If a power bank is not returned within the stated window (proposed: 72 hours), the non-return maximum shown at checkout may be charged and the rental will close.</li>
+        <li>If a power bank is not returned within the stated return window, the non-return charge shown at checkout may apply. <strong>[REVIEW — confirm the return window and fee disclosure before launch]</strong></li>
       </ul>
       <h2>Care and damage</h2>
       <p>You are responsible for the power bank while rented. Report damage via support. Do not disassemble equipment. <strong>[REVIEW]</strong></p>

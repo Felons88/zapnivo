@@ -19,7 +19,7 @@ export default function Refund() {
         <li>The non-return charge where the power bank was not returned, unless the return is later verified by station records.</li>
       </ul>
       <h2>How to request</h2>
-      <p>Create a support ticket and select "Refund request". Include your rental reference and the email used at checkout. Requests are reviewed against station and payment records. You retain the right to dispute with your card issuer. <strong>[REVIEW]</strong></p>
+      <p><a href="/support/new">Create a support ticket</a> and select "Refund request". Include your rental reference and the email used at checkout. Requests are reviewed against station and payment records. You retain the right to dispute with your card issuer. <strong>[REVIEW]</strong></p>
       <h2>Timing</h2>
       <p>Approved refunds are issued to the original payment method. Bank posting times vary and are outside our control. <strong>[REVIEW]</strong></p>
     </LegalPage>

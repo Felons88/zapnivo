@@ -25,9 +25,9 @@ export const partnerApplicationSchema = z.object({
   street: clean(160),
   city: clean(80),
   state: z.string().trim().length(2).toUpperCase(),
-  hours: clean(200),
+  hours: optional(200),
   guestTraffic: optional(100),
-  installLocation: clean(300),
+  installLocation: optional(300),
   questions: optional(2000),
   website: honeypot,
 });

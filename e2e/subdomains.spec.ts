@@ -74,13 +74,14 @@ test.describe("subdomain routing via Host header", () => {
     };
     const apex = await get();
     const support = await get("support");
+    const customer = await get("customer");
     const internal = await get("internal");
     const partners = await get("partners");
     const api = await get("api");
 
     expect(apex).toMatch(/Allow: \//);
     expect(apex).toMatch(/Disallow: \/admin/);
-    for (const body of [internal, partners, api]) {
+    for (const body of [customer, internal, partners, api]) {
       expect(body).toMatch(/User-Agent: \*/i);
       expect(body).toMatch(/Disallow: \/\s*$/m);
       expect(body).not.toMatch(/Allow: \/\s*$/m);
@@ -91,7 +92,7 @@ test.describe("subdomain routing via Host header", () => {
   });
 
   test("sitemap is empty for private hosts", async ({ request }) => {
-    for (const sub of ["internal", "partners", "api"]) {
+    for (const sub of ["customer", "internal", "partners", "api"]) {
       const res = await request.get("/sitemap.xml", as(sub));
       const body = await res.text();
       expect(body, sub).not.toContain("<loc>");

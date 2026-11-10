@@ -22,7 +22,7 @@ export function Locator({ stations }: { stations: Station[] }) {
     e.preventDefault();
     if (!needle) return;
     track("station_search");
-    if (!TOKEN) return setMsg("Map search needs a Mapbox token. Showing list matches only.");
+    if (!TOKEN) return setMsg("Map search is temporarily unavailable. Showing matching stations below.");
     try {
       const r = await fetch(`https://api.mapbox.com/search/geocode/v6/forward?q=${encodeURIComponent(query)}&country=us&bbox=-97.3,43.4,-89.4,49.5&limit=1&access_token=${TOKEN}`);
       const f = (await r.json()).features?.[0];

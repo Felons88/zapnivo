@@ -19,7 +19,7 @@ export default function Accessibility() {
       <h2>Conformance target</h2>
       <p>We target WCAG 2.2 AA for this website. Physical kiosk accessibility requirements will be evaluated with the manufacturer before installation. <strong>[REVIEW]</strong></p>
       <h2>Report a barrier</h2>
-      <p>If anything on this site — or later, at a station — is difficult for you to use, create a support ticket and choose "Accessibility assistance". These reports are prioritized.</p>
+      <p>If anything on this site — or later, at a station — is difficult for you to use, <a href="/support/new">create a support ticket</a> and choose "Accessibility assistance". These reports are prioritized.</p>
     </LegalPage>
   );
 }

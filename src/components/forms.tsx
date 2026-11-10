@@ -62,10 +62,10 @@ export function PartnerForm() {
   const ref = useRef<HTMLFormElement>(null);
   const { props, wrap } = useField(s.fields);
 
-  const stepFields = [["businessName", "contactName", "email", "phone"], ["venueType", "street", "city", "state"], ["hours", "installLocation"]];
+  const stepFields = [["businessName", "contactName", "email", "phone"], ["venueType", "street", "city", "state"]];
   const validStep = () => {
     const form = ref.current!;
-    return stepFields[step].every((n) => (form.elements.namedItem(n) as HTMLInputElement).reportValidity());
+    return (stepFields[step] ?? []).every((n) => (form.elements.namedItem(n) as HTMLInputElement).reportValidity());
   };
   const next = () => validStep() && setStep(step + 1);
 
@@ -76,7 +76,10 @@ export function PartnerForm() {
     const r = await post("/api/partner-applications", JSON.stringify(jsonOf(e.currentTarget)), true);
     setS(r);
     if (r.status === "done") track("venue_application_complete");
-    else if (r.fields) setStep(0);
+    else if (r.fields) {
+      const invalidStep = stepFields.findIndex((fields) => fields.some((field) => r.fields?.[field]));
+      setStep(invalidStep >= 0 ? invalidStep : 2);
+    }
   }
 
   if (s.status === "done") return <Status s={s} success={<><p className="font-display text-2xl font-bold">Application received.</p><p className="mt-2 font-medium">Thank you. Your inquiry has been saved and our team will follow up about next steps. This is not an agreement or a guarantee of placement.</p></>} />;
@@ -103,9 +106,9 @@ export function PartnerForm() {
       </fieldset>
       <fieldset className={step === 2 ? "grid gap-5" : "hidden"}>
         <legend className="sr-only">Placement details</legend>
-        {wrap("Estimated operating hours", "hours", <input {...props("hours")} required maxLength={200} placeholder="e.g. Mon–Sat 11am–1am" />)}
+        {wrap("Estimated operating hours (optional)", "hours", <input {...props("hours")} maxLength={200} placeholder="e.g. Mon–Sat 11am–1am" />)}
         {wrap("Approximate guest traffic (optional)", "guestTraffic", <input {...props("guestTraffic")} maxLength={100} placeholder="e.g. 300 guests per weekend night" />)}
-        {wrap("Preferred installation location", "installLocation", <input {...props("installLocation")} required maxLength={300} placeholder="e.g. Near the bar entrance, on the counter" />)}
+        {wrap("Preferred installation location (optional)", "installLocation", <input {...props("installLocation")} maxLength={300} placeholder="e.g. Near the bar entrance, on the counter" />)}
         {wrap("Additional questions (optional)", "questions", <textarea {...props("questions")} rows={4} maxLength={2000} />)}
       </fieldset>
       <Status s={s} success={null} />

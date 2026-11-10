@@ -9,6 +9,11 @@ describe("partnerApplicationSchema", () => {
   it("accepts a complete application", () => {
     expect(partnerApplicationSchema.safeParse(good).success).toBe(true);
   });
+  it("accepts an application without placement details", () => {
+    const { hours: _hours, installLocation: _installLocation, ...required } = good;
+    expect(partnerApplicationSchema.safeParse(required).success).toBe(true);
+    expect(partnerApplicationSchema.safeParse({ ...required, hours: "", installLocation: "" }).success).toBe(true);
+  });
   it("rejects unknown venue types", () => {
     expect(partnerApplicationSchema.safeParse({ ...good, venueType: "Spaceship" }).success).toBe(false);
   });

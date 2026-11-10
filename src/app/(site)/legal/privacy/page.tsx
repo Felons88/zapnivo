@@ -38,7 +38,7 @@ export default function Privacy() {
       <h2>Retention &amp; security</h2>
       <p>We keep information only as long as needed for the purposes above and for legal obligations. Access to submission records is restricted to authorized staff. <strong>[REVIEW]</strong></p>
       <h2>Contact</h2>
-      <p>Questions about this policy: use the contact page and select "General inquiry". A dedicated privacy email will be published here before launch. <strong>[REVIEW]</strong></p>
+      <p>Questions about this policy: use the <a href="/contact">contact page</a> and select "General inquiry". A dedicated privacy email will be published here before launch. <strong>[REVIEW]</strong></p>
     </LegalPage>
   );
 }
