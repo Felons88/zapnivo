@@ -5,6 +5,7 @@ import { getSessionUser } from "@/lib/auth";
 import { GOODWILL_AGENT_LIMIT_CENTS, requiresAdmin } from "@/lib/helpdesk/refund-policy";
 import { fmt } from "@/lib/pricing";
 import { createRefund, PAYMENTS_UNCONFIGURED, stripeConfigured } from "@/lib/stripe";
+import { appendLedger } from "@/lib/payments/ledger";
 import { serviceClient } from "@/lib/supabase";
 
 const schema = z.object({ amount_cents: z.coerce.number().int().positive().max(1_000_000), reason: z.string().trim().min(5).max(300) });
@@ -34,8 +35,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const db = serviceClient();
   if (!db) return isJson ? NextResponse.json(PAYMENTS_UNCONFIGURED, { status: 503 }) : back("error", PAYMENTS_UNCONFIGURED.error, 503);
 
-  const { data: pay } = await db.from("payments").select("id,state,stripe_payment_intent_id,amount_captured_cents,amount_refunded_cents,rentals(reference)").eq("id", id).maybeSingle();
-  const row = pay as unknown as { id: string; state: string; stripe_payment_intent_id: string | null; amount_captured_cents: number | null; amount_refunded_cents: number | null; rentals: { reference: string } | null } | null;
+  const { data: pay } = await db.from("payments").select("id,rental_id,state,stripe_payment_intent_id,amount_captured_cents,amount_refunded_cents,rentals(reference)").eq("id", id).maybeSingle();
+  const row = pay as unknown as { id: string; rental_id: string; state: string; stripe_payment_intent_id: string | null; amount_captured_cents: number | null; amount_refunded_cents: number | null; rentals: { reference: string } | null } | null;
   if (!row) return back("error", "Payment not found.", 404);
   if (!row.stripe_payment_intent_id || !["captured", "partially_refunded"].includes(row.state)) return back("error", "Only captured payments can be refunded.", 409);
 
@@ -60,6 +61,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const issuedBy = /^[0-9a-f-]{36}$/i.test(user.id) ? user.id : null;
   await db.from("refunds").upsert({ payment_id: row.id, amount_cents: amount, reason, stripe_refund_id: out.data.id, issued_by: issuedBy }, { onConflict: "stripe_refund_id" });
   await db.from("payments").update({ amount_refunded_cents: newRefunded, state: newRefunded >= captured ? "refunded" : "partially_refunded" }).eq("id", row.id);
+  // Append-only ledger: refunds are negative cents, keyed by the Stripe refund id.
+  await appendLedger(db, {
+    rentalId: row.rental_id, kind: "refund", amountCents: -amount,
+    stripePaymentIntentId: row.stripe_payment_intent_id, status: "succeeded",
+    idempotencyKey: `refund:${out.data.id}`,
+    metadata: { payment_id: row.id, stripe_refund_id: out.data.id, reason },
+  });
   await auditLog(user.id, "admin_refund", "payment", row.id, { amount, reason, stripe_refund_id: out.data.id });
   return back("refunded", `Refunded ${fmt(amount)}.`);
 }

@@ -32,7 +32,7 @@ const config: NextConfig = {
   async headers() {
     return [
       { source: "/(.*)", headers: securityHeaders },
-      { source: "/(admin|partners|login)(.*)", headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }] },
+      { source: "/(admin|partners|account|login)(.*)", headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }] },
     ];
   },
   async redirects() {

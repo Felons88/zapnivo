@@ -7,6 +7,9 @@ import { applyPromo, holdCents, PRICING_SELECT, pricingFromRow, proportionalTaxC
 import { PRICING_V1 } from "@/lib/pricing";
 import { lookupPromo } from "@/lib/promos";
 import { cancelPaymentIntent, capturePaymentIntent, PAYMENTS_UNCONFIGURED, stripeConfigured, taxEnabled } from "@/lib/stripe";
+import { chargeNonReturnFee } from "@/lib/payments/nonreturn";
+import { notifyFeeCharged } from "@/lib/notifications";
+import { appendLedger } from "@/lib/payments/ledger";
 import { serviceClient } from "@/lib/supabase";
 
 /** Staff rental lifecycle actions. Dispense/return confirmations fire the branded customer emails. */
@@ -61,13 +64,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 type CaptureOutcome = { status: "captured" | "released" | "skipped" | "flagged" | "charged" | "error"; detail: string; cents?: number };
 
 type RentalCtx = {
-  id: string; state: string; started_at: string | null; dispensed_at: string | null; returned_at: string | null;
-  pricing_version: string; bank_count: number; promo_code: string | null; non_return_deadline: string | null;
+  id: string; reference: string; state: string; started_at: string | null; dispensed_at: string | null; returned_at: string | null;
+  pricing_version: string; bank_count: number; promo_code: string | null; non_return_deadline: string | null; non_return_fee_status: string | null;
   payments: { id: string; state: string; stripe_payment_intent_id: string | null; amount_authorized_cents: number | null; tax_cents: number | null }[];
 };
 
 async function loadCtx(db: NonNullable<ReturnType<typeof serviceClient>>, id: string) {
-  const { data } = await db.from("rentals").select("id,state,started_at,dispensed_at,returned_at,pricing_version,bank_count,promo_code,non_return_deadline,payments(id,state,stripe_payment_intent_id,amount_authorized_cents,tax_cents)").eq("id", id).maybeSingle();
+  const { data } = await db.from("rentals").select("id,reference,state,started_at,dispensed_at,returned_at,pricing_version,bank_count,promo_code,non_return_deadline,non_return_fee_status,payments(id,state,stripe_payment_intent_id,amount_authorized_cents,tax_cents)").eq("id", id).maybeSingle();
   return data as unknown as RentalCtx | null;
 }
 
@@ -96,30 +99,42 @@ async function captureOnReturn(db: NonNullable<ReturnType<typeof serviceClient>>
     const c = await cancelPaymentIntent(pay.stripe_payment_intent_id, `release_${pay.id}`);
     if (!c.ok) return { status: "error", detail: "Couldn't release the hold." };
     await db.from("payments").update({ state: "released", amount_captured_cents: 0, discount_cents: discountCents, tax_cents: 0 }).eq("id", pay.id);
+    await appendLedger(db, { rentalId: id, kind: "rental_charge", amountCents: 0, stripePaymentIntentId: pay.stripe_payment_intent_id, status: "succeeded", idempotencyKey: `release:${pay.id}`, metadata: { discount_cents: discountCents, reason: "hold_released_fully_discounted" } });
     await auditLog(actor, "release_hold", "payment", pay.id, { discountCents });
     return { status: "released", detail: "Fully discounted; the hold was released.", cents: 0 };
   }
   const cap = await capturePaymentIntent(pay.stripe_payment_intent_id, total, `capture_${pay.id}`);
   if (!cap.ok) return { status: "error", detail: `Capture failed (${cap.code}). The payment stays authorized.` };
   await db.from("payments").update({ state: "captured", amount_captured_cents: total, discount_cents: discountCents, tax_cents: tax, captured_at: now.toISOString() }).eq("id", pay.id);
+  await appendLedger(db, { rentalId: id, kind: "rental_charge", amountCents: total, stripePaymentIntentId: pay.stripe_payment_intent_id, status: "succeeded", idempotencyKey: `capture:${pay.id}`, metadata: { discount_cents: discountCents, tax_cents: tax, bank_count: r.bank_count } });
   await auditLog(actor, "capture_on_return", "payment", pay.id, { total, discountCents, tax, banks: r.bank_count });
   return { status: "captured", detail: "Charge captured.", cents: total };
 }
 
+/**
+ * Non-return = the confirmed flat fee (pricing.nonReturnMaxCents, $45) as a SEPARATE off-session
+ * PaymentIntent on the saved card — never a capture of the hold, and never past-24h rental math.
+ * On success the original hold is released; on failure the rental stays chargeable for a retry.
+ */
 async function chargeNonReturn(db: NonNullable<ReturnType<typeof serviceClient>>, id: string, now: Date, actor: string): Promise<CaptureOutcome> {
   const r = await loadCtx(db, id);
   const pay = r?.payments?.[0];
   if (!r || !pay) return { status: "error", detail: "Rental or payment not found." };
   const overdue = r.state === "unreturned" || (r.state === "active" && !!r.non_return_deadline && new Date(r.non_return_deadline) <= now);
   if (!overdue) return { status: "error", detail: "Only unreturned rentals past their deadline can be charged off." };
-  if (pay.state !== "authorized" || !pay.stripe_payment_intent_id) return { status: "error", detail: "There is no active authorization to capture." };
+  if (r.non_return_fee_status === "charged") return { status: "error", detail: "The non-return fee was already charged." };
+  if (!pay.stripe_payment_intent_id) return { status: "error", detail: "There is no payment on file to charge." };
   const { data: pr } = await db.from("pricing_versions").select(PRICING_SELECT).eq("id", r.pricing_version).maybeSingle();
   if (!pr) return { status: "error", detail: "Pricing version missing." };
-  const amount = holdCents(pricingFromRow(pr as PricingRow), r.bank_count);
-  const cap = await capturePaymentIntent(pay.stripe_payment_intent_id, amount, `nonreturn_${pay.id}`);
-  if (!cap.ok) return { status: "error", detail: `Capture failed (${cap.code}).` };
-  await db.from("payments").update({ state: "captured", amount_captured_cents: amount, captured_at: now.toISOString() }).eq("id", pay.id);
+  const fee = pricingFromRow(pr as PricingRow).nonReturnMaxCents;
+
+  const out = await chargeNonReturnFee(db, { rentalId: id, reference: r.reference, holdPaymentIntentId: pay.stripe_payment_intent_id, feeCents: fee, actor });
+  if (out.status !== "charged") {
+    return { status: out.status === "skipped" ? "skipped" : "error", detail: out.detail };
+  }
+  // Fee collected: release the original hold — post-24h rental charges are never auto-captured.
+  await cancelPaymentIntent(pay.stripe_payment_intent_id, `release_${pay.id}`);
   await db.from("rentals").update({ state: "charged_off" }).eq("id", id);
-  await auditLog(actor, "charge_non_return", "rental", id, { amount, banks: r.bank_count });
-  return { status: "charged", detail: "Non-return charged.", cents: amount };
+  try { await notifyFeeCharged(id, db); } catch { /* queued notice must not fail the charge */ }
+  return { status: "charged", detail: "Non-return fee charged; the card hold was released.", cents: out.cents };
 }

@@ -22,12 +22,17 @@ export async function POST(req: Request) {
   if (!db) return NextResponse.json({ error: "Backend not configured" }, { status: 503 });
   const form = await req.formData();
   const action = String(form.get("action") ?? "");
+  // Granting org access is admin-only — staff can run day-to-day ops but not create partner principals.
+  if ((action === "invite_partner" || action === "link_profile") && user!.role !== "admin") {
+    return back(req, "error", "Only admins can invite or link partner accounts.");
+  }
 
   if (action === "create_org") {
     const name = String(form.get("name") ?? "").trim();
     if (!name || name.length > 160) return back(req, "error", "Enter an organization name.");
-    const { error } = await db.from("organizations").insert({ name });
+    const { data: org, error } = await db.from("organizations").insert({ name }).select("id").single();
     if (error) return back(req, "error", "The organization could not be created.");
+    await auditLog(user!.id, "create_org", "organization", org?.id ?? null, { name });
     return back(req, "org");
   }
 
@@ -45,6 +50,7 @@ export async function POST(req: Request) {
       const { error: profileError } = await db.from("profiles").update({ role: "partner", organization_id: p.data.organization_id, ...(p.data.name ? { full_name: p.data.name } : {}) }).eq("id", data.user.id);
       if (profileError) return back(req, "error", "Invite sent, but the partner profile was not linked. Use Link existing account below.");
     }
+    await auditLog(user!.id, "invite_partner", "organization", p.data.organization_id, { email: p.data.email });
     return back(req, "invited");
   }
 
@@ -63,6 +69,7 @@ export async function POST(req: Request) {
     if (profile.role === "admin" || profile.role === "staff") return back(req, "error", "Staff accounts cannot be linked as partner owners.");
     const { error } = await db.from("profiles").update({ role: "partner", organization_id: orgId }).eq("id", profile.id);
     if (error) return back(req, "error", "The account could not be linked.");
+    await auditLog(user!.id, "link_partner", "profile", profile.id, { email, organization_id: orgId });
     return back(req, "linked");
   }
 
@@ -71,6 +78,7 @@ export async function POST(req: Request) {
     if (!p.success) return back(req, "error", "Choose a valid application status.");
     const { data, error } = await db.from("partner_applications").update({ status: p.data.status }).eq("id", p.data.application_id).select("id").maybeSingle();
     if (error || !data) return back(req, "error", "Application status could not be saved.");
+    await auditLog(user!.id, "update_application", "partner_application", p.data.application_id, { status: p.data.status });
     return back(req, "application");
   }
 
@@ -83,6 +91,7 @@ export async function POST(req: Request) {
     }
     const { data, error } = await db.from("venues").update({ organization_id: p.data.organization_id }).eq("id", p.data.venue_id).select("id").maybeSingle();
     if (error || !data) return back(req, "error", "The venue owner could not be saved.");
+    await auditLog(user!.id, "assign_venue_org", "venue", p.data.venue_id, { organization_id: p.data.organization_id });
     return back(req, "venue");
   }
 

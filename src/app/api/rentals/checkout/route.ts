@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getSessionUser } from "@/lib/auth";
 import { holdCents, PRICING_SELECT, pricingFromRow, type PricingRow } from "@/lib/billing";
 import { lookupPromo, promoUsable, PROMO_CODE_RE, redeemPromo, releasePromo } from "@/lib/promos";
+import { likeEscape } from "@/lib/customer";
 import { rateLimit } from "@/lib/rate-limit";
 import { SITE } from "@/lib/site";
 import { createCheckoutSession, PAYMENTS_UNCONFIGURED, stripeConfigured } from "@/lib/stripe";
@@ -63,7 +64,7 @@ export async function POST(req: Request) {
   const customerId = user && user.role === "customer" && user.email.toLowerCase() === email && /^[0-9a-f-]{36}$/i.test(user.id) ? user.id : null;
   const { count: out } = await db.from("rentals")
     .select("id,payments!inner(receipt_email)", { count: "exact", head: true })
-    .in("state", ["active", "dispense_pending", "unreturned", "overdue"]).ilike("payments.receipt_email", email);
+    .in("state", ["active", "dispense_pending", "unreturned", "overdue"]).ilike("payments.receipt_email", likeEscape(email));
   if ((out ?? 0) >= 2) return NextResponse.json({ error: "Limit reached — return your outstanding chargers before renting another.", code: "rental_limit" }, { status: 409 });
   const hold = holdCents(pricing, bank_count);
 

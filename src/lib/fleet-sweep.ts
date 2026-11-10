@@ -2,9 +2,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { flushOutbox, getMailer } from "./helpdesk/mailer";
 import { getRepo } from "./helpdesk/repo";
 import { expireStaleCommands } from "./kiosk/commands";
+import { HEARTBEAT_STALE_MIN } from "./kiosk/heartbeat";
 import { subUrl } from "./site";
 
-const OFFLINE_AFTER_MIN = 15;
+const OFFLINE_AFTER_MIN = HEARTBEAT_STALE_MIN;
 const LOW_BATTERY_PCT = 15;
 type Pref = "offline_alerts" | "low_battery_alerts" | "new_partner_inquiries";
 

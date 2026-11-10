@@ -40,11 +40,21 @@ describe("subdomain rewrites", () => {
     if (bots.kind === "respond") expect(bots.body).toContain("Disallow: /");
   });
 
+  it("maps the customer portal onto /account with noindex", () => {
+    expect(r("customer.zapnivo.com", "/")).toEqual({ kind: "rewrite", to: "/account", noindex: true });
+    expect(r("customer.zapnivo.com", "/rentals")).toEqual({ kind: "rewrite", to: "/account/rentals", noindex: true });
+    expect(r("customer.zapnivo.com", "/account")).toEqual({ kind: "next", noindex: true });
+    expect(r("customer.zapnivo.com", "/api/auth/callback").kind).toBe("next");
+    expect(r("customer.localhost:3000", "/", "http:")).toEqual({ kind: "rewrite", to: "/account", noindex: true });
+  });
+
   it("bounces cross-portal and apex-owned paths to the right host", () => {
     expect(r("internal.zapnivo.com", "/partners/support")).toEqual({ kind: "redirect", to: "https://partners.zapnivo.com/support" });
     expect(r("support.zapnivo.com", "/admin")).toEqual({ kind: "redirect", to: "https://internal.zapnivo.com/" });
     expect(r("support.zapnivo.com", "/legal/refund-policy")).toEqual({ kind: "redirect", to: "https://zapnivo.com/legal/refund-policy" });
     expect(r("support.zapnivo.com", "/contact")).toEqual({ kind: "redirect", to: "https://zapnivo.com/contact" });
+    expect(r("support.zapnivo.com", "/account")).toEqual({ kind: "redirect", to: "https://customer.zapnivo.com/" });
+    expect(r("internal.zapnivo.com", "/account/settings")).toEqual({ kind: "redirect", to: "https://customer.zapnivo.com/settings" });
   });
 });
 
@@ -54,6 +64,8 @@ describe("apex canonical redirects", () => {
     expect(r("zapnivo.com", "/support/new")).toEqual({ kind: "redirect", to: "https://support.zapnivo.com/new" });
     expect(r("www.zapnivo.com", "/admin/support")).toEqual({ kind: "redirect", to: "https://internal.zapnivo.com/support" });
     expect(r("zapnivo.com", "/partners/payouts")).toEqual({ kind: "redirect", to: "https://partners.zapnivo.com/payouts" });
+    expect(r("zapnivo.com", "/account")).toEqual({ kind: "redirect", to: "https://customer.zapnivo.com/" });
+    expect(r("www.zapnivo.com", "/account/rentals")).toEqual({ kind: "redirect", to: "https://customer.zapnivo.com/rentals" });
   });
 
   it("leaves marketing pages and /api on the apex untouched", () => {

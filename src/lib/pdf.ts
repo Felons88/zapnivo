@@ -46,6 +46,8 @@ export type ReceiptData = {
   reference: string; dateIso: string; venue: string; station: string;
   subtotalCents: number; discountCents: number; taxCents: number; totalCents: number | null;
   taxApplied: boolean; paymentState: string; currency?: string;
+  /** Optional itemized extra charges (e.g. the $45 non-return fee) billed on a separate PaymentIntent. */
+  extraCharges?: { label: string; cents: number }[];
 };
 
 const money = (c: number) => `$${(c / 100).toFixed(2)}`;
@@ -64,6 +66,7 @@ export function buildReceiptPdf(d: ReceiptData): Buffer {
     { text: `Discount: -${money(d.discountCents)}` },
     { text: d.taxApplied ? `Tax: ${money(d.taxCents)}` : "Tax: not applied" },
     { text: `Total: ${d.totalCents === null ? "pending (authorization hold only)" : money(d.totalCents)}`, bold: true, size: 13, gap: 6 },
+    ...(d.extraCharges ?? []).map((c) => ({ text: `${c.label}: ${money(c.cents)} (billed separately)`, gap: 2 })),
     { text: "Questions? Visit support.zapnivo.com and quote your rental reference.", size: 9, gap: 20 },
   ]);
 }

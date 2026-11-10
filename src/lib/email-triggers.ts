@@ -2,7 +2,7 @@ import { renderEmail } from "./email-templates";
 import { flushOutbox, getMailer } from "./helpdesk/mailer";
 import { getRepo } from "./helpdesk/repo";
 import { fmt, PRICING_V1 } from "./pricing";
-import { cancelRentalSms, scheduleRentalSms } from "./notifications";
+import { cancelRentalSms, queueJob, scheduleRentalSms } from "./notifications";
 import { sendSms } from "./sms";
 import { serviceClient } from "./supabase";
 import { SITE, subUrl } from "./site";
@@ -124,6 +124,10 @@ function receiptUrl(reference: string, email: string) {
 /** Plain-text only: there is no designed template for failed payments. */
 export async function triggerPaymentFailed(rentalId: string) {
   const r = await loadRental({ id: rentalId });
+  // Queue the SMS confirmation too (transactional kind — sends even without sms_consent,
+  // deduped per rental, picked up by the cron sweep). Best-effort: never blocks the email.
+  const db0 = serviceClient();
+  if (db0) await queueJob(db0, { kind: "payment_failed", rentalId }).catch(() => false);
   const to = r && emailFor(r);
   if (!r || !to) return false;
   return sendToCustomer(to, "Your Zapnivo payment didn't go through",

@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { getSessionUser, isStaff } from "@/lib/auth";
 import { runRentalSweep } from "@/lib/email-triggers";
@@ -12,7 +13,9 @@ import { serviceClient } from "@/lib/supabase";
  */
 async function authorized(req: Request) {
   const secret = process.env.CRON_SECRET;
-  if (secret && req.headers.get("authorization") === `Bearer ${secret}`) return true;
+  const bearer = req.headers.get("authorization") ?? "";
+  const want = `Bearer ${secret ?? ""}`;
+  if (secret && bearer.length === want.length && timingSafeEqual(Buffer.from(bearer), Buffer.from(want))) return true;
   return isStaff(await getSessionUser());
 }
 

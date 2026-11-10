@@ -5,6 +5,7 @@ import { AdminGate } from "@/components/AdminShell";
 import { EmptyCard, Metric } from "@/components/PortalShell";
 import { Pill } from "@/components/SupportNav";
 import { serviceClient } from "@/lib/supabase";
+import { heartbeatStale } from "@/lib/kiosk/heartbeat";
 
 export const metadata: Metadata = { title: "Fleet", robots: { index: false, follow: false } };
 
@@ -100,6 +101,7 @@ export default async function Fleet({ searchParams }: { searchParams: Promise<{ 
                 <tbody>
                   {kioskRows.map((k) => {
                     const s = byKiosk.get(k.id) ?? {};
+                    const stale = k.state === "online" && heartbeatStale(k.last_seen_at);
                     return (
                       <tr key={k.id} className="border-b border-mist/70 last:border-0 hover:bg-lime/10">
                         <td className="px-4 py-3 font-bold"><Link href={`/admin/fleet/${k.station_id}`} className="underline underline-offset-4 hover:text-forest">{k.station_id}</Link></td>
@@ -114,7 +116,7 @@ export default async function Fleet({ searchParams }: { searchParams: Promise<{ 
                           </form>
                           {k.venues && <p className="mt-0.5 text-xs text-graphite">{k.venues.name} · {k.venues.city}, {k.venues.state}</p>}
                         </td>
-                        <td className="px-4 py-3"><Pill tone={STATE_TONE[k.state] ?? "mist"}>{k.state}</Pill></td>
+                        <td className="px-4 py-3"><span className="inline-flex items-center gap-1"><Pill tone={STATE_TONE[k.state] ?? "mist"}>{k.state}</Pill>{stale && <Pill tone="gold">stale</Pill>}</span></td>
                         <td className="px-4 py-3 text-xs font-semibold">{s.ready ?? 0} / {s.charging ?? 0} / {s.empty ?? 0} / {s.fault ?? 0}<span className="block text-graphite">{Object.values(s).reduce((a, b) => a + b, 0)} of {k.slot_count} registered</span></td>
                         <td className="px-4 py-3 text-xs text-graphite">{when(k.last_seen_at)}</td>
                         <td className="px-4 py-3 text-xs text-graphite">{when(k.installed_at)}{!k.installed_at && k.venue_id && <form method="post" action="/api/admin/fleet" className="mt-2"><input type="hidden" name="action" value="record_installation" /><input type="hidden" name="kiosk_id" value={k.id} /><label className="flex items-start gap-1.5 text-[11px]"><input type="checkbox" name="confirmed" value="yes" required className="mt-0.5" />Physically installed</label><button className="mt-1 rounded-full bg-mist px-2.5 py-1 text-[11px] font-bold hover:bg-lime">Record</button></form>}</td>

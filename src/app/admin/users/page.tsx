@@ -18,6 +18,8 @@ export default async function Users() {
   const rows = (res?.data ?? []) as unknown as { id: string; email: string; full_name: string | null; role: keyof typeof ROLE_TONE; created_at: string; organizations: { name: string }[] | { name: string } | null }[];
   const prefsRes = db && me && /^[0-9a-f-]{36}$/i.test(me.id) ? await db.from("notification_prefs").select("offline_alerts,low_battery_alerts,new_partner_inquiries").eq("profile_id", me.id).maybeSingle() : null;
   const prefs = (prefsRes?.data ?? { offline_alerts: true, low_battery_alerts: true, new_partner_inquiries: true }) as { offline_alerts: boolean; low_battery_alerts: boolean; new_partner_inquiries: boolean };
+  const privRes = db ? await db.from("customer_data_requests").select("id,email,kind,created_at").eq("status", "pending").order("created_at").limit(50) : null;
+  const privacyRows = (privRes?.data ?? []) as { id: string; email: string; kind: string; created_at: string }[];
   const org = (o: (typeof rows)[number]["organizations"]) => (Array.isArray(o) ? o[0]?.name : o?.name) ?? "—";
 
   return (
@@ -69,6 +71,33 @@ export default async function Users() {
               </tbody>
             </table>
           </section>
+
+          {privacyRows.length > 0 && (
+            <section className="overflow-x-auto rounded-2xl border border-gold/60 bg-gold/10 p-6 shadow-sm">
+              <h2 className="font-display text-lg font-bold">Privacy requests ({privacyRows.length} pending)</h2>
+              <table className="mt-4 w-full min-w-[560px] text-left text-sm">
+                <thead className="text-xs uppercase tracking-wider text-graphite"><tr>{["Customer", "Request", "Filed", ""].map((h, i) => <th key={i} className="px-3 py-2 font-extrabold">{h}</th>)}</tr></thead>
+                <tbody>
+                  {privacyRows.map((r) => (
+                    <tr key={r.id} className="border-t border-gold/40">
+                      <td className="px-3 py-2 font-semibold">{r.email}</td>
+                      <td className="px-3 py-2"><Pill tone={r.kind === "deletion" ? "ink" : "cyan"}>{r.kind}</Pill></td>
+                      <td className="px-3 py-2 text-xs text-graphite">{new Date(r.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</td>
+                      <td className="px-3 py-2">
+                        {isAdmin ? (
+                          <span className="flex gap-2">
+                            <form method="post" action="/api/admin/privacy"><input type="hidden" name="id" value={r.id} /><input type="hidden" name="action" value="complete" /><button className="min-h-8 rounded-full bg-ink px-3 text-xs font-bold text-white">{r.kind === "deletion" ? "Delete & complete" : "Complete"}</button></form>
+                            <form method="post" action="/api/admin/privacy"><input type="hidden" name="id" value={r.id} /><input type="hidden" name="action" value="cancel" /><button className="min-h-8 rounded-full border border-silver px-3 text-xs font-bold">Cancel</button></form>
+                          </span>
+                        ) : <span className="text-xs text-graphite">admin only</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <p className="mt-3 text-xs text-graphite">Deletion removes the login and anonymizes the profile immediately at request time; financial records are retained for legal/tax purposes.</p>
+            </section>
+          )}
 
           <section aria-label="My alerts" className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
             <h2 className="font-display text-lg font-bold">My alert preferences</h2>

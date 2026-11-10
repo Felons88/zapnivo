@@ -47,11 +47,12 @@ describe("routing helpers", () => {
     expect(safeNext("//evil.com")).toBeNull();
     expect(safeNext("/account")).toBe("/account");
   });
-  it("serves /r and /account on the apex and bounces other hosts there", () => {
+  it("serves /r on the apex and routes /account to the customer subdomain", () => {
     const r = (host: string, path: string) => planRoute({ host, path, protocol: "https:", base: "zapnivo.com" });
     expect(r("zapnivo.com", "/r/ST-1")).toEqual({ kind: "next" });
-    expect(r("www.zapnivo.com", "/account")).toEqual({ kind: "next" });
+    expect(r("www.zapnivo.com", "/account")).toEqual({ kind: "redirect", to: "https://customer.zapnivo.com/" });
+    expect(r("customer.zapnivo.com", "/account")).toEqual({ kind: "next", noindex: true });
     expect(r("support.zapnivo.com", "/r/ST-1")).toEqual({ kind: "redirect", to: "https://zapnivo.com/r/ST-1" });
-    expect(r("partners.zapnivo.com", "/account/incident")).toEqual({ kind: "redirect", to: "https://zapnivo.com/account/incident" });
+    expect(r("partners.zapnivo.com", "/account/incident")).toEqual({ kind: "redirect", to: "https://customer.zapnivo.com/incident" });
   });
 });

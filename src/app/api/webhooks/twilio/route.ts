@@ -1,19 +1,22 @@
-import { createHmac } from "node:crypto";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
-import { sendSms } from "@/lib/sms";
+import { handleInboundSms } from "@/lib/sms";
 import { serviceClient } from "@/lib/supabase";
 
 /**
  * Twilio webhook — inbound SMS + delivery status callbacks.
  * Signature: X-Twilio-Signature = base64(HMAC-SHA1(auth_token, url + sorted POST params)).
  * Env: TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER (503 until configured).
+ * Inbound handling (logging, STOP/START opt-outs, auto-ack) lives in lib/sms.handleInboundSms.
  */
 async function verify(url: string, params: URLSearchParams, signature: string | null): Promise<boolean> {
   if (!signature || !process.env.TWILIO_AUTH_TOKEN) return false;
   const data = url + [...params.keys()].sort().map((k) => k + params.get(k)).join("");
   const expected = createHmac("sha1", process.env.TWILIO_AUTH_TOKEN).update(data).digest("base64");
-  return expected.length === signature.length && expected === signature;
+  return expected.length === signature.length && timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
 }
+
+const twiml = () => new NextResponse("<Response/>", { headers: { "Content-Type": "text/xml" } });
 
 export async function POST(req: Request) {
   if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN) {
@@ -33,15 +36,20 @@ export async function POST(req: Request) {
   const body = params.get("Body") ?? "";
 
   if (status) {
-    // Delivery status callback — update the logged outbound message.
-    await db.from("sms_messages").update({ status }).eq("provider_sid", sid);
-    return new NextResponse("<Response/>", { headers: { "Content-Type": "text/xml" } });
+    // Delivery status callback — update the logged outbound message (incl. carrier error codes).
+    const errCode = params.get("ErrorCode");
+    await db.from("sms_messages").update({
+      status,
+      ...(errCode ? { error_code: errCode, error_message: (params.get("ErrorMessage") ?? "").slice(0, 300) || null } : {}),
+    }).eq("provider_sid", sid);
+    return twiml();
   }
 
-  // Inbound message — log it and auto-ack once. Staff see it in /admin/sms.
-  await db.from("sms_messages").insert({ direction: "inbound", from_number: from, to_number: to, body, status: "received", provider_sid: sid || null });
-  if (!params.get("NumMedia") || params.get("NumMedia") === "0") {
-    await sendSms(db, { to: from, body: "Zapnivo: thanks for your message — the team has it. For faster help, open a request at support.zapnivo.com/new" });
-  }
-  return new NextResponse("<Response/>", { headers: { "Content-Type": "text/xml" } });
+  // Inbound message — log it, apply STOP/START, auto-ack once (staff see it in /admin/sms).
+  const numMedia = params.get("NumMedia");
+  await handleInboundSms(db, {
+    from, to, body, sid: sid || null,
+    hasMedia: !!numMedia && numMedia !== "0",
+  });
+  return twiml();
 }

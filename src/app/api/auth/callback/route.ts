@@ -23,6 +23,19 @@ export async function GET(req: NextRequest) {
   const { data: profile } = svc
     ? await svc.from("profiles").select("role").eq("id", data.user.id).single()
     : { data: null };
+
+  // Phone-claim binding: /api/auth/phone recorded (email, phone) after the SMS code verified.
+  // Reaching this callback means the emailed link was used — inbox ownership proven — so the
+  // phone↔account binding is now two-factor verified and safe to persist.
+  if (svc && data.user.email) {
+    const email = data.user.email.toLowerCase();
+    const { data: claim } = await svc.from("phone_claims").select("phone")
+      .eq("email", email).gt("expires_at", new Date().toISOString()).maybeSingle();
+    if (claim?.phone) {
+      await svc.from("profiles").update({ phone: claim.phone }).eq("id", data.user.id).is("phone", null);
+      await svc.from("phone_claims").delete().eq("email", email);
+    }
+  }
   const dest = homeFor(profile?.role);
 
   const res = NextResponse.redirect(`${req.nextUrl.protocol}//${req.headers.get("host") ?? new URL(req.url).host}${dest}`);

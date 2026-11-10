@@ -61,11 +61,21 @@ async function handleEvent(db: Db, event: StripeEvent): Promise<boolean> {
         ...(email ? { receipt_email: email } : {}), ...(phone ? { customer_phone: phone } : {}), ...(revived ? { state: "authorized", failure_code: null } : {}),
       }).eq("id", target.id);
       await db.from("rentals").update({ state: "dispense_pending" }).eq("id", target.rental_id).in("state", revived ? ["authorized", "cancelled"] : ["authorized"]);
-      if (phone && email) await db.from("profiles").update({ phone }).ilike("email", email).is("phone", null);
+      // NOTE: checkout phone/email are customer-typed and unverified — never bind them to a profile here.
       return true;
     }
     case "payment_intent.succeeded": {
-      const pi = o as Obj & { amount_received?: number; receipt_email?: string };
+      const pi = o as Obj & { amount_received?: number; receipt_email?: string; latest_charge?: unknown };
+      const kind = (o.metadata as Record<string, string> | undefined)?.kind;
+      if (kind === "non_return_fee") {
+        // Separate fee PI: reconcile billing_ledger + rental fee flag. Never touches the payments row.
+        const chargeId = typeof pi.latest_charge === "string" ? pi.latest_charge : null;
+        await db.from("billing_ledger").update({ status: "succeeded", ...(chargeId ? { stripe_charge_id: chargeId } : {}) })
+          .eq("stripe_payment_intent_id", pi.id).in("status", ["pending", "failed"]);
+        const rentalId = metaRental(o);
+        if (rentalId) await db.from("rentals").update({ non_return_fee_status: "charged" }).eq("id", rentalId);
+        return true;
+      }
       await db.from("payments").update({
         state: "captured", amount_captured_cents: pi.amount_received ?? null,
         receipt_email: pi.receipt_email ?? undefined, captured_at: new Date().toISOString(),
@@ -74,6 +84,15 @@ async function handleEvent(db: Db, event: StripeEvent): Promise<boolean> {
       return true;
     }
     case "payment_intent.payment_failed": {
+      const kind = (o.metadata as Record<string, string> | undefined)?.kind;
+      if (kind === "non_return_fee") {
+        // Fee PI declined: mark the ledger attempt failed. The rental's own payment/hold is untouched.
+        await db.from("billing_ledger").update({ status: "failed" })
+          .eq("stripe_payment_intent_id", o.id).eq("status", "pending");
+        const rentalId = metaRental(o);
+        if (rentalId) await db.from("rentals").update({ non_return_fee_status: "failed" }).eq("id", rentalId);
+        return true;
+      }
       const rentalId = metaRental(o);
       const code = (o.last_payment_error as { code?: string; decline_code?: string } | undefined);
       const { data: byPi } = await db.from("payments").select("id,rental_id").eq("stripe_payment_intent_id", o.id).maybeSingle();

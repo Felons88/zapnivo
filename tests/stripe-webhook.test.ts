@@ -94,4 +94,33 @@ describe("webhook route", () => {
     const { POST } = await import("../src/app/api/webhooks/stripe/route");
     expect((await POST(req("{}", "x"))).status).toBe(503);
   });
+
+  it("reconciles a succeeded non_return_fee PI against billing_ledger, never payments", async () => {
+    const { updates } = setup();
+    const { POST } = await import("../src/app/api/webhooks/stripe/route");
+    const p = evt("evt_fee_ok", "payment_intent.succeeded", {
+      id: "pi_fee", amount_received: 4500, latest_charge: "ch_fee", status: "succeeded",
+      metadata: { rental_id: "r1", kind: "non_return_fee" },
+    });
+    const res = await POST(req(p, header(p, now())));
+    expect(res.status).toBe(200);
+    expect(updates.some((u) => u.table === "billing_ledger" && (u.patch as { status?: string }).status === "succeeded")).toBe(true);
+    expect(updates.some((u) => u.table === "rentals" && (u.patch as { non_return_fee_status?: string }).non_return_fee_status === "charged")).toBe(true);
+    expect(updates.some((u) => u.table === "payments")).toBe(false);
+  });
+
+  it("marks a failed non_return_fee PI in the ledger without failing the rental payment", async () => {
+    const { updates } = setup();
+    const { POST } = await import("../src/app/api/webhooks/stripe/route");
+    const p = evt("evt_fee_bad", "payment_intent.payment_failed", {
+      id: "pi_fee", status: "requires_payment_method",
+      metadata: { rental_id: "r1", kind: "non_return_fee" },
+      last_payment_error: { code: "card_declined", decline_code: "generic_decline" },
+    });
+    const res = await POST(req(p, header(p, now())));
+    expect(res.status).toBe(200);
+    expect(updates.some((u) => u.table === "billing_ledger" && (u.patch as { status?: string }).status === "failed")).toBe(true);
+    expect(updates.some((u) => u.table === "rentals" && (u.patch as { non_return_fee_status?: string }).non_return_fee_status === "failed")).toBe(true);
+    expect(updates.some((u) => u.table === "payments")).toBe(false);
+  });
 });

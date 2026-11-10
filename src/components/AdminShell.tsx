@@ -51,6 +51,7 @@ const NAV_ITEMS = {
   sla: { href: "/admin/sla", label: "Partner SLA", icon: icons.clock, group: "Operations" },
   advertising: { href: "/admin/advertising", label: "Advertising", icon: icons.megaphone, group: "Operations" },
   payouts: { href: "/admin/payouts", label: "Ledgers & payouts", icon: icons.coins, group: "Finance" },
+  finance: { href: "/admin/finance", label: "Revenue", icon: icons.chart, group: "Finance" },
   promos: { href: "/admin/promos", label: "Promo codes", icon: icons.tag, group: "Finance" },
   disputes: { href: "/admin/disputes", label: "Disputes", icon: icons.alert, group: "Finance" },
   users: { href: "/admin/users", label: "Users & roles", icon: icons.users, group: "System" },

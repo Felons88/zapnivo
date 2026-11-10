@@ -13,6 +13,7 @@ import { getRentalDirectory, type RentalDirectory } from "./rentals";
 import { dueDates } from "./sla";
 import { classify, followUp, HANDOFF_MESSAGE, HUMAN_REQUESTED_MESSAGE, replyIsSafe, triage } from "./triage";
 import { HelpdeskError, type Actor, type Message, type Priority, type RefundReason, type RefundRequest, type RequesterType, type Ticket, type TicketState } from "./types";
+import { notifyTicketReceived } from "../notifications";
 
 export type Ctx = { repo: HelpdeskRepo; chat: ChatFn | null; mailer: Mailer | null; rentals: RentalDirectory; refunds: RefundProvider; now: () => Date; siteUrl: string };
 
@@ -76,6 +77,7 @@ export async function createTicket(c: Ctx, input: NewTicketInput): Promise<{ tic
   ticket = await c.repo.updateTicket(ticket.id, { aiState: d.aiState, aiSummary: d.summary, state: d.aiState === "ai_active" ? "pending_customer" : "open" });
   await audit(c, ticket.id, { kind: "ai" }, "triage", { kind: d.kind, aiState: d.aiState, auto_reply: !!d.reply });
   if (d.reply) await notify(c, ticket, "We received your request", d.reply, "created");
+  try { await notifyTicketReceived(ticket.id); } catch { /* SMS confirmation is best-effort */ }
   return { ticket, token: ticket.requesterType === "customer" ? signAccess(ticket.number, ticket.email) : null };
 }
 

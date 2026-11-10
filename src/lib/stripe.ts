@@ -83,6 +83,41 @@ export const cancelPaymentIntent = (pi: string, idem: string) =>
 export const createRefund = (pi: string, amountCents: number, idem: string, reason: string) =>
   stripeCall<{ id: string; status: string }>("POST", "/refunds", { payment_intent: pi, amount: amountCents, metadata: { reason: reason.slice(0, 200) } }, idem);
 
+export type PaymentIntentInfo = {
+  id: string; status: string; amount?: number;
+  customer?: string | null; payment_method?: string | null;
+  latest_charge?: string | { id: string } | null;
+};
+
+/** Reads a PaymentIntent — used to recover the saved customer + payment_method for off-session charges. */
+export const retrievePaymentIntent = (pi: string) =>
+  stripeCall<PaymentIntentInfo>("GET", `/payment_intents/${encodeURIComponent(pi)}`);
+
+export const stripeChargeId = (pi: { latest_charge?: string | { id: string } | null }) =>
+  typeof pi.latest_charge === "string" ? pi.latest_charge : pi.latest_charge?.id ?? null;
+
+/**
+ * A NEW off-session PaymentIntent confirmed immediately against the customer's saved payment method
+ * (setup_future_usage from the original Checkout Session). Used for the separate $45 non-return fee —
+ * it never touches the original manual-capture hold. `kind` lands in metadata so the webhook can
+ * reconcile it against billing_ledger instead of the payments row.
+ */
+export function createOffSessionPaymentIntent(i: {
+  amountCents: number; paymentMethodId: string; customerId?: string | null;
+  rentalId: string; kind: string; description: string; idempotencyKey: string;
+}) {
+  return stripeCall<{ id: string; status: string; latest_charge?: string | { id: string } | null }>(
+    "POST", "/payment_intents",
+    {
+      amount: i.amountCents, currency: "usd", confirm: "true", off_session: "true",
+      payment_method: i.paymentMethodId, ...(i.customerId ? { customer: i.customerId } : {}),
+      description: i.description.slice(0, 500),
+      metadata: { rental_id: i.rentalId, kind: i.kind },
+    },
+    i.idempotencyKey,
+  );
+}
+
 export const disputeUrl = (id: string) => `https://dashboard.stripe.com/${process.env.STRIPE_SECRET_KEY?.startsWith("sk_test") ? "test/" : ""}disputes/${encodeURIComponent(id)}`;
 
 export const WEBHOOK_TOLERANCE_SECONDS = 300;

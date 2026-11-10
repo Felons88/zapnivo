@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { getSessionUser, isStaff } from "@/lib/auth";
 import { verifyReceipt } from "@/lib/billing";
+import { succeededLedgerCents } from "@/lib/payments/ledger";
 import { buildReceiptPdf } from "@/lib/pdf";
 import { serviceClient } from "@/lib/supabase";
 
 type Row = {
-  reference: string; created_at: string; returned_at: string | null;
+  id: string; reference: string; created_at: string; returned_at: string | null;
   kiosks: { station_id: string; venues: { name: string; city: string } | null } | null;
   payments: { state: string; receipt_email: string | null; amount_captured_cents: number | null; tax_cents: number | null; discount_cents: number | null; captured_at: string | null }[];
 };
@@ -20,7 +21,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ referenc
   if (!db) return NextResponse.json({ error: "Receipts are not available yet." }, { status: 503 });
 
   const { data } = await db.from("rentals")
-    .select("reference,created_at,returned_at,kiosks!rentals_kiosk_id_fkey(station_id,venues(name,city)),payments(state,receipt_email,amount_captured_cents,tax_cents,discount_cents,captured_at)")
+    .select("id,reference,created_at,returned_at,kiosks!rentals_kiosk_id_fkey(station_id,venues(name,city)),payments(state,receipt_email,amount_captured_cents,tax_cents,discount_cents,captured_at)")
     .eq("reference", reference).maybeSingle();
   const r = data as unknown as Row | null;
   const pay = r?.payments?.[0];
@@ -36,12 +37,15 @@ export async function GET(req: Request, { params }: { params: Promise<{ referenc
 
   const captured = pay.amount_captured_cents;
   const tax = pay.tax_cents ?? 0, discount = pay.discount_cents ?? 0;
+  // Itemize separately-billed charges (the $45 non-return fee lives in billing_ledger, not payments).
+  const feeCents = await succeededLedgerCents(db, r.id, "non_return_fee");
   const pdf = buildReceiptPdf({
     reference: r.reference, dateIso: pay.captured_at ?? r.returned_at ?? r.created_at,
     venue: r.kiosks?.venues ? `${r.kiosks.venues.name}, ${r.kiosks.venues.city}` : "Zapnivo station",
     station: r.kiosks?.station_id ?? "-",
     subtotalCents: captured === null ? 0 : captured + discount - tax, discountCents: discount, taxCents: tax,
     totalCents: captured, taxApplied: tax > 0, paymentState: pay.state,
+    extraCharges: feeCents > 0 ? [{ label: "Non-return fee", cents: feeCents }] : [],
   });
   return new NextResponse(new Uint8Array(pdf), {
     headers: { "Content-Type": "application/pdf", "Content-Disposition": `inline; filename="zapnivo-receipt-${r.reference}.pdf"`, "Cache-Control": "private, no-store" },

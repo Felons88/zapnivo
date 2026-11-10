@@ -41,13 +41,16 @@ The site is one Next.js app serving several hosts. `src/proxy.ts` routes by `Hos
 | `support.zapnivo.com` | `/support` | customer help center, tickets, assistant — apex-owned links bounce back to apex |
 | `internal.zapnivo.com` | `/admin` | staff console, `X-Robots-Tag: noindex`, robots disallow-all |
 | `partners.zapnivo.com` | `/partners` | venue portal, noindex |
+| `customer.zapnivo.com` | `/account` | customer account portal (rentals, receipts, incidents), noindex |
 | `api.zapnivo.com` | `/api` | `/x` rewrites to `/api/x`; `/` returns a small JSON status |
 
-Vercel project → **Domains**: all five hostnames are assigned to the `zapnivo`
+Vercel project → **Domains**: all six hostnames are assigned to the `zapnivo`
 project (domain is on Vercel DNS, so records/certs are automatic). Sessions:
 the login cookie is scoped `Domain=zapnivo.com`, so one sign-in works on every
 subdomain; partners sign in at `partners.zapnivo.com/login`, staff at
-`internal.zapnivo.com/login`.
+`internal.zapnivo.com/login`, customers at `customer.zapnivo.com` (phone OTP,
+email magic link, Google, or password). `/account` on the apex 308s to the
+customer subdomain.
 
 Local dev is unchanged: `localhost:3000/support` etc. work as paths, and
 `*.localhost` subdomains (`support.localhost:3000`) mirror production routing.
@@ -60,6 +63,7 @@ Local dev is unchanged: `localhost:3000/support` etc. work as paths, and
   - `https://www.zapnivo.com/api/auth/callback`
   - `https://internal.zapnivo.com/api/auth/callback`
   - `https://partners.zapnivo.com/api/auth/callback`
+  - `https://customer.zapnivo.com/api/auth/callback` (phone-OTP + magic-link land here)
   - `https://support.zapnivo.com/api/auth/callback`
   - `https://*.zapnivo.com/api/auth/callback` (wildcard covers future subdomains)
   - `http://localhost:3000/api/auth/callback` (dev)

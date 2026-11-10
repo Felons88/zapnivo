@@ -5,6 +5,7 @@
  *   support.zapnivo.com  → /support   (customer help center, tickets, assistant)
  *   internal.zapnivo.com → /admin     (staff console)
  *   partners.zapnivo.com → /partners  (venue partner portal)
+ *   customer.zapnivo.com → /account   (customer account portal)
  *   api.zapnivo.com      → /api       (route handlers)
  *
  * On the apex domain the portal paths 308-redirect to their subdomain. On any
@@ -12,7 +13,7 @@
  * *.localhost subdomains mirror the production scheme for local testing.
  */
 
-export const SUB_PREFIX = { support: "/support", internal: "/admin", partners: "/partners" } as const;
+export const SUB_PREFIX = { support: "/support", internal: "/admin", partners: "/partners", customer: "/account" } as const;
 export type Subdomain = keyof typeof SUB_PREFIX | "api";
 
 export const DEFAULT_BASE_DOMAIN = "zapnivo.com";
@@ -60,8 +61,14 @@ export function planRoute({
   const local = hostname === "localhost" || hostname === "127.0.0.1" || hostname.endsWith(".localhost");
 
   let sub: Subdomain | null = null;
-  for (const s of ["support", "internal", "partners", "api"] as const) {
+  for (const s of ["support", "internal", "partners", "customer", "api"] as const) {
     if (hostname === `${s}.${base}` || (local && hostname === `${s}.localhost`)) { sub = s; break; }
+  }
+
+  // Stray *.zapnivo.com hosts (typos, stale DNS) canonicalize to the apex — portal paths must
+  // never render on an unrecognized subdomain.
+  if (!sub && !local && hostname !== base && hostname !== `www.${base}` && hostname.endsWith(`.${base}`)) {
+    return { kind: "redirect", to: `${protocol}//${base}${path}` };
   }
 
   const apexHost = local ? `localhost${port}` : base;

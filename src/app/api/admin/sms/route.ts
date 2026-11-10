@@ -2,11 +2,39 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { auditLog } from "@/lib/audit";
 import { getSessionUser, isStaff } from "@/lib/auth";
-import { sendSms, normalizePhone } from "@/lib/sms";
+import { sendSms, normalizePhone, smsConfigured } from "@/lib/sms";
+import { SMS_JOB_KINDS } from "@/lib/notifications";
 import { serviceClient } from "@/lib/supabase";
 
-const KINDS = ["activation", "reminder_1h", "reminder_3h", "reminder_6h", "reminder_12h", "warning_20h", "warning_23h", "deadline_24h"] as const;
+const KINDS = SMS_JOB_KINDS;
 const FLAGS = ["sms_enabled", "non_return_billing_enabled"] as const;
+
+/**
+ * GET /api/admin/sms — sender/A2P status for staff tooling. Honest about what the
+ * Twilio REST API can and can't tell us: A2P 10DLC brand/campaign registration is NOT
+ * retrievable without the Messaging API / console, so we report "manual verification".
+ */
+export async function GET() {
+  const user = await getSessionUser();
+  if (!isStaff(user)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const db = serviceClient();
+  const { count: optedOut } = db
+    ? await db.from("sms_opt_outs").select("phone", { count: "exact", head: true })
+    : { count: null };
+  return NextResponse.json({
+    configured: {
+      accountSid: Boolean(process.env.TWILIO_ACCOUNT_SID),
+      authToken: Boolean(process.env.TWILIO_AUTH_TOKEN),
+      fromNumber: Boolean(process.env.TWILIO_FROM_NUMBER),
+    },
+    smsConfigured: smsConfigured(),
+    optedOutCount: optedOut ?? null,
+    a2pRegistration: {
+      status: "manual_verification_required",
+      note: "A2P 10DLC brand and campaign registration can't be read through the basic Twilio API. Verify approval in the Twilio console (Messaging → Regulatory → A2P) — until approved, carriers may filter or reject application traffic.",
+    },
+  });
+}
 
 /** SMS + billing controls. Templates any staff may edit; kill switches and test sends are admin-only. */
 export async function POST(req: Request) {
