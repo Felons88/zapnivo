@@ -120,10 +120,11 @@ Verified against https://developers.brevo.com/docs/inbound-parse-webhooks. Googl
    ```
    POST https://api.brevo.com/v3/webhooks
    { "type": "inbound", "events": ["inboundEmailProcessed"],
-     "url": "https://api.zapnivo.com/webhooks/email/inbound?key=$EMAIL_INBOUND_SECRET",
-     "domain": "in.zapnivo.com" }
+     "domain": "in.zapnivo.com",
+     "description": "Zapnivo Inbound Support and Partner Email Parsing",
+     "url": "https://api.zapnivo.com/webhooks/email/inbound" }
    ```
-   Any mail to `*@in.zapnivo.com` is parsed and POSTed as `{items: [...]}`. If Brevo lets you set headers instead, use `Authorization: Bearer $EMAIL_INBOUND_SECRET` and keep the secret out of the URL.
+   **Configured:** webhook ID `2672275` (created 2026-11-10), type `inbound`, domain `in.zapnivo.com`, event `inboundEmailProcessed`. Brevo supports custom webhook headers — delivery is authenticated with `X-Zapnivo-Inbound-Key: $EMAIL_INBOUND_SECRET` (header, not URL — the secret never appears in the webhook URL). Any mail to `*@in.zapnivo.com` is parsed and POSTed as `{items: [...]}`. Verified live: a real Brevo-delivered message was accepted onto ticket Z-1004 with `auth_method=reply_token`.
 4. **Google Workspace forwarding** — Admin → Apps → Google Workspace → Gmail → Routing (or per-mailbox forwarding):
    - `support@zapnivo.com` → `support@in.zapnivo.com`
    - `partners@zapnivo.com` → `partners@in.zapnivo.com`
