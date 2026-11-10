@@ -109,15 +109,27 @@ Replay/duplicate protection: `Message-ID` has a unique index (second delivery �
 
 ### Brevo inbound parsing setup (manual, one-time)
 
-Google Workspace stays the primary mail host on the apex — **do not touch the apex MX records** (`smtp.google.com`).
+Verified against https://developers.brevo.com/docs/inbound-parse-webhooks. Google Workspace stays the primary mail host on the apex — **do not touch the apex MX records** (`smtp.google.com`).
 
-1. In Brevo → **SMTP & API → Inbound Parsing**, add the parsing domain `in.zapnivo.com`.
-2. At your DNS provider add, for `in.zapnivo.com` only:
-   - `MX 10 inbound-relay1.brevo.com` (and `inbound-relay2.brevo.com` for redundancy — Brevo's documented inbound MX set; confirm current values in the Brevo inbound-parsing panel when you set it up)
-   - No SPF/DKIM records needed on the parsing subdomain — Brevo accepts all mail there.
-3. In the same Brevo panel set the parse webhook to `https://api.zapnivo.com/webhooks/email/inbound?key=$EMAIL_INBOUND_SECRET` (use `Authorization: Bearer` header if Brevo lets you set headers instead of putting the secret in the URL — either works).
-4. In Google Workspace Admin → Gmail → Routing (or each mailbox's forwarding), forward `support@zapnivo.com` → `support@in.zapnivo.com` (the parsing domain delivers to whatever address you configure in Brevo's inbound rules — typically a wildcard `*@in.zapnivo.com` → webhook).
-5. Send a real test: reply to an actual ticket email from an approved external mailbox, confirm the reply appears in the ticket thread and as `accepted` in Admin → Email Center → Inbound. **Inbound email is not operational until this test passes.**
+1. **Domain**: the parsing domain must differ from the sending domain and be verified in Brevo. Use `in.zapnivo.com`.
+2. **DNS** — add these records for `in.zapnivo.com` only (per Brevo docs):
+   - `MX 10 inbound1.sendinblue.com.`
+   - `MX 20 inbound2.sendinblue.com.`
+   - DNS propagation can take hours — apply early.
+3. **Webhook** — create via Brevo API (or dashboard → SMTP & API → Webhooks):
+   ```
+   POST https://api.brevo.com/v3/webhooks
+   { "type": "inbound", "events": ["inboundEmailProcessed"],
+     "url": "https://api.zapnivo.com/webhooks/email/inbound?key=$EMAIL_INBOUND_SECRET",
+     "domain": "in.zapnivo.com" }
+   ```
+   Any mail to `*@in.zapnivo.com` is parsed and POSTed as `{items: [...]}`. If Brevo lets you set headers instead, use `Authorization: Bearer $EMAIL_INBOUND_SECRET` and keep the secret out of the URL.
+4. **Google Workspace forwarding** — Admin → Apps → Google Workspace → Gmail → Routing (or per-mailbox forwarding):
+   - `support@zapnivo.com` → `support@in.zapnivo.com`
+   - `partners@zapnivo.com` → `partners@in.zapnivo.com`
+   - **Critical**: use "change route"/forwarding that preserves the original message — Gmail routing/forwarding keeps the original `To:` header intact (only the envelope recipient changes). The reply token lives in that header, so do **not** rewrite the recipient to a fixed address in a way that strips headers. Brevo's `To[]`/`Headers["To"]` carry the token-bearing address; the envelope `Recipients[]` will show the `in.zapnivo.com` address.
+   - Gmail delivers plus-addressed mail (`support+tag@zapnivo.com`) to the `support@` mailbox natively — customers' replies to our `Reply-To: support+<ticket>-<token>@zapnivo.com` arrive intact.
+5. **Test**: reply to a real ticket email from an approved external mailbox → confirm the reply appears in the ticket thread and as `accepted` with `auth_method=reply_token` in Admin → Email Center → Inbound. **Inbound email is not operational until this passes.**
 
 ### Departmental routing plan
 
