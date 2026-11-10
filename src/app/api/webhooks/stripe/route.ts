@@ -49,6 +49,7 @@ async function handleEvent(db: Db, event: StripeEvent): Promise<boolean> {
       const rentalId = metaRental(o);
       const piId = typeof o.payment_intent === "string" ? o.payment_intent : null;
       const email = (o.customer_details as { email?: string } | undefined)?.email ?? null;
+      const phone = (o.customer_details as { phone?: string } | undefined)?.phone ?? null;
       const tax = (o.total_details as { amount_tax?: number } | undefined)?.amount_tax ?? 0;
       const q = db.from("payments").select("id,rental_id,state").eq("stripe_checkout_session_id", o.id);
       const { data: pay } = await q.maybeSingle();
@@ -57,7 +58,7 @@ async function handleEvent(db: Db, event: StripeEvent): Promise<boolean> {
       const revived = target.state === "failed"; // customer retried inside the same Checkout session
       await db.from("payments").update({
         stripe_checkout_session_id: o.id, stripe_payment_intent_id: piId ?? undefined, tax_cents: tax,
-        ...(email ? { receipt_email: email } : {}), ...(revived ? { state: "authorized", failure_code: null } : {}),
+        ...(email ? { receipt_email: email } : {}), ...(phone ? { customer_phone: phone } : {}), ...(revived ? { state: "authorized", failure_code: null } : {}),
       }).eq("id", target.id);
       await db.from("rentals").update({ state: "dispense_pending" }).eq("id", target.rental_id).in("state", revived ? ["authorized", "cancelled"] : ["authorized"]);
       return true;

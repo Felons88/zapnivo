@@ -57,7 +57,7 @@ export function createCheckoutSession(i: CheckoutInput) {
     mode: "payment",
     customer_email: i.email,
     client_reference_id: i.rentalId,
-    success_url: i.successUrl,
+    phone_number_collection: { enabled: true }, success_url: i.successUrl,
     cancel_url: i.cancelUrl,
     line_items: [{
       quantity: 1,

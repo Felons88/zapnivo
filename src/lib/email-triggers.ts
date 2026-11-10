@@ -2,6 +2,7 @@ import { renderEmail } from "./email-templates";
 import { flushOutbox, getMailer } from "./helpdesk/mailer";
 import { getRepo } from "./helpdesk/repo";
 import { fmt, PRICING_V1 } from "./pricing";
+import { sendSms } from "./sms";
 import { serviceClient } from "./supabase";
 import { SITE, subUrl } from "./site";
 import { signReceipt } from "./billing";
@@ -12,7 +13,7 @@ type RentalRow = {
   id: string; reference: string; state: string;
   started_at: string | null; returned_at: string | null; non_return_deadline: string | null;
   kiosks: { station_id: string; venues: { name: string; city: string } | null } | null;
-  payments: { receipt_email: string | null; amount_captured_cents: number | null; stripe_payment_intent_id: string | null; tax_cents?: number | null; discount_cents?: number | null }[];
+  payments: { receipt_email: string | null; amount_captured_cents: number | null; stripe_payment_intent_id: string | null; customer_phone: string | null; tax_cents?: number | null; discount_cents?: number | null }[];
 };
 
 const stamp = (iso: string | null) => iso ? new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }) : "—";
@@ -40,6 +41,8 @@ async function sendToCustomer(email: string, subject: string, body: string, html
 }
 
 const emailFor = (r: RentalRow) => r.payments?.[0]?.receipt_email ?? null;
+const phoneFor = (r: RentalRow) => r.payments?.[0]?.customer_phone ?? null;
+const smsFor = async (r: RentalRow, body: string) => { const phone = phoneFor(r); if (!phone) return; const db = serviceClient(); if (db) await sendSms(db, { to: phone, body, rentalId: r.id }); };
 const rentalUrl = () => subUrl("support", "/#find-rental");
 
 export async function triggerRentalStarted(rentalId: string) {
@@ -126,7 +129,7 @@ export async function runRentalSweep(now = new Date()) {
   const db = serviceClient();
   if (!db) return { reminders: 0, notices: 0 };
   const soon = new Date(now.getTime() + 26 * 3600_000).toISOString();
-  const sel = "id,reference,state,started_at,returned_at,non_return_deadline,kiosks(station_id,venues(name,city)),payments(receipt_email,amount_captured_cents,stripe_payment_intent_id)";
+  const sel = "id,reference,state,started_at,returned_at,non_return_deadline,kiosks(station_id,venues(name,city)),payments(receipt_email,amount_captured_cents,stripe_payment_intent_id,customer_phone)";
   const [due, overdue] = await Promise.all([
     db.from("rentals").select(sel).eq("state", "active").not("non_return_deadline", "is", null).lte("non_return_deadline", soon).gt("non_return_deadline", now.toISOString()),
     db.from("rentals").select(sel).eq("state", "active").not("non_return_deadline", "is", null).lte("non_return_deadline", now.toISOString()),

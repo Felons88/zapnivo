@@ -28,6 +28,7 @@ const icons = {
   mail: <I><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3 7 9 6 9-6" /></I>,
   steps: <I><path d="M4 19V9m6 10V5m6 14v-7" /><path d="M3 19h18" /></I>,
   clock: <I><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></I>,
+  chat: <I><path d="M21 12a9 9 0 1 1-9-9" /><path d="M8.5 14a5 5 0 0 0 7 0" /></I>,
   tag: <I><path d="M3 12V4h8l10 10-8 8L3 12Z" /><circle cx="7.5" cy="8.5" r="1" /></I>,
   alert: <I><path d="M12 3 2 20h20L12 3Z" /><path d="M12 10v4M12 17h.01" /></I>,
 } satisfies Record<string, ReactNode>;
@@ -42,6 +43,7 @@ const NAV_ITEMS = {
   refunds: { href: "/admin/support/refunds", label: "Refunds", icon: icons.coins, group: "Support" },
   metrics: { href: "/admin/support/metrics", label: "Metrics", icon: icons.chart, group: "Support" },
   inquiries: { href: "/admin/inquiries", label: "Inquiries", icon: icons.mail, group: "Support" },
+  sms: { href: "/admin/sms", label: "SMS log", icon: icons.chat, group: "Support" },
   fleet: { href: "/admin/fleet", label: "Fleet", icon: icons.battery, group: "Operations" },
   rentals: { href: "/admin/rentals", label: "Rentals", icon: icons.swap, group: "Operations" },
   partners: { href: "/admin/partners", label: "Partners", icon: icons.store, group: "Operations" },

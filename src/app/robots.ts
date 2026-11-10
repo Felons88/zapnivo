@@ -5,7 +5,7 @@ import { baseDomain } from "@/lib/subdomains";
 
 export const dynamic = "force-dynamic";
 
-const PRIVATE = ["/admin", "/partners", "/login", "/api", "/support/ticket"];
+const PRIVATE = ["/admin", "/partners", "/login", "/api", "/support/ticket", "/account", "/r"];
 const SUPPORT_PRIVATE = ["/ticket", "/api", "/login", "/admin", "/partners", "/support/ticket"];
 
 export default async function robots(): Promise<MetadataRoute.Robots> {
