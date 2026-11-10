@@ -91,3 +91,14 @@ Local dev is unchanged: `localhost:3000/support` etc. work as paths, and
 - Rate limiting is in-memory per instance — fine at Vercel scale for launch; move to Upstash Redis if abuse appears (`src/lib/rate-limit.ts` is the seam).
 - `email_outbox` delivers nothing until `RESEND_API_KEY` or `BREVO_API_KEY` is set; staff can flush it from the metrics page.
 - Preview deployments get the same env vars — that's fine (same Supabase project) unless you want a separate preview DB.
+
+## Email routing & inbound support replies
+
+Outbound uses the 11-department sender registry (`src/lib/email/senders.ts`) — every queued email carries `sender`/`reply_to`/`template`/`event` (migration 0021). Only `support@zapnivo.com` accepts replies; the other identities are outbound-only.
+
+Inbound setup (manual, one-time):
+1. `EMAIL_INBOUND_SECRET` must be set (already in Vercel production + `.env.local`).
+2. Inbound mail for `support@zapnivo.com` must reach `POST https://api.zapnivo.com/webhooks/email/inbound?key=$EMAIL_INBOUND_SECRET`. Two workable paths:
+   - **Brevo Inbound Parsing**: point a parsing domain/subdomain MX at Brevo and set the parse webhook to the URL above. Requires MX changes — conflicts with the current Google Workspace MX on the apex, so use a subdomain (e.g., `in.zapnivo.com`) and forward support@ there from Google Workspace.
+   - **Google Workspace routing**: Gmail-level forwarding/routing rule for support@ → an address on the Brevo parsing domain.
+3. The endpoint only accepts mail whose `From` matches the ticket requester's email and whose subject/body contains the `Z-<n>` ticket number; everything else is ignored with 200.
