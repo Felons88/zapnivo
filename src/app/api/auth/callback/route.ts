@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { SESSION_COOKIE } from "@/lib/auth";
+import { ANCHOR_COOKIE, makeAnchorCookie, SESSION_COOKIE } from "@/lib/auth";
 import { apexCookieDomain } from "@/lib/subdomains";
 import { homeFor } from "@/lib/customer";
 import { oauthClient, serviceClient } from "@/lib/supabase";
@@ -42,13 +42,18 @@ export async function GET(req: NextRequest) {
   const dest = homeFor(profile?.role);
 
   const res = NextResponse.redirect(`${callbackOrigin}${dest}`);
+  const domain = apexCookieDomain(new URL(callbackOrigin).host);
   res.cookies.set(SESSION_COOKIE, data.session.access_token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
     maxAge: Math.min(data.session.expires_in ?? 3600, 3600),
-    domain: apexCookieDomain(new URL(callbackOrigin).host),
+    domain,
+  });
+  const anchor = makeAnchorCookie(data.user.id, Date.now());
+  if (anchor) res.cookies.set(ANCHOR_COOKIE, anchor, {
+    httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", path: "/", maxAge: 24 * 3600, domain,
   });
   return oauth.apply(res);
 }

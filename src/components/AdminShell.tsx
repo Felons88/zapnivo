@@ -59,9 +59,13 @@ const NAV_ITEMS = {
   users: { href: "/admin/users", label: "Users & roles", icon: icons.users, group: "System" },
   observability: { href: "/admin/observability", label: "Observability", icon: icons.alert, group: "System" },
   audit: { href: "/admin/audit", label: "Audit log", icon: icons.scroll, group: "System" },
+  aiOps: { href: "/admin/ai-ops", label: "AI operations", icon: icons.chat, group: "Intelligence" },
+  evals: { href: "/admin/evals", label: "Eval lab", icon: icons.chart, group: "Intelligence" },
+  knowledge: { href: "/admin/knowledge", label: "Knowledge", icon: icons.scroll, group: "Intelligence" },
+  experiments: { href: "/admin/experiments", label: "Experiments", icon: icons.steps, group: "Intelligence" },
 } as const;
 
-const GROUPS = ["Overview", "Growth", "Support", "Operations", "Finance", "System"] as const;
+const GROUPS = ["Overview", "Growth", "Support", "Operations", "Finance", "System", "Intelligence"] as const;
 
 function NavLink({ item, active }: { item: (typeof NAV_ITEMS)[AdminNavKey]; active: boolean }) {
   return (

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { rateLimit } from "@/lib/rate-limit";
-import { SESSION_COOKIE } from "@/lib/auth";
+import { ANCHOR_COOKIE, makeAnchorCookie, revokeCurrentSession, SESSION_COOKIE } from "@/lib/auth";
 import { apexCookieDomain } from "@/lib/subdomains";
 import { anonClient, serviceClient } from "@/lib/supabase";
 
@@ -30,14 +30,22 @@ export async function POST(req: Request) {
     : { data: null };
 
   const res = NextResponse.json({ ok: true, role: profile?.role ?? null });
+  const domain = cookieDomain(req);
   res.cookies.set(SESSION_COOKIE, data.session.access_token, {
-    httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", path: "/", maxAge: Math.min(data.session.expires_in, 3600), domain: cookieDomain(req),
+    httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", path: "/", maxAge: Math.min(data.session.expires_in, 3600), domain,
+  });
+  const anchor = makeAnchorCookie(data.user.id, Date.now());
+  if (anchor) res.cookies.set(ANCHOR_COOKIE, anchor, {
+    httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", path: "/", maxAge: 24 * 3600, domain,
   });
   return res;
 }
 
 export async function DELETE(req: Request) {
+  await revokeCurrentSession();
   const res = NextResponse.json({ ok: true });
-  res.cookies.delete({ name: SESSION_COOKIE, path: "/", domain: cookieDomain(req) });
+  const domain = cookieDomain(req);
+  res.cookies.delete({ name: SESSION_COOKIE, path: "/", domain });
+  res.cookies.delete({ name: ANCHOR_COOKIE, path: "/", domain });
   return res;
 }

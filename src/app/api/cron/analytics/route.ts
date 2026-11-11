@@ -1,0 +1,34 @@
+import { timingSafeEqual } from "node:crypto";
+import { NextResponse } from "next/server";
+import { serviceClient } from "@/lib/supabase";
+import { runAggregation } from "@/lib/analytics-aggregates";
+import { recordLog } from "@/lib/observability";
+
+/**
+ * Analytics aggregation job. Re-rolls the last N days of business_events into
+ * analytics_daily + analytics_cohorts. Idempotent — safe to re-run.
+ * Auth: Bearer CRON_SECRET or staff session.
+ */
+async function authorized(req: Request) {
+  const secret = process.env.CRON_SECRET;
+  if (!secret) return false;
+  const bearer = req.headers.get("authorization") ?? "";
+  const want = `Bearer ${secret}`;
+  return bearer.length === want.length && timingSafeEqual(Buffer.from(bearer), Buffer.from(want));
+}
+
+export async function GET(req: Request) {
+  const db = serviceClient();
+  if (!db) return NextResponse.json({ error: "Backend not configured" }, { status: 503 });
+  const staff = await import("@/lib/auth").then((m) => m.getSessionUser().then((u) => m.isStaff(u))).catch(() => false);
+  if (!(await authorized(req)) && !staff) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const days = Math.min(Math.max(parseInt(new URL(req.url).searchParams.get("days") ?? "2", 10) || 2, 1), 30);
+  try {
+    const results = await runAggregation(db, days);
+    return NextResponse.json({ ok: true, days: results });
+  } catch (e) {
+    recordLog("error", "analytics_aggregate_failed", { service: "analytics", attrs: { err: e instanceof Error ? e.message.slice(0, 200) : "unknown" } });
+    return NextResponse.json({ error: "Aggregation failed" }, { status: 500 });
+  }
+}

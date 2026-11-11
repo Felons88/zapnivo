@@ -1,7 +1,10 @@
 import { lookupRentals as realLookup, type LookupOutcome } from "../rental-service";
 import type { RentalResult } from "../rental-lookup";
+import type { SessionUser } from "../auth";
+import { serviceClient } from "../supabase";
 import { rentalLookupSchema, looksLikeCardNumber } from "../validation";
 import { contextFor, retrieve, buildSystemPrompt } from "./knowledge";
+import { ACCOUNT_SYSTEM_NOTE, ACCOUNT_TOOLS, ACCOUNT_TOOL_NAMES, runAccountTool } from "./account-tools";
 import { openrouterChat, type ChatFn, type ChatMessage, type ToolDef } from "./openrouter";
 
 export type UserTurn = { role: "user" | "assistant"; content: string };
@@ -30,14 +33,20 @@ export function chicagoToUtc(date: string, time: string): Date {
 
 type Deps = { chat?: ChatFn; lookup?: (q: Parameters<typeof realLookup>[0], ip: string) => Promise<LookupOutcome> };
 
-export async function runAssistant({ messages, ip, chat = openrouterChat, lookup = realLookup }: { messages: UserTurn[]; ip: string } & Deps): Promise<AssistantResult> {
+export async function runAssistant({ messages, ip, chat = openrouterChat, lookup = realLookup, actor = null }: { messages: UserTurn[]; ip: string; actor?: SessionUser | null } & Deps): Promise<AssistantResult> {
   const userText = messages.filter((m) => m.role === "user").map((m) => m.content).join("\n").toLowerCase();
   const lastUser = [...messages].reverse().find((m) => m.role === "user")?.content ?? "";
   const rentals: RentalResult[] = [];
   const sources = new Map<string, string>();
 
   const ctx = contextFor(lastUser);
-  const convo: ChatMessage[] = [{ role: "system", content: buildSystemPrompt() }, ...(ctx ? [{ role: "system" as const, content: ctx }] : []), ...messages];
+  const convo: ChatMessage[] = [
+    { role: "system", content: buildSystemPrompt() },
+    ...(actor ? [{ role: "system" as const, content: ACCOUNT_SYSTEM_NOTE(actor.role) }] : []),
+    ...(ctx ? [{ role: "system" as const, content: ctx }] : []),
+    ...messages,
+  ];
+  const tools = actor ? [...TOOLS, ...ACCOUNT_TOOLS] : TOOLS;
   for (const a of retrieve(lastUser)) sources.set(a.id, a.title);
 
   async function runTool(name: string, rawArgs: string): Promise<string> {
@@ -73,11 +82,18 @@ export async function runAssistant({ messages, ip, chat = openrouterChat, lookup
       if (out.status === "unconfigured") return JSON.stringify({ error: "Rental lookup is not available yet because rentals have not launched. Offer a ticket instead." });
       return JSON.stringify({ error: "Lookup unavailable right now." });
     }
+
+    if (ACCOUNT_TOOL_NAMES.has(name)) {
+      if (!actor) return JSON.stringify({ error: "authentication_required", note: "The user isn't signed in. Offer the in-chat 'Verify my account' option or suggest signing in." });
+      const db = serviceClient();
+      if (!db) return JSON.stringify({ error: "Account tools are unavailable right now." });
+      return runAccountTool(name, db, actor, args);
+    }
     return JSON.stringify({ error: "Unknown tool." });
   }
 
   for (let i = 0; i < 4; i++) {
-    const res = await chat({ messages: convo, tools: TOOLS });
+    const res = await chat({ messages: convo, tools });
     if (!res.tool_calls?.length) return { reply: (res.content ?? "").trim() || FALLBACK, rentals, sources: [...sources].map(([id, title]) => ({ id, title })) };
     convo.push({ role: "assistant", content: res.content, tool_calls: res.tool_calls });
     for (const call of res.tool_calls) convo.push({ role: "tool", tool_call_id: call.id, content: await runTool(call.function.name, call.function.arguments) });
