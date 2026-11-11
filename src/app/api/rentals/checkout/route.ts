@@ -7,6 +7,7 @@ import { likeEscape } from "@/lib/customer";
 import { rateLimit } from "@/lib/rate-limit";
 import { SITE } from "@/lib/site";
 import { createCheckoutSession, PAYMENTS_UNCONFIGURED, stripeConfigured } from "@/lib/stripe";
+import { newTraceId, recordLog } from "@/lib/observability";
 import { serviceClient } from "@/lib/supabase";
 
 const schema = z.object({
@@ -22,6 +23,9 @@ const clientIp = (req: Request) => req.headers.get("x-forwarded-for")?.split(","
 
 /** Creates a rental + payment row and a manual-capture Stripe Checkout Session. Refuses until pricing is approved. */
 export async function POST(req: Request) {
+  const traceId = newTraceId();
+  const log = (level: "info" | "warning" | "error", message: string, attrs?: Record<string, unknown>) =>
+    recordLog(level, message, { service: "rentals", route: "/api/rentals/checkout", traceId, attrs });
   const origin = req.headers.get("origin");
   if (origin && new URL(origin).host !== req.headers.get("host")) return NextResponse.json({ error: "Cross-origin request rejected." }, { status: 403 });
   const rl = rateLimit(`checkout:${clientIp(req)}`, 8, 10 * 60_000);
@@ -33,17 +37,19 @@ export async function POST(req: Request) {
   if (!parsed.success) return NextResponse.json({ error: "Please check the details you entered.", fields: parsed.error.flatten().fieldErrors }, { status: 422 });
   const { station_id, email, bank_count, promo_code, consent, sms_consent } = parsed.data;
   if (!consent) return NextResponse.json({ error: "Please accept the rental terms to continue.", fields: { consent: ["Rental terms acceptance is required."] } }, { status: 422 });
+  log("info", "checkout_started", { stationId: station_id, bankCount: bank_count, hasPromo: Boolean(promo_code), smsConsent: Boolean(sms_consent) });
 
   const db = serviceClient();
-  if (!stripeConfigured() || !db) return NextResponse.json(PAYMENTS_UNCONFIGURED, { status: 503 });
+  if (!stripeConfigured() || !db) { log("error", "checkout_unavailable", { reason: !stripeConfigured() ? "stripe_unconfigured" : "db_unconfigured" }); return NextResponse.json(PAYMENTS_UNCONFIGURED, { status: 503 }); }
 
   // Pricing: only an APPROVED version may be charged, and the rental locks it.
   const { data: pr } = await db.from("pricing_versions").select(PRICING_SELECT).eq("approved", true).order("effective_at", { ascending: false, nullsFirst: false }).limit(1).maybeSingle();
-  if (!pr) return NextResponse.json({ error: "Pricing has not been approved yet, so rentals can't be started.", code: "pricing_not_approved" }, { status: 503 });
+  if (!pr) { log("error", "checkout_pricing_missing", { reason: "pricing_not_approved" }); return NextResponse.json({ error: "Pricing has not been approved yet, so rentals can't be started.", code: "pricing_not_approved" }, { status: 503 }); }
   const pricing = pricingFromRow(pr as PricingRow);
+  log("info", "checkout_pricing_resolved", { pricingVersionId: pricing.id });
 
   // Station must be online, venue published, and have enough ready banks.
-  const unavailable = () => NextResponse.json({ error: "This station isn't available right now.", code: "station_unavailable" }, { status: 409 });
+  const unavailable = () => { log("warning", "checkout_station_unavailable", { stationId: station_id }); return NextResponse.json({ error: "This station isn't available right now.", code: "station_unavailable" }, { status: 409 }); };
   const { data: kiosk } = await db.from("kiosks").select("id,state,venues(id,city,venue_type,published)").eq("station_id", station_id).maybeSingle();
   const venue = (kiosk as unknown as { venues: { id: string; city: string | null; venue_type: string | null; published: boolean } | null } | null)?.venues;
   if (!kiosk || kiosk.state !== "online" || !venue?.published) return unavailable();
@@ -54,9 +60,9 @@ export async function POST(req: Request) {
   let promoCode: string | null = null;
   if (promo_code) {
     const p = await lookupPromo(db, promo_code);
-    if (!p || !promoUsable(p)) return NextResponse.json({ error: "That promo code isn't valid.", fields: { promo_code: ["Invalid or expired code."] } }, { status: 422 });
+    if (!p || !promoUsable(p)) { log("warning", "checkout_promo_rejected", { reason: "invalid_or_expired" }); return NextResponse.json({ error: "That promo code isn't valid.", fields: { promo_code: ["Invalid or expired code."] } }, { status: 422 }); }
     const reserved = await redeemPromo(db, promo_code);
-    if (!reserved) return NextResponse.json({ error: "That promo code is no longer available.", fields: { promo_code: ["Invalid or expired code."] } }, { status: 422 });
+    if (!reserved) { log("warning", "checkout_promo_rejected", { reason: "exhausted" }); return NextResponse.json({ error: "That promo code is no longer available.", fields: { promo_code: ["Invalid or expired code."] } }, { status: 422 }); }
     promoCode = reserved.code;
   }
   const undoPromo = async () => { if (promoCode) await releasePromo(db, promoCode); };
@@ -68,6 +74,7 @@ export async function POST(req: Request) {
     .in("state", ["active", "dispense_pending", "unreturned", "overdue"]).ilike("payments.receipt_email", likeEscape(email));
   if ((out ?? 0) >= 2) {
     await undoPromo();
+    log("warning", "checkout_rejected", { reason: "rental_limit", openRentals: out ?? 0 });
     return NextResponse.json({ error: "Limit reached — return your outstanding chargers before renting another.", code: "rental_limit" }, { status: 409 });
   }
   const hold = holdCents(pricing, bank_count);
@@ -75,7 +82,7 @@ export async function POST(req: Request) {
   const { data: rental, error: rErr } = await db.from("rentals").insert({
     kiosk_id: kiosk.id, state: "authorized", pricing_version: pricing.id, bank_count, promo_code: promoCode, customer_id: customerId, sms_consent: Boolean(sms_consent),
   }).select("id,reference").single();
-  if (rErr || !rental) { await undoPromo(); return NextResponse.json({ error: "We couldn't start your rental. Please try again." }, { status: 500 }); }
+  if (rErr || !rental) { await undoPromo(); log("error", "checkout_rental_insert_failed", { reason: rErr?.code ?? "unknown" }); return NextResponse.json({ error: "We couldn't start your rental. Please try again." }, { status: 500 }); }
 
   // Sponsored charging: if an active sponsor covers this kiosk, record the redemption.
   // The hold is unchanged — the sponsored minutes are discounted at settlement.
@@ -98,15 +105,17 @@ export async function POST(req: Request) {
     if (pay) await db.from("payments").update({ state: "failed", failure_code: "checkout_not_created" }).eq("id", pay.id);
     await undoPromo();
   };
-  if (pErr || !pay) { await rollback(); return NextResponse.json({ error: "We couldn't start your rental. Please try again." }, { status: 500 }); }
+  if (pErr || !pay) { await rollback(); log("error", "checkout_hold_failed", { reason: pErr?.code ?? "unknown", rental: rental.reference }); return NextResponse.json({ error: "We couldn't start your rental. Please try again." }, { status: 500 }); }
+  log("info", "checkout_hold_created", { rental: rental.reference, holdCents: hold, bankCount: bank_count, promo: Boolean(promoCode) });
 
   const base = SITE.url.replace(/\/$/, "");
   const session = await createCheckoutSession({
     rentalId: rental.id, reference: rental.reference, holdCents: hold, email, stationId: station_id, bankCount: bank_count,
     successUrl: `${base}/r/${encodeURIComponent(station_id)}?status=success`, cancelUrl: `${base}/r/${encodeURIComponent(station_id)}?status=cancelled`,
   });
-  if (!session.ok || !session.data.url) { await rollback(); return NextResponse.json({ error: "Payment couldn't be started. Please try again." }, { status: 502 }); }
+  if (!session.ok || !session.data.url) { await rollback(); log("error", "checkout_session_failed", { rental: rental.reference, reason: session.ok ? "no_url" : session.code }); return NextResponse.json({ error: "Payment couldn't be started. Please try again." }, { status: 502 }); }
 
   await db.from("payments").update({ stripe_checkout_session_id: session.data.id }).eq("id", pay.id);
+  log("info", "checkout_completed", { rental: rental.reference, holdCents: hold });
   return NextResponse.json({ rental_reference: rental.reference, checkout_url: session.data.url }, { status: 201 });
 }

@@ -3,7 +3,7 @@ import { timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import { serviceClient } from "@/lib/supabase";
 import { isCampaignDeliverable, campaignTargetsKiosk } from "@/lib/ads/eligibility";
-import { reportError } from "@/lib/observability";
+import { reportError, recordLog } from "@/lib/observability";
 
 /**
  * Verified ad engagement ingest — POST /api/kiosks/playback
@@ -74,5 +74,6 @@ export async function POST(req: Request) {
     else if (insErr) { reportError(insErr, { route: "kiosks/playback" }); rejected++; }
     else accepted++;
   }
+  recordLog("info", "ad_playback_ingested", { service: "ads", route: "kiosks/playback", attrs: { stationId: station_id, received: events.length, accepted, duplicates, rejected } });
   return NextResponse.json({ ok: true, accepted, duplicates, rejected });
 }

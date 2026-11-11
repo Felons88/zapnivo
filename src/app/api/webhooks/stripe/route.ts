@@ -6,10 +6,13 @@ import { verifyStripeSignature } from "@/lib/stripe";
 import { handleAdChargeRefunded, handleAdCheckoutCompleted, handleAdPaymentIntent } from "@/lib/ads/billing";
 import { serviceClient } from "@/lib/supabase";
 import { trackServer } from "@/lib/analytics";
-import { reportError } from "@/lib/observability";
+import { newTraceId, recordLog, recordSpan, reportError } from "@/lib/observability";
 
 /** Stripe webhook — verifies the signature (no SDK) and fires the payment_receipt email on success. */
 export async function POST(req: Request) {
+  const traceId = newTraceId();
+  const log = (level: "info" | "warning" | "error", message: string, attrs?: Record<string, unknown>) =>
+    recordLog(level, message, { service: "payments", route: "webhooks/stripe", traceId, attrs });
   const secret = process.env.STRIPE_WEBHOOK_SECRET;
   if (!secret) return NextResponse.json({ error: "Webhooks not configured" }, { status: 503 });
   const payload = await req.text();
@@ -19,6 +22,7 @@ export async function POST(req: Request) {
   let event: StripeEvent;
   try { event = JSON.parse(payload) as StripeEvent; } catch { return NextResponse.json({ error: "Bad payload" }, { status: 400 }); }
   if (!event?.id || !event.type || !event.data?.object) return NextResponse.json({ error: "Bad payload" }, { status: 400 });
+  log("info", "stripe_event_received", { eventId: event.id, eventType: event.type });
 
   const db = serviceClient();
   if (!db) return NextResponse.json({ error: "Backend not configured" }, { status: 503 });
@@ -26,15 +30,21 @@ export async function POST(req: Request) {
   // Dedupe: the primary key rejects a replayed event id.
   const claim = await db.from("stripe_events").insert({ id: event.id, type: event.type });
   if (claim.error) {
-    if (claim.error.code === "23505") return NextResponse.json({ ok: true, duplicate: true });
+    if (claim.error.code === "23505") { log("info", "stripe_event_duplicate", { eventId: event.id, eventType: event.type }); return NextResponse.json({ ok: true, duplicate: true }); }
+    log("error", "stripe_event_claim_failed", { eventId: event.id, eventType: event.type, reason: claim.error.code ?? "unknown" });
     return NextResponse.json({ error: "Could not record event" }, { status: 500 });
   }
 
+  const start = performance.now();
   try {
     const handled = await handleEvent(db, event);
+    recordSpan({ traceId, name: `stripe.event.${event.type}`, service: "payments", kind: "consumer", startMs: start, durationMs: performance.now() - start, attrs: { eventId: event.id, eventType: event.type, handled } });
+    log("info", "stripe_event_processed", { eventId: event.id, eventType: event.type, handled, durationMs: Math.round(performance.now() - start) });
     return NextResponse.json(handled ? { ok: true } : { ok: true, ignored: event.type });
   } catch (e) {
+    recordSpan({ traceId, name: `stripe.event.${event.type}`, service: "payments", kind: "consumer", startMs: start, durationMs: performance.now() - start, status: "error", attrs: { eventId: event.id, eventType: event.type } });
     reportError(e, { route: "webhooks/stripe", severity: "critical", attrs: { eventType: event.type } });
+    log("error", "stripe_event_failed", { eventId: event.id, eventType: event.type });
     await db.from("stripe_events").delete().eq("id", event.id); // let Stripe retry
     return NextResponse.json({ error: "Handler failed" }, { status: 500 });
   }

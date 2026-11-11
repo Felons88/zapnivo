@@ -1,7 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { serviceClient } from "@/lib/supabase";
-import { recordLog } from "@/lib/observability";
+import { recordLog, traced } from "@/lib/observability";
 
 /**
  * Synthetic uptime monitor. Designed to be hit frequently by an external scheduler
@@ -42,13 +42,16 @@ export async function GET(req: Request) {
   const staff = await import("@/lib/auth").then((m) => m.getSessionUser().then((u) => m.isStaff(u))).catch(() => false);
   if (!(await authorized(req)) && !staff) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const results = [];
-  for (const t of TARGETS) {
-    const r = await check(t.url, Array.isArray(t.expect) ? t.expect : [t.expect]);
-    await db.from("uptime_checks").insert({ url: t.url, ok: r.ok, status_code: r.status_code || null, latency_ms: r.latency_ms });
-    results.push({ url: t.url, ...r });
-    recordLog(r.ok ? "info" : "warning", `uptime ${t.url} → ${r.status_code} ${r.latency_ms}ms`, { service: "uptime", attrs: { status: r.status_code } });
-  }
+  const results = await traced("cron.uptime", null, async () => {
+    const out = [];
+    for (const t of TARGETS) {
+      const r = await check(t.url, Array.isArray(t.expect) ? t.expect : [t.expect]);
+      await db.from("uptime_checks").insert({ url: t.url, ok: r.ok, status_code: r.status_code || null, latency_ms: r.latency_ms });
+      out.push({ url: t.url, ...r });
+      recordLog(r.ok ? "info" : "warning", `uptime ${t.url} → ${r.status_code} ${r.latency_ms}ms`, { service: "uptime", attrs: { status: r.status_code } });
+    }
+    return out;
+  }, { targets: TARGETS.length });
 
   // Sustained-failure incident: 3 consecutive failed checks for a URL with no open uptime incident.
   let incidents = 0;

@@ -3,7 +3,7 @@ import type { SessionUser } from "../auth";
 import { likeEscape } from "../customer";
 import { defaultCtx, createTicket, requesterMessage, requestHuman, type Ctx } from "../helpdesk/service";
 import { HelpdeskError, PARTNER_CATEGORIES, type Actor } from "../helpdesk/types";
-import { recordLog } from "../observability";
+import { newTraceId, recordLog, recordSpan } from "../observability";
 import { fmt } from "../pricing";
 import type { RentalRow } from "../rental-lookup";
 import { normalizePhone } from "../sms";
@@ -26,8 +26,8 @@ const str = (v: unknown, max = 300): string => (typeof v === "string" ? v.trim()
 const ok = (v: unknown) => JSON.stringify(v);
 const fail = (error: string, extra: Record<string, unknown> = {}) => JSON.stringify({ error, ...extra });
 
-const logTool = (name: string, outcome: "ok" | "error" = "ok") =>
-  recordLog("info", "ai_account_tool", { service: "ai-assistant", attrs: { tool: name, outcome } });
+const logTool = (name: string, outcome: "ok" | "error" = "ok", durationMs?: number, traceId?: string) =>
+  recordLog("info", "ai_account_tool", { service: "ai-assistant", traceId, attrs: { tool: name, outcome, durationMs } });
 
 type Profile = { phone: string | null; full_name: string | null };
 
@@ -401,8 +401,17 @@ export const ACCOUNT_TOOLS: ToolDef[] = [
 
 /** Runs one account tool. Returns a JSON string; unknown names return an error payload. */
 export async function runAccountTool(name: string, db: SupabaseClient, actor: SessionUser, args: Record<string, unknown>): Promise<string> {
-  let out: string;
+  // Tool name + outcome + latency only — args and results can contain customer data.
+  const traceId = newTraceId();
+  const start = performance.now();
+  const finish = (out: string, outcome: "ok" | "error") => {
+    const durationMs = Math.round(performance.now() - start);
+    recordSpan({ traceId, name: `ai.account_tool.${name}`, service: "ai-assistant", kind: "internal", startMs: start, durationMs, status: outcome, attrs: { tool: name, outcome } });
+    logTool(name, outcome, durationMs, traceId);
+    return out;
+  };
   try {
+    let out: string;
     switch (name) {
       case "get_my_active_rentals": out = await getMyActiveRentals(db, actor); break;
       case "get_my_rental_history": out = await getMyRentalHistory(db, actor, args); break;
@@ -414,12 +423,11 @@ export async function runAccountTool(name: string, db: SupabaseClient, actor: Se
       case "add_my_ticket_message": out = await addMyTicketMessage(db, actor, args); break;
       case "request_human_support": out = await requestHumanSupport(db, actor, args); break;
       case "get_my_partner_information": out = await getMyPartnerInformation(db, actor); break;
-      default: return JSON.stringify({ error: "Unknown tool." });
+      default: return finish(JSON.stringify({ error: "Unknown tool." }), "error");
     }
-    logTool(name, out.includes('"error"') ? "error" : "ok");
-    return out;
+    return finish(out, out.includes('"error"') ? "error" : "ok");
   } catch (e) {
-    logTool(name, "error");
+    finish("", "error");
     console.error(JSON.stringify({ level: "error", scope: "ai-account-tool", msg: "tool_failed", tool: name, err: e instanceof Error ? e.message : "unknown" }));
     return JSON.stringify({ error: "That account lookup failed. Try again or open a ticket." });
   }

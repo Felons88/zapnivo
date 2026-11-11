@@ -4,6 +4,7 @@ import { auditLog } from "@/lib/audit";
 import { getSessionUser, isStaff } from "@/lib/auth";
 import { triggerPartnerApproved } from "@/lib/email-extra-triggers";
 import { serviceClient } from "@/lib/supabase";
+import { recordLog } from "@/lib/observability";
 
 const back = (req: Request, result: string, detail?: string) => {
   const url = new URL("/admin/partners", req.url);
@@ -14,6 +15,10 @@ const back = (req: Request, result: string, detail?: string) => {
 const inviteSchema = z.object({ email: z.string().email().max(254), organization_id: z.string().uuid(), name: z.string().trim().max(120).optional() });
 const statusSchema = z.object({ application_id: z.string().uuid(), status: z.enum(["new", "reviewed", "consultation", "approved", "declined", "installed"]) });
 const venueOrgSchema = z.object({ venue_id: z.string().uuid(), organization_id: z.string().uuid().nullable() });
+
+/** Staff partner ops telemetry — ids and states only, never applicant PII. */
+const partnersLog = (message: string, attrs?: Record<string, unknown>) =>
+  recordLog("info", message, { service: "partners", route: "admin/partners", attrs });
 
 /** Staff partner operations: create organizations, invite owner accounts (Supabase Auth invite). */
 export async function POST(req: Request) {
@@ -52,6 +57,7 @@ export async function POST(req: Request) {
       if (profileError) return back(req, "error", "Invite sent, but the partner profile was not linked. Use Link existing account below.");
     }
     await auditLog(user!.id, "invite_partner", "organization", p.data.organization_id, { email: p.data.email });
+    partnersLog("partner_invited", { organizationId: p.data.organization_id });
     return back(req, "invited");
   }
 
@@ -71,6 +77,7 @@ export async function POST(req: Request) {
     const { error } = await db.from("profiles").update({ role: "partner", organization_id: orgId }).eq("id", profile.id);
     if (error) return back(req, "error", "The account could not be linked.");
     await auditLog(user!.id, "link_partner", "profile", profile.id, { email, organization_id: orgId });
+    partnersLog("partner_linked", { organizationId: orgId });
     return back(req, "linked");
   }
 
@@ -80,6 +87,7 @@ export async function POST(req: Request) {
     const { data, error } = await db.from("partner_applications").update({ status: p.data.status }).eq("id", p.data.application_id).select("id,email,business_name").maybeSingle();
     if (error || !data) return back(req, "error", "Application status could not be saved.");
     await auditLog(user!.id, "update_application", "partner_application", p.data.application_id, { status: p.data.status });
+    partnersLog("partner_application_status", { applicationId: p.data.application_id, status: p.data.status, approved: p.data.status === "approved", declined: p.data.status === "declined" });
     if (p.data.status === "approved") {
       const app = data as { email?: string; business_name?: string };
       if (app.email) await triggerPartnerApproved(app.email, app.business_name ?? "your venue").catch(() => false);
@@ -116,6 +124,7 @@ export async function POST(req: Request) {
       published: false,
     });
     if (error) return back(req, "error", "The venue could not be created from this application.");
+    partnersLog("partner_venue_created", { applicationId: p.data.application_id, organizationId: p.data.organization_id });
     return back(req, "converted");
   }
 

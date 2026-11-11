@@ -3,6 +3,7 @@ import { triggerPartnerApplicationReceived } from "@/lib/email-extra-triggers";
 import { flushOutbox, getMailer } from "@/lib/helpdesk/mailer";
 import { getRepo } from "@/lib/helpdesk/repo";
 import { serviceClient } from "@/lib/supabase";
+import { recordLog } from "@/lib/observability";
 import { handleSubmission } from "@/lib/submit";
 import { partnerApplicationSchema } from "@/lib/validation";
 
@@ -15,6 +16,7 @@ export const POST = (req: Request) =>
       guest_traffic: d.guestTraffic, install_location: d.installLocation, questions: d.questions,
     }),
     after: async (d, row) => {
+      recordLog("info", "partner_application_submitted", { service: "partners", route: "partner-applications", attrs: { applicationId: row.id, venueType: d.venueType } });
       const repo = await getRepo();
       if (!repo) return;
       await repo.queueEmail({

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fingerprint, scrub, scrubAttrs } from "@/lib/observability";
+import { fingerprint, newTraceId, scrub, scrubAttrs } from "@/lib/observability";
 
 describe("scrub", () => {
   it("redacts emails, phones, keys and card numbers", () => {
@@ -18,6 +18,15 @@ describe("scrubAttrs", () => {
   it("drops sensitive keys and non-scalars", () => {
     const out = scrubAttrs({ route: "/admin", api_key: "sekret", nested: { a: 1 }, ok: 42, flag: true });
     expect(out).toEqual({ route: "/admin", ok: 42, flag: true });
+  });
+});
+
+describe("newTraceId", () => {
+  it("returns unique 24-char hex ids", () => {
+    const a = newTraceId();
+    const b = newTraceId();
+    expect(a).toMatch(/^[0-9a-f]{24}$/);
+    expect(a).not.toBe(b);
   });
 });
 

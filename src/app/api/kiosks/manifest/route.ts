@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { timingSafeEqual } from "node:crypto";
 import { serviceClient } from "@/lib/supabase";
 import { isCampaignDeliverable, campaignTargetsKiosk } from "@/lib/ads/eligibility";
-import { reportError } from "@/lib/observability";
+import { reportError, recordLog } from "@/lib/observability";
 
 /**
  * Ad manifest for a kiosk — GET /api/kiosks/manifest?station_id=XXX
@@ -47,7 +47,9 @@ export async function GET(req: Request) {
     if (!(await campaignTargetsKiosk(db, c, { id: kiosk.id, venue_id: kiosk.venue_id }, venueRow))) continue;
     eligible.push(c.id);
   }
-  if (!eligible.length) return NextResponse.json({ station_id: stationId, generated_at: now.toISOString(), placements: [] });
+  const serveLog = (placements: number) =>
+    recordLog("info", "ad_manifest_served", { service: "ads", route: "kiosks/manifest", attrs: { stationId, eligibleCampaigns: eligible.length, placements } });
+  if (!eligible.length) { serveLog(0); return NextResponse.json({ station_id: stationId, generated_at: now.toISOString(), placements: [] }); }
 
   const { data: creatives } = await db.from("ad_creatives")
     .select("id,campaign_id,kind,mime,storage_path,headline,body,destination_url,width,height,duration_ms,version")
@@ -74,5 +76,6 @@ export async function GET(req: Request) {
     }).then(() => undefined, () => undefined); // 23505 duplicate = already recorded
   }
 
+  serveLog(placements.length);
   return NextResponse.json({ station_id: stationId, generated_at: now.toISOString(), placements });
 }

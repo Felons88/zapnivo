@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { ZodType } from "zod";
 import { rateLimit } from "./rate-limit";
+import { recordLog } from "./observability";
 import { serviceClient } from "./supabase";
 import { looksLikeCardNumber } from "./validation";
 
@@ -53,8 +54,10 @@ export async function handleSubmission<T extends { website?: string }>({ req, sc
   const { data: row, error } = await db.from(table).insert(map(data as T)).select("id, ticket_number").single();
   if (error) {
     console.error(JSON.stringify({ level: "error", scope, msg: "insert_failed", code: error.code }));
+    recordLog("error", "form_submit_failed", { service: scope, attrs: { table, code: error.code } });
     return NextResponse.json({ error: "We couldn't save your submission. Please try again." }, { status: 500 });
   }
+  recordLog("info", "form_submitted", { service: scope, attrs: { table, id: row.id } });
   if (after) { try { await after(data as T, row as { id: string }); } catch { /* notification failure never fails the submission */ } }
   return NextResponse.json({ ok: true, id: row.id, ticketNumber: row.ticket_number });
 }

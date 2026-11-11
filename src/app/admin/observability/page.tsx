@@ -4,6 +4,7 @@ import { AdminGate } from "@/components/AdminShell";
 import { Metric } from "@/components/PortalShell";
 import { serviceClient } from "@/lib/supabase";
 import { IssueActions } from "./IssueActions";
+import { AnalyzeButton } from "./AnalyzeButton";
 
 export const metadata: Metadata = { title: "Observability", robots: { index: false, follow: false } };
 
@@ -75,7 +76,7 @@ export default async function Observability() {
                     <td className="max-w-[10rem] truncate py-2 pr-4 text-graphite">{i.culprit ?? "—"}</td>
                     <td className="py-2 pr-4 text-graphite">{ago(i.first_seen)}</td>
                     <td className="py-2 text-graphite">{ago(i.last_seen)}</td>
-                    <td className="py-2 pl-4"><IssueActions fingerprint={i.fingerprint} current={i.status} /></td>
+                    <td className="py-2 pl-4"><div className="flex flex-col items-start gap-1"><IssueActions fingerprint={i.fingerprint} current={i.status} /><AnalyzeButton issueId={i.id} /></div></td>
                   </tr>
                 ))}
                 {issues.length === 0 && <tr><td colSpan={7} className="py-6 text-center text-graphite">No errors captured yet.</td></tr>}

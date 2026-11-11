@@ -2,7 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { serviceClient } from "@/lib/supabase";
 import { runAggregation } from "@/lib/analytics-aggregates";
-import { recordLog } from "@/lib/observability";
+import { recordLog, traced } from "@/lib/observability";
 
 /**
  * Analytics aggregation job. Re-rolls the last N days of business_events into
@@ -25,7 +25,7 @@ export async function GET(req: Request) {
 
   const days = Math.min(Math.max(parseInt(new URL(req.url).searchParams.get("days") ?? "2", 10) || 2, 1), 30);
   try {
-    const results = await runAggregation(db, days);
+    const results = await traced("cron.analytics", null, () => runAggregation(db, days), { days });
     return NextResponse.json({ ok: true, days: results });
   } catch (e) {
     recordLog("error", "analytics_aggregate_failed", { service: "analytics", attrs: { err: e instanceof Error ? e.message.slice(0, 200) : "unknown" } });

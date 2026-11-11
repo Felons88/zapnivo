@@ -114,6 +114,9 @@ async function alertNewIssue(db: NonNullable<ReturnType<typeof serviceClient>>, 
     // Reuse the staff alert pipeline (email outbox → Brevo).
     const { alertStaff } = await import("./fleet-sweep");
     await alertStaff(db, "offline_alerts", `Critical error: ${i?.title ?? fp}`, `A new critical error was captured.\n\n${i?.title ?? ""}\nRoute: ${i?.culprit ?? "unknown"}\nFingerprint: ${fp}\n\nReview in Admin → Observability.`, null, { sender: "operations", event: "ops.critical_error" });
+    // External fallback — survives Brevo/API outages (ALERT_WEBHOOK_URL).
+    const { externalAlert } = await import("./alerts");
+    externalAlert(`issue:${fp}`, `Critical error: ${i?.title ?? fp}`, `Route: ${i?.culprit ?? "unknown"}\nFingerprint: ${fp}`, "critical");
   } catch { /* alerting is best-effort */ }
 }
 
@@ -143,9 +146,16 @@ export function recordSpan(span: { traceId: string; spanId?: string; parentSpanI
   } catch { /* fail-open */ }
 }
 
+let traceCounter = 0;
+/** Correlation id for a request/operation that has none. Edge-safe (no node:crypto). */
+export function newTraceId(): string {
+  traceCounter = (traceCounter + 1) % 0xffffff;
+  return hash24(`${Date.now()}:${Math.random()}:${traceCounter}`);
+}
+
 /** Times an async operation and records a span. Usage: await traced("db.lookup", tid, () => fn()). */
 export async function traced<T>(name: string, traceId: string | null | undefined, fn: () => Promise<T>, attrs?: Record<string, unknown>): Promise<T> {
-  const tid = traceId ?? hash24(`${Date.now()}:${Math.random()}`).slice(0, 32);
+  const tid = traceId ?? newTraceId();
   const start = performance.now();
   try {
     const out = await fn();

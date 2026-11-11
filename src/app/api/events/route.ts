@@ -3,6 +3,7 @@ import { z } from "zod";
 import { rateLimit } from "@/lib/rate-limit";
 import { serviceClient } from "@/lib/supabase";
 import { isPublicEvent, sanitizeProps } from "@/lib/analytics";
+import { recordLog } from "@/lib/observability";
 
 const ip = (req: Request) => req.headers.get("x-forwarded-for")?.split(",")[0].trim() || "unknown";
 
@@ -22,9 +23,9 @@ export async function POST(req: NextRequest) {
   if (!rateLimit(`events:${ip(req)}`, 60, 60_000).ok) return NextResponse.json({ error: "Too many events." }, { status: 429 });
 
   const parsed = schema.safeParse(await req.json().catch(() => null));
-  if (!parsed.success) return NextResponse.json({ error: "Invalid event." }, { status: 422 });
+  if (!parsed.success) { recordLog("warning", "event_rejected", { service: "analytics", route: "events", attrs: { reason: "invalid_payload" } }); return NextResponse.json({ error: "Invalid event." }, { status: 422 }); }
   const { name, event_id, session_ref, consent_state } = parsed.data;
-  if (!isPublicEvent(name)) return NextResponse.json({ error: "Unknown event." }, { status: 422 });
+  if (!isPublicEvent(name)) { recordLog("warning", "event_rejected", { service: "analytics", route: "events", attrs: { reason: "unknown_event" } }); return NextResponse.json({ error: "Unknown event." }, { status: 422 }); }
 
   const props = sanitizeProps(parsed.data.props);
   if (parsed.data.path) props.path = parsed.data.path.split("?")[0].split("#")[0].slice(0, 200);
@@ -40,7 +41,9 @@ export async function POST(req: NextRequest) {
   // 23505 = duplicate event_id → idempotent success.
   if (error && error.code !== "23505") {
     console.error(JSON.stringify({ level: "error", scope: "events", msg: error.message }));
+    recordLog("error", "event_insert_failed", { service: "analytics", route: "events", attrs: { name, code: error.code } });
     return NextResponse.json({ error: "Could not record event." }, { status: 500 });
   }
+  recordLog("debug", "event_ingested", { service: "analytics", route: "events", attrs: { name, duplicate: error?.code === "23505" } });
   return NextResponse.json({ ok: true });
 }

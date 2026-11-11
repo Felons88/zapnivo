@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { recordLog } from "../observability";
 
 /**
  * Append-only billing ledger (migration 0016). One row per money movement:
@@ -35,6 +36,10 @@ export async function appendLedger(db: SupabaseClient, e: LedgerEntry): Promise<
     idempotency_key: e.idempotencyKey,
     metadata: e.metadata ?? {},
   }).select("id").maybeSingle();
+  recordLog(error ? "warning" : "info", "ledger_append", {
+    service: "payments", route: "payments/ledger",
+    attrs: { kind: e.kind, status: e.status ?? "succeeded", amountCents: e.amountCents, ok: !error, code: error?.code ?? undefined, rentalId: e.rentalId },
+  });
   if (error) return { ok: false, code: error.code ?? "ledger_insert_failed" };
   return { ok: true, id: (data as { id?: string } | null)?.id ?? null };
 }
@@ -49,6 +54,10 @@ export async function markLedger(
   if (patch.stripePaymentIntentId !== undefined) row.stripe_payment_intent_id = patch.stripePaymentIntentId;
   if (patch.stripeChargeId !== undefined) row.stripe_charge_id = patch.stripeChargeId;
   const { error } = await db.from("billing_ledger").update(row).eq("idempotency_key", idempotencyKey);
+  recordLog(error ? "warning" : "info", "ledger_status", {
+    service: "payments", route: "payments/ledger",
+    attrs: { status: patch.status, ok: !error, code: error?.code ?? undefined },
+  });
   return !error;
 }
 

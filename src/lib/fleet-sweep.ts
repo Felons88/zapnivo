@@ -5,6 +5,7 @@ import { getRepo } from "./helpdesk/repo";
 import { expireStaleCommands } from "./kiosk/commands";
 import { HEARTBEAT_STALE_MIN } from "./kiosk/heartbeat";
 import { subUrl } from "./site";
+import { newTraceId, traced } from "./observability";
 
 const OFFLINE_AFTER_MIN = HEARTBEAT_STALE_MIN;
 const LOW_BATTERY_PCT = 15;
@@ -69,7 +70,8 @@ export async function runFleetSweep(db: SupabaseClient, now = new Date()) {
 /** Records a cron run and emails staff if it failed — so a broken sweep is never silent. */
 export async function recordCron(db: SupabaseClient, job: string, run: () => Promise<Record<string, unknown>>) {
   try {
-    const detail = await run();
+    // Span per cron job so trace_spans correlate with the cron_runs row written below.
+    const detail = await traced(`cron.${job}`, newTraceId(), run, { job });
     await db.from("cron_runs").insert({ job, ok: true, detail });
     return { ok: true as const, detail };
   } catch (e) {

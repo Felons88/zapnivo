@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionUser } from "@/lib/auth";
-import { reportError } from "@/lib/observability";
+import { reportError, newTraceId, recordLog, traced } from "@/lib/observability";
 import { rateLimit } from "@/lib/rate-limit";
 import { SITE } from "@/lib/site";
 import { createAdCheckoutSession, PAYMENTS_UNCONFIGURED, stripeConfigured } from "@/lib/stripe";
@@ -21,6 +21,9 @@ const PAYERS = new Set(["owner", "admin"]);
  * authoritative for 'paid' — never trust the browser redirect.
  */
 export async function POST(_req: Request, ctxParams: { params: Promise<{ id: string }> }) {
+  const traceId = newTraceId();
+  const log = (level: "info" | "warning" | "error", message: string, attrs?: Record<string, unknown>) =>
+    recordLog(level, message, { service: "ads", route: "advertiser/campaigns/[id]/checkout", traceId, attrs });
   const { id } = await ctxParams.params;
   if (!z.string().uuid().safeParse(id).success) return NextResponse.json({ error: "Not found." }, { status: 404 });
 
@@ -57,16 +60,19 @@ export async function POST(_req: Request, ctxParams: { params: Promise<{ id: str
   const { count: creativeCount } = await db.from("ad_creatives")
     .select("id", { count: "exact", head: true })
     .eq("campaign_id", id).in("status", ["submitted", "approved"]);
-  if (!creativeCount) return NextResponse.json({ error: "Add and submit a creative before paying.", code: "no_creative" }, { status: 409 });
+  if (!creativeCount) { log("warning", "ad_checkout_rejected", { campaignId: id, reason: "no_creative" }); return NextResponse.json({ error: "Add and submit a creative before paying.", code: "no_creative" }, { status: 409 }); }
 
   // Server-side amount — rate card first, budget fallback; null = no honest price.
-  const amount = await campaignAmountCents(db, campaign as unknown as AdCampaignRow).catch((e) => {
+  const amount = await traced("ads.campaign_amount", traceId, () => campaignAmountCents(db, campaign as unknown as AdCampaignRow), { campaignId: id }).catch((e) => {
     reportError(e, { route: "/api/advertiser/campaigns/[id]/checkout", attrs: { op: "price" } });
+    log("error", "ad_checkout_price_failed", { campaignId: id });
     return null;
   });
   if (!amount || amount.amountCents <= 0) {
+    log("warning", "ad_checkout_rejected", { campaignId: id, reason: "pricing_unavailable" });
     return NextResponse.json({ error: "No price is available for this campaign yet — contact us.", code: "pricing_unavailable" }, { status: 422 });
   }
+  log("info", "ad_checkout_priced", { campaignId: id, amountCents: amount.amountCents, model: amount.model, placement: amount.placement });
 
   const { data: org } = await db.from("advertiser_orgs").select("name,contact_email").eq("id", campaign.advertiser_org_id).maybeSingle();
   const orgRow = org as { name?: string; contact_email?: string } | null;
@@ -81,12 +87,14 @@ export async function POST(_req: Request, ctxParams: { params: Promise<{ id: str
   });
   if (!session.ok || !session.data.url) {
     reportError(new Error(`ad_checkout_failed:${session.ok ? "no_url" : session.code}`), { route: "/api/advertiser/campaigns/[id]/checkout" });
+    log("error", "ad_checkout_session_failed", { campaignId: id, reason: session.ok ? "no_url" : session.code });
     return NextResponse.json({ error: "Payment couldn't be started. Please try again." }, { status: 502 });
   }
 
   await db.from("advertising_campaigns").update({
     payment_status: "checkout_pending", stripe_checkout_session_id: session.data.id,
   }).eq("id", id).in("payment_status", ["unpaid", "failed", "checkout_pending"]);
+  log("info", "ad_checkout_started", { campaignId: id, amountCents: amount.amountCents });
 
   return NextResponse.json({ ok: true, checkout_url: session.data.url, amount_cents: amount.amountCents });
 }

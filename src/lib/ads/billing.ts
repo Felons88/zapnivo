@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { trackServer } from "../analytics";
+import { recordLog } from "../observability";
 
 /**
  * Advertising billing — server-only (service role). Two jobs:
@@ -13,6 +14,9 @@ import { trackServer } from "../analytics";
 
 type Db = SupabaseClient;
 type WebhookObject = Record<string, unknown> & { id: string };
+
+const adsLog = (message: string, attrs?: Record<string, unknown>) =>
+  recordLog("info", message, { service: "ads", route: "webhooks/stripe", attrs });
 
 export type AdCampaignRow = {
   id: string;
@@ -166,6 +170,7 @@ export async function handleAdCheckoutCompleted(db: Db, o: WebhookObject): Promi
   }
 
   trackServer({ name: "ad_campaign_paid", entityType: "ad_campaign", entityId: campaign.id, props: { amount_cents: amount } });
+  adsLog("ad_campaign_paid", { campaignId: campaign.id, amountCents: amount, paymentIntentId: piId });
   return true;
 }
 
@@ -178,6 +183,7 @@ export async function handleAdPaymentIntent(db: Db, o: WebhookObject, outcome: "
   const status = outcome === "succeeded" ? "succeeded" : "failed";
   await writeOk(db.from("ad_ledger").update({ status })
     .eq("stripe_payment_intent_id", o.id).eq("status", "pending"));
+  adsLog("ad_payment_intent", { outcome, campaignId: metaOf(o).campaign_id ?? null, paymentIntentId: o.id });
   const campaignId = metaOf(o).campaign_id;
   if (outcome === "failed" && campaignId) {
     await writeOk(db.from("advertising_campaigns").update({ payment_status: "failed" })
@@ -216,5 +222,6 @@ export async function handleAdChargeRefunded(db: Db, o: WebhookObject): Promise<
     await writeOk(db.from("advertising_campaigns").update({ payment_status: "refunded" })
       .eq("id", campaignId).eq("payment_status", "paid"));
   }
+  adsLog("ad_charge_refunded", { paymentIntentId: piId, campaigns: new Set(charges.map((c) => c.campaign_id)).size, amountRefundedCents: refunded });
   return true;
 }

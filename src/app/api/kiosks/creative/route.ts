@@ -3,7 +3,7 @@ import { timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import { serviceClient } from "@/lib/supabase";
 import { isCampaignDeliverable, campaignTargetsKiosk } from "@/lib/ads/eligibility";
-import { reportError } from "@/lib/observability";
+import { reportError, recordLog } from "@/lib/observability";
 
 /**
  * Authenticated creative delivery — GET /api/kiosks/creative?id=<uuid>
@@ -48,11 +48,13 @@ export async function GET(req: Request) {
   if (!eligible) return NextResponse.json({ error: "Not available" }, { status: 403 });
 
   if (creative.kind === "text") {
+    recordLog("info", "ad_creative_served", { service: "ads", route: "kiosks/creative", attrs: { stationId, creativeId: creative.id, kind: "text" } });
     return NextResponse.json({ kind: "text", headline: creative.headline, body: creative.body, destination_url: creative.destination_url });
   }
   if (!creative.storage_path) return NextResponse.json({ error: "Creative unavailable" }, { status: 404 });
 
   const { data: signed, error } = await db.storage.from("ad-creatives").createSignedUrl(creative.storage_path, 300);
   if (error || !signed?.signedUrl) { reportError(error ?? new Error("signed_url_failed"), { route: "kiosks/creative" }); return NextResponse.json({ error: "Creative unavailable" }, { status: 502 }); }
+  recordLog("info", "ad_creative_served", { service: "ads", route: "kiosks/creative", attrs: { stationId, creativeId: creative.id, kind: creative.kind } });
   return NextResponse.redirect(signed.signedUrl, 302);
 }

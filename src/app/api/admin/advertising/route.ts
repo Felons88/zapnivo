@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionUser, isStaff } from "@/lib/auth";
 import { serviceClient } from "@/lib/supabase";
-import { reportError } from "@/lib/observability";
+import { reportError, recordLog } from "@/lib/observability";
 
 const uuid = z.string().uuid();
 const cents = z.coerce.number().int().min(0).max(100_000_000);
@@ -60,6 +60,8 @@ export async function POST(req: Request) {
 
   try {
     const d = parsed.data;
+    const adsLog = (message: string, attrs?: Record<string, unknown>) =>
+      recordLog("info", message, { service: "ads", route: "admin/advertising", attrs });
     switch (d.action) {
       case "inquiry_state": {
         const { data, error } = await db.from("advertising_inquiries").update({ state: d.state }).eq("id", d.id).select("id").maybeSingle();
@@ -84,6 +86,7 @@ export async function POST(req: Request) {
             .eq("id", d.id).select("id").maybeSingle();
           url.searchParams.set("result", error || !data ? "error" : "saved");
         }
+        adsLog("campaign_review_decision", { campaignId: d.id, decision: d.decision, saved: !url.searchParams.get("result")?.includes("error") });
         break;
       }
       case "campaign_status": {
@@ -107,6 +110,7 @@ export async function POST(req: Request) {
           .update({ status, review_note: d.note ?? null, ...(d.decision === "approve" ? { approved_by: user!.id } : {}) })
           .eq("id", d.id).eq("status", "pending").select("id").maybeSingle();
         url.searchParams.set("result", error || !data ? "error" : "saved");
+        adsLog("sponsor_review_decision", { sponsorId: d.id, decision: d.decision });
         break;
       }
       case "plan_create": {

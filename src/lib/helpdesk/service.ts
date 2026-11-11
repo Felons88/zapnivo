@@ -16,6 +16,7 @@ import { dueDates } from "./sla";
 import { classify, followUp, HANDOFF_MESSAGE, HUMAN_REQUESTED_MESSAGE, replyIsSafe, triage } from "./triage";
 import { HelpdeskError, type Actor, type Message, type Priority, type RefundReason, type RefundRequest, type RequesterType, type Ticket, type TicketState } from "./types";
 import { notifyTicketReceived } from "../notifications";
+import { recordLog } from "../observability";
 
 export type Ctx = { repo: HelpdeskRepo; chat: ChatFn | null; mailer: Mailer | null; rentals: RentalDirectory; refunds: RefundProvider; now: () => Date; siteUrl: string };
 
@@ -31,6 +32,10 @@ const adminOnly = (a: Actor): Staff => { const s = staffOnly(a); if (s.role !== 
 const label = (a: Actor) => (a.kind === "staff" || a.kind === "partner" ? `${a.kind}:${a.name}` : a.kind === "customer" ? `customer:${a.email}` : a.kind);
 
 const audit = (c: Ctx, ticketId: string, actor: Actor, type: string, detail?: Record<string, unknown>) => c.repo.addEvent({ ticketId, actor: label(actor), type, detail: detail ?? null });
+
+/** Boundary telemetry — ids, states and counts only, never message bodies or requester PII. */
+const hdLog = (message: string, attrs?: Record<string, unknown>) =>
+  recordLog("info", message, { service: "helpdesk", attrs });
 
 const ticketLink = (c: Ctx, t: Ticket) => (t.requesterType === "partner" ? subUrl("partners", `/support/${t.number}`, c.siteUrl) : subUrl("support", `/ticket/${t.number}${(() => { const tok = signAccess(t.number, t.email); return tok ? `?t=${tok}` : ""; })()}`, c.siteUrl));
 
@@ -78,6 +83,7 @@ export async function createTicket(c: Ctx, input: NewTicketInput): Promise<{ tic
   await c.repo.addMessage({ ticketId: ticket.id, authorType: input.requesterType, authorId: null, authorName: input.name, internal: false, body: input.description });
   await audit(c, ticket.id, { kind: "system" }, "created", { queue: cls.queue, priority: cls.priority, safety: cls.safety });
   trackServer({ name: "support_ticket_created", entityType: "ticket", entityId: ticket.number, props: { queue: cls.queue, requester_type: input.requesterType } });
+  hdLog("ticket_created", { ticket: ticket.number, requesterType: input.requesterType, queue: cls.queue, priority: cls.priority });
 
   const decision = await triage(ticket, input.description, cls, { chat: c.chat, link: ticketLink(c, ticket) }).catch(() => null);
   const d = decision ?? { reply: "", kind: "system" as const, aiState: "needs_human" as const, summary: null };
@@ -85,6 +91,7 @@ export async function createTicket(c: Ctx, input: NewTicketInput): Promise<{ tic
   if (d.summary) await c.repo.addMessage({ ticketId: ticket.id, authorType: "ai", authorId: null, authorName: "AI triage", internal: true, body: `Summary for agent: ${d.summary}` });
   ticket = await c.repo.updateTicket(ticket.id, { aiState: d.aiState, aiSummary: d.summary, state: d.aiState === "ai_active" ? "pending_customer" : "open" });
   await audit(c, ticket.id, { kind: "ai" }, "triage", { kind: d.kind, aiState: d.aiState, auto_reply: !!d.reply });
+  hdLog("ticket_triaged", { ticket: ticket.number, aiState: d.aiState, autoReply: !!d.reply });
   if (d.reply) await notify(c, ticket, "We received your request", d.reply, "created");
   try { await notifyTicketReceived(ticket.id); } catch { /* SMS confirmation is best-effort */ }
   return { ticket, token: ticket.requesterType === "customer" ? signAccess(ticket.number, ticket.email) : null };
@@ -105,6 +112,7 @@ export async function requesterMessage(c: Ctx, actor: Actor, number: string, bod
   if (!text || text.length > 2000) throw new HelpdeskError("invalid", "Message must be 1–2000 characters.");
   await c.repo.addMessage({ ticketId: t.id, authorType: t.requesterType, authorId: null, authorName: t.name, internal: false, body: text });
   await audit(c, t.id, actor, "requester_message");
+  hdLog("requester_reply", { ticket: t.number, aiActive: t.aiState === "ai_active" });
 
   const reopen = { resolvedAt: null as string | null };
   if (t.aiState === "ai_active" && t.requesterType === "customer") {
@@ -127,6 +135,7 @@ export async function requestHuman(c: Ctx, actor: Actor, number: string): Promis
   if (t.aiState === "human" || t.aiState === "needs_human") return t;
   await c.repo.addMessage({ ticketId: t.id, authorType: "system", authorId: null, authorName: "Zapnivo", internal: false, body: HUMAN_REQUESTED_MESSAGE });
   await audit(c, t.id, actor, "escalated_to_human");
+  hdLog("escalated_to_human", { ticket: t.number });
   return c.repo.updateTicket(t.id, { aiState: "needs_human", state: "open", resolvedAt: null });
 }
 
@@ -149,6 +158,7 @@ export async function agentReply(c: Ctx, actor: Actor, number: string, body: str
   const now = c.now().toISOString();
   const u = await c.repo.updateTicket(t.id, { aiState: "human", state, assignedTo: t.assignedTo ?? s.id, firstResponseAt: t.firstResponseAt ?? now, resolvedAt: state === "resolved" ? now : null });
   await audit(c, t.id, actor, "agent_reply", { state });
+  hdLog("agent_reply", { ticket: t.number, state });
   await notify(c, u, state === "resolved" ? "Your request has been resolved" : "A reply to your request", text);
   return u;
 }

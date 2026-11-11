@@ -1,0 +1,91 @@
+name: Independent uptime monitor
+
+# Runs OUTSIDE Vercel — if the app or its deployment is down, this still executes.
+# On failure it maintains a single deduplicated GitHub issue; on recovery it comments and closes.
+# Schedule: every ~15 min (GitHub may delay scheduled runs; that's acceptable for outage detection).
+
+on:
+  schedule:
+    - cron: "7,22,37,52 * * * *"
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Probe all Zapnivo properties
+        id: probe
+        env:
+          # name|url|acceptable HTTP statuses (comma-separated); curl failure = DNS/TLS/timeout
+          TARGETS: |
+            www|https://www.zapnivo.com|200
+            support|https://support.zapnivo.com|200
+            customer|https://customer.zapnivo.com|200,307,308
+            partners|https://partners.zapnivo.com|200,307,308
+            internal|https://internal.zapnivo.com|200,307,308,401,403
+            api|https://api.zapnivo.com/api/health|200,404,405
+        run: |
+          set -u
+          FAILURES=""
+          while IFS='|' read -r name url codes; do
+            [ -z "$name" ] && continue
+            code=$(curl -sS -o /dev/null -w '%{http_code}' -m 15 -L --max-redirs 0 "$url" 2>/tmp/curlerr)
+            rc=$?
+            ok=0
+            if [ $rc -eq 0 ]; then
+              IFS=',' read -ra arr <<< "$codes"
+              for c in "${arr[@]}"; do [ "$code" = "$c" ] && ok=1; done
+            fi
+            if [ $ok -eq 0 ]; then
+              detail="curl_rc=$rc http=$code"
+              [ -s /tmp/curlerr ] && detail="$detail $(head -c 120 /tmp/curlerr | tr '\n' ' ')"
+              FAILURES="${FAILURES}${name}|${url}|${detail}"$'\n'
+            fi
+          done <<< "$TARGETS"
+          if [ -n "$FAILURES" ]; then
+            echo "failures<<EOF" >> "$GITHUB_OUTPUT"
+            printf '%s' "$FAILURES" >> "$GITHUB_OUTPUT"
+            echo "EOF" >> "$GITHUB_OUTPUT"
+            echo "has_failures=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_failures=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Open or update incident issue
+        if: steps.probe.outputs.has_failures == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FAILURES: ${{ steps.probe.outputs.failures }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          TITLE="Uptime alert: Zapnivo external probe"
+          NUM=$(gh issue list --repo "${{ github.repository }}" --state open --search "in:title \"$TITLE\"" --json number --jq '.[0].number // empty')
+          BODY="External monitor (GitHub Actions, independent of Vercel) detected failures at $(date -u +%FT%TZ):
+
+          \`\`\`
+          ${FAILURES}
+          \`\`\`
+
+          Run: ${RUN_URL}"
+          if [ -n "$NUM" ]; then
+            gh issue comment "$NUM" --repo "${{ github.repository }}" --body "$BODY"
+          else
+            gh issue create --repo "${{ github.repository }}" --title "$TITLE" --body "$BODY" --label "incident"
+          fi
+
+      - name: Resolve incident on recovery
+        if: steps.probe.outputs.has_failures == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          TITLE="Uptime alert: Zapnivo external probe"
+          NUM=$(gh issue list --repo "${{ github.repository }}" --state open --search "in:title \"$TITLE\"" --json number --jq '.[0].number // empty')
+          if [ -n "$NUM" ]; then
+            gh issue comment "$NUM" --repo "${{ github.repository }}" --body "All probes healthy again at $(date -u +%FT%TZ). Run: ${RUN_URL}"
+            gh issue close "$NUM" --repo "${{ github.repository }}" --reason completed
+          fi

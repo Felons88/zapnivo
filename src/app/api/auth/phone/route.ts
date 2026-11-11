@@ -6,6 +6,7 @@ import { normalizePhone, sendSms, smsConfigured } from "@/lib/sms";
 import { getSessionUser } from "@/lib/auth";
 import { oauthClient, serviceClient } from "@/lib/supabase";
 import { authCallbackOrigin } from "@/lib/auth-callback-origin";
+import { recordLog } from "@/lib/observability";
 
 const secret = () => {
   const s = process.env.HELPDESK_SECRET;
@@ -28,6 +29,11 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   const p = z.object({ action: z.enum(["send", "verify", "link_send", "link_verify"]), phone: z.string().min(5).max(20), code: z.string().optional() }).safeParse(body);
   if (!p.success) return NextResponse.json({ error: "Invalid request." }, { status: 422 });
+  // Action + outcome only — never the phone number or OTP.
+  const FAIL_RESULTS = new Set(["wrong_code", "send_failed", "session_failed", "link_failed", "email_link_failed"]);
+  const log = (result: string, attrs?: Record<string, unknown>) =>
+    recordLog(FAIL_RESULTS.has(result) ? "warning" : "info",
+      `phone_auth_${p.data.action}`, { service: "auth", route: "auth/phone", attrs: { action: p.data.action, result, ...attrs } });
   const phone = normalizePhone(p.data.phone);
   if (!phone) return NextResponse.json({ error: "Enter a valid phone number." }, { status: 422 });
 
@@ -41,6 +47,7 @@ export async function POST(req: NextRequest) {
       const code = String(randomInt(100000, 1000000));
       await db.from("phone_otps").insert({ phone, code_hash: hash(code), expires_at: new Date(Date.now() + 10 * 60_000).toISOString() });
       const res = await sendSms(db, { to: phone, body: `Your Zapnivo phone-verification code is ${code}. It expires in 10 minutes.` });
+      log(res.sent ? "delivered" : "send_failed");
       return NextResponse.json({ ok: true, delivered: res.sent });
     }
     const code = String(p.data.code ?? "").replace(/\D/g, "");
@@ -54,11 +61,13 @@ export async function POST(req: NextRequest) {
       row.code_hash.length === want.length && timingSafeEqual(Buffer.from(row.code_hash), Buffer.from(want));
     if (!ok) {
       if (row) await db.from("phone_otps").update({ attempts: row.attempts + 1 }).eq("id", row.id);
+      log("wrong_code", { hadRow: Boolean(row) });
       return NextResponse.json({ error: "Wrong or expired code." }, { status: 401 });
     }
     await db.from("phone_otps").update({ used: true }).eq("id", row.id);
     const { error: upErr } = await db.from("profiles").update({ phone }).eq("id", user.id);
-    if (upErr) return NextResponse.json({ error: "Couldn't save the number — it may be linked to another account." }, { status: 409 });
+    if (upErr) { log("link_failed", { reason: "profile_conflict" }); return NextResponse.json({ error: "Couldn't save the number — it may be linked to another account." }, { status: 409 }); }
+    log("ok");
     return NextResponse.json({ ok: true });
   }
 
@@ -71,6 +80,7 @@ export async function POST(req: NextRequest) {
     await db.from("phone_otps").update({ used: true }).eq("phone", phone).eq("used", false);
     await db.from("phone_otps").insert({ phone, code_hash: hash(code), expires_at: new Date(Date.now() + 10 * 60_000).toISOString() });
     const res = await sendSms(db, { to: phone, body: `Your Zapnivo sign-in code is ${code}. It expires in 10 minutes.` });
+    log(res.sent ? "delivered" : "send_failed");
     return NextResponse.json({ ok: true, delivered: res.sent });
   }
 
@@ -87,6 +97,7 @@ export async function POST(req: NextRequest) {
     row.code_hash.length === want.length && timingSafeEqual(Buffer.from(row.code_hash), Buffer.from(want));
   if (!ok) {
     if (row) await db.from("phone_otps").update({ attempts: row.attempts + 1 }).eq("id", row.id);
+    log("wrong_code", { hadRow: Boolean(row) });
     return NextResponse.json({ error: "Wrong code." }, { status: 401 });
   }
   await db.from("phone_otps").update({ used: true }).eq("id", row.id);
@@ -95,7 +106,8 @@ export async function POST(req: NextRequest) {
   const { data: bound } = await db.from("profiles").select("email").eq("phone", phone).maybeSingle();
   if (bound?.email) {
     const { data, error } = await db.auth.admin.generateLink({ type: "magiclink", email: bound.email, options: { redirectTo: `${callbackOrigin}/api/auth/callback` } });
-    if (error || !data.properties?.action_link) return NextResponse.json({ error: "Couldn't create the session." }, { status: 500 });
+    if (error || !data.properties?.action_link) { log("session_failed"); return NextResponse.json({ error: "Couldn't create the session." }, { status: 500 }); }
+    log("ok", { path: "bound_profile" });
     return NextResponse.json({ ok: true, continue_url: data.properties.action_link });
   }
 
@@ -105,8 +117,8 @@ export async function POST(req: NextRequest) {
   // phone to the profile only after that verified sign-in.
   const { data: pays } = await db.from("payments").select("receipt_email").eq("customer_phone", phone).not("receipt_email", "is", null).limit(10);
   const emails = [...new Set((pays ?? []).map((r) => String((r as { receipt_email?: string }).receipt_email ?? "").toLowerCase()).filter(Boolean))];
-  if (emails.length === 0) return NextResponse.json({ error: "No rentals on that number yet.", code: "no_account" }, { status: 404 });
-  if (emails.length > 1) return NextResponse.json({ error: "More than one email is on file for that number — sign in with email instead.", code: "ambiguous_email" }, { status: 409 });
+  if (emails.length === 0) { log("no_account"); return NextResponse.json({ error: "No rentals on that number yet.", code: "no_account" }, { status: 404 }); }
+  if (emails.length > 1) { log("ambiguous_email", { candidateCount: emails.length }); return NextResponse.json({ error: "More than one email is on file for that number — sign in with email instead.", code: "ambiguous_email" }, { status: 409 }); }
 
   const email = emails[0];
   await db.from("phone_claims").delete().eq("email", email);
@@ -120,7 +132,9 @@ export async function POST(req: NextRequest) {
   });
   if (otpErr) {
     console.error(JSON.stringify({ level: "error", scope: "phone-verify", msg: otpErr.message }));
+    log("email_link_failed");
     return NextResponse.json({ error: "We couldn't send the sign-in link. Try email sign-in instead." }, { status: 502 });
   }
+  log("email_link_sent");
   return oauth.apply(NextResponse.json({ ok: true, sent: "email_link" }));
 }

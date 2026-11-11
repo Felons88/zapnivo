@@ -6,6 +6,7 @@ import { rentalLookupSchema, looksLikeCardNumber } from "../validation";
 import { contextFor, retrieve, buildSystemPrompt } from "./knowledge";
 import { ACCOUNT_SYSTEM_NOTE, ACCOUNT_TOOLS, ACCOUNT_TOOL_NAMES, runAccountTool } from "./account-tools";
 import { openrouterChat, type ChatFn, type ChatMessage, type ToolDef } from "./openrouter";
+import { newTraceId, recordLog, traced } from "../observability";
 
 export type UserTurn = { role: "user" | "assistant"; content: string };
 export type AssistantResult = { reply: string; rentals: RentalResult[]; sources: { id: string; title: string }[] };
@@ -34,6 +35,11 @@ export function chicagoToUtc(date: string, time: string): Date {
 type Deps = { chat?: ChatFn; lookup?: (q: Parameters<typeof realLookup>[0], ip: string) => Promise<LookupOutcome> };
 
 export async function runAssistant({ messages, ip, chat = openrouterChat, lookup = realLookup, actor = null }: { messages: UserTurn[]; ip: string; actor?: SessionUser | null } & Deps): Promise<AssistantResult> {
+  const traceId = newTraceId();
+  const log = (message: string, attrs?: Record<string, unknown>) =>
+    recordLog("info", message, { service: "ai-assistant", route: "support/assistant", traceId, attrs });
+  log("assistant_run", { authenticated: !!actor, role: actor?.role ?? null, turns: messages.length });
+
   const userText = messages.filter((m) => m.role === "user").map((m) => m.content).join("\n").toLowerCase();
   const lastUser = [...messages].reverse().find((m) => m.role === "user")?.content ?? "";
   const rentals: RentalResult[] = [];
@@ -92,13 +98,24 @@ export async function runAssistant({ messages, ip, chat = openrouterChat, lookup
     return JSON.stringify({ error: "Unknown tool." });
   }
 
+  const finish = (reply: string): AssistantResult => {
+    const out = { reply, rentals, sources: [...sources].map(([id, title]) => ({ id, title })) };
+    log("assistant_reply", { replyLength: reply.length, rentalCount: rentals.length, sourceCount: out.sources.length, fallback: reply === FALLBACK });
+    return out;
+  };
+
   for (let i = 0; i < 4; i++) {
-    const res = await chat({ messages: convo, tools });
-    if (!res.tool_calls?.length) return { reply: (res.content ?? "").trim() || FALLBACK, rentals, sources: [...sources].map(([id, title]) => ({ id, title })) };
+    const res = await traced("ai.assistant.turn", traceId, () => chat({ messages: convo, tools }), { iteration: i });
+    if (!res.tool_calls?.length) return finish((res.content ?? "").trim() || FALLBACK);
     convo.push({ role: "assistant", content: res.content, tool_calls: res.tool_calls });
-    for (const call of res.tool_calls) convo.push({ role: "tool", tool_call_id: call.id, content: await runTool(call.function.name, call.function.arguments) });
+    for (const call of res.tool_calls) {
+      // Tool name + outcome only — arguments and results may contain customer data.
+      const content = await traced(`ai.tool.${call.function.name}`, traceId, () => runTool(call.function.name, call.function.arguments), { tool: call.function.name });
+      convo.push({ role: "tool", tool_call_id: call.id, content });
+    }
   }
-  return { reply: FALLBACK, rentals, sources: [...sources].map(([id, title]) => ({ id, title })) };
+  log("assistant_fallback", { reason: "max_turns" });
+  return finish(FALLBACK);
 }
 
 export const containsCardNumber = (turns: UserTurn[]) => turns.some((t) => t.role === "user" && looksLikeCardNumber(t.content));
