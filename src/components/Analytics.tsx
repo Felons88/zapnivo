@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import { CONSENT_KEY, type PublicEventName } from "@/lib/analytics";
 
 const GA_ID = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID;
+const GTM_ID = process.env.NEXT_PUBLIC_GTM_ID;
 declare global {
   interface Window {
     dataLayer?: unknown[];
@@ -58,6 +59,18 @@ export function Analytics() {
       document.head.appendChild(s);
       window.gtag("js", new Date());
       window.gtag("config", GA_ID, { send_page_view: false, anonymize_ip: true });
+    }
+
+    // GTM container: also consent-gated; shares the dataLayer with gtag above.
+    if (GTM_ID && !document.getElementById("gtm-script")) {
+      window.dataLayer = window.dataLayer ?? [];
+      window.gtag = window.gtag ?? function (...args: unknown[]) { window.dataLayer!.push(args); };
+      window.gtag("js", new Date());
+      const s = document.createElement("script");
+      s.id = "gtm-script";
+      s.async = true;
+      s.src = `https://www.googletagmanager.com/gtm.js?id=${GTM_ID}`;
+      document.head.appendChild(s);
     }
 
     // Legacy sink: existing track() calls forward into GA4.
