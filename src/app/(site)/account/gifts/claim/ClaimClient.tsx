@@ -14,17 +14,27 @@ type State =
  * it is POSTed once and never stored client-side beyond the in-flight request.
  */
 export function ClaimClient({ token }: { token: string }) {
+  // Capture the token once into state so nothing downstream can re-read it from the URL.
+  const [claimToken] = useState(() => token);
   const [state, setState] = useState<State>({ kind: "loading" });
   const fired = useRef(false);
+
+  // Strip ?t= from the address bar (no reload) so it doesn't linger in history,
+  // referrers, or shoulder-surfed URLs after the page has claimed what it needs.
+  useEffect(() => {
+    if (claimToken && window.location.search) {
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+  }, [claimToken]);
 
   useEffect(() => {
     if (fired.current) return;
     fired.current = true;
-    if (!token) { setState({ kind: "error", message: "This gift link is missing its claim token." }); return; }
+    if (!claimToken) { setState({ kind: "error", message: "This gift link is missing its claim token." }); return; }
     fetch("/api/gifts/claim", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token }),
+      body: JSON.stringify({ token: claimToken }),
     })
       .then(async (res) => {
         const data = await res.json().catch(() => ({}));
@@ -33,13 +43,13 @@ export function ClaimClient({ token }: { token: string }) {
         setState({ kind: "error", message: data.error ?? "We couldn't claim that gift. Please try again." });
       })
       .catch(() => setState({ kind: "error", message: "Network error — please try again." }));
-  }, [token]);
+  }, [claimToken]);
 
   if (state.kind === "loading") {
     return <p role="status" className="text-graphite">Checking your gift link…</p>;
   }
   if (state.kind === "signin") {
-    const next = `/account/gifts/claim?t=${encodeURIComponent(token)}`;
+    const next = `/account/gifts/claim?t=${encodeURIComponent(claimToken)}`;
     return (
       <div className="space-y-4">
         <p>Sign in to add this gift to your account.</p>

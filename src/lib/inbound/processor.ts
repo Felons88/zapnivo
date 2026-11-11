@@ -3,6 +3,7 @@ import { requesterMessage, type Ctx } from "../helpdesk/service";
 import { HelpdeskError } from "../helpdesk/types";
 import { parsePlusReply, verifyReplyToken, type PlusReply } from "../email/inbound";
 import { serviceClient } from "../supabase";
+import { ingestGeneralMail, isGeneralInboxMail } from "../receptionist/ingest";
 
 /**
  * Stage-B inbound email processor — runs inside the durable worker
@@ -55,7 +56,7 @@ async function logInbound(db: Db | null, row: Record<string, unknown>) {
 const updateLog = (db: Db | null, id: string | null, patch: Record<string, unknown>) =>
   id && db ? db.from("inbound_emails").update(patch).eq("id", id) : Promise.resolve({ error: null });
 
-export async function processInboundMail(c: Ctx, db: Db | null, mail: Parsed): Promise<Outcome> {
+export async function processInboundMail(c: Ctx | null, db: Db | null, mail: Parsed): Promise<Outcome> {
   const started = Date.now();
   const body = stripQuoted(mail.text).slice(0, 2000);
   const dedupeHash = createHash("sha256").update(`${mail.from}|${mail.subject}|${body}`).digest("hex").slice(0, 32);
@@ -84,8 +85,22 @@ export async function processInboundMail(c: Ctx, db: Db | null, mail: Parsed): P
   };
 
   if (mail.dmarc === "fail") return finish("quarantined", "dmarc_fail");
-  if (mail.autoSubmitted) return finish("ignored", "auto_submitted");
+  if (mail.autoSubmitted && !isGeneralInboxMail(mail)) return finish("ignored", "auto_submitted");
   if (!body) return finish("ignored", "empty_body");
+
+  // General-correspondence desk: mail addressed to hello@zapnivo.com (or
+  // GENERAL_INBOX) goes to the AI receptionist — NEVER a helpdesk ticket.
+  // Runs before ticket-token matching so support@ behavior is unchanged.
+  if (isGeneralInboxMail(mail)) {
+    if (!db) return finish("error", "receptionist_db_unavailable");
+    try {
+      const r = await ingestGeneralMail(db, mail);
+      return finish(r.status === "duplicate" ? "duplicate" : r.status === "error" ? "error" : r.status === "quarantined" ? "quarantined" : "accepted", r.reason);
+    } catch (e) {
+      return finish("error", "receptionist_error");
+    }
+  }
+  if (!c) return finish("error", "helpdesk_unavailable");
 
   // Reply-token path: scan every provider-supplied recipient; the HMAC token
   // is self-authenticating regardless of which header carried it.

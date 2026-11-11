@@ -1,4 +1,5 @@
 import { SUB_PREFIX, baseDomain, type Subdomain } from "./subdomains";
+import { CONTACTS } from "./contacts";
 
 export const SITE = {
   name: "Zapnivo",
@@ -46,6 +47,14 @@ export const FOOTER = {
   Company: [
     { href: "/about", label: "About" },
     { href: "/contact", label: "Contact" },
+  ],
+  "Contact Zapnivo": [
+    { href: `mailto:${CONTACTS.general.email}`, label: CONTACTS.general.email },
+    { href: "/scam-awareness", label: "Scam Awareness" },
+    { href: "/legal/privacy", label: "Privacy Policy" },
+    { href: "/legal/terms", label: "Terms of Service" },
+    { href: "/support", label: "Support" },
+    { href: "/business", label: "For Businesses" },
   ],
   Legal: [
     { href: "/legal/privacy", label: "Privacy Policy" },

@@ -17,6 +17,7 @@ const MAIN_PATHS = [
   "/about", "/contact", "/advertise",
   "/legal/privacy", "/legal/terms", "/legal/rental-terms",
   "/legal/refund-policy", "/legal/cookie-policy", "/legal/accessibility",
+  "/scam-awareness",
 ];
 const PRIVATE_PREFIXES = ["/admin", "/partners", "/account", "/api", "/login", "/r", "/support"];
 

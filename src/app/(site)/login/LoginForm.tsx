@@ -5,7 +5,7 @@ import { btnClass } from "@/components/ui";
 import { inputCls } from "@/components/forms";
 import { homeFor } from "@/lib/customer";
 
-export function LoginForm({ configured, oauthError }: { configured: boolean; oauthError?: boolean }) {
+export function LoginForm({ configured, oauthError, next }: { configured: boolean; oauthError?: boolean; next?: string | null }) {
   const [err, setErr] = useState<string | null>(oauthError ? "Google sign-in didn't complete. Please try again." : null);
   const [sending, setSending] = useState(false);
   const router = useRouter();
@@ -60,7 +60,8 @@ export function LoginForm({ configured, oauthError }: { configured: boolean; oau
     const data = await res.json().catch(() => ({}));
     setSending(false);
     if (!res.ok) return setErr(data.error ?? "Sign-in failed.");
-    router.push(homeFor(data.role));
+    // `next` is sanitized server-side (same-origin paths only); fall back to the role home.
+    router.push(next ?? homeFor(data.role));
     router.refresh();
   }
   return (

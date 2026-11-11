@@ -44,8 +44,9 @@ export async function runInboundWorker(limit = BATCH): Promise<{ claimed: number
   if (!db) return out;
   await recoverStuck(db);
 
-  const ctx: Ctx | null = await defaultCtx();
-  if (!ctx) { out.errors.push("helpdesk context unavailable"); return out; }
+  // Helpdesk ctx is only needed for ticket-bound mail; receptionist (hello@)
+  // jobs still process when the helpdesk context is unavailable.
+  const ctx: Ctx | null = await defaultCtx().catch(() => null);
 
   const { data: due } = await db.from("inbound_jobs")
     .select("id,payload,attempts,max_attempts")

@@ -10,7 +10,7 @@ const MAIN = [
   "", "/how-it-works", "/locations", "/business", "/business/apply",
   "/about", "/contact", "/advertise", "/legal/privacy", "/legal/terms",
   "/legal/rental-terms", "/legal/refund-policy", "/legal/cookie-policy",
-  "/legal/accessibility",
+  "/legal/accessibility", "/scam-awareness",
 ];
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
