@@ -76,6 +76,20 @@ export function createPackageCheckout(i: Base & { purchaseId: string; packageId:
   return stripeCall<{ id: string; url: string | null }>("POST", "/checkout/sessions", body, `pkgcheckout_${i.purchaseId}`);
 }
 
+/** Group shared-credit pool funding (one-time). purchaseId is our group_credit_purchases row id — the webhook re-reads it server-side. */
+export function createGroupFundingCheckout(i: Base & { purchaseId: string; groupId: string; groupName: string; amountCents: number }) {
+  const metadata = { kind: "group_funding", purchase_id: i.purchaseId, group_id: i.groupId };
+  const body: Record<string, unknown> = {
+    mode: "payment", customer_email: i.email, client_reference_id: i.purchaseId,
+    success_url: i.successUrl, cancel_url: i.cancelUrl,
+    line_items: [{ quantity: 1, price_data: priceData(`Zapnivo group credit — ${i.groupName}`, "Group charging credit pool", i.amountCents) }],
+    payment_intent_data: { receipt_email: i.email, metadata },
+    metadata,
+  };
+  if (taxEnabled()) body.automatic_tax = { enabled: true };
+  return stripeCall<{ id: string; url: string | null }>("POST", "/checkout/sessions", body, `groupfund_${i.purchaseId}`);
+}
+
 /** Event pass purchase (one-time; pass row pre-created). */
 export function createEventPassCheckout(i: Base & { passId: string; eventName: string; amountCents: number }) {
   const metadata = { kind: "event_pass", pass_id: i.passId };

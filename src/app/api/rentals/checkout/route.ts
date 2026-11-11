@@ -17,6 +17,8 @@ const schema = z.object({
   promo_code: z.string().trim().regex(PROMO_CODE_RE).optional().or(z.literal("").transform(() => undefined)),
   consent: z.union([z.literal("on"), z.boolean()]).optional().transform((v) => v === true || v === "on"),
   sms_consent: z.union([z.literal("on"), z.boolean()]).optional().transform((v) => v === true || v === "on"),
+  use_credits: z.union([z.literal("on"), z.literal("off"), z.boolean()]).optional()
+    .transform((v) => v === undefined ? true : v === true || v === "on"),
 });
 
 const clientIp = (req: Request) => req.headers.get("x-forwarded-for")?.split(",")[0].trim() || req.headers.get("x-real-ip") || "unknown";
@@ -35,7 +37,7 @@ export async function POST(req: Request) {
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid request body." }, { status: 400 }); }
   const parsed = schema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: "Please check the details you entered.", fields: parsed.error.flatten().fieldErrors }, { status: 422 });
-  const { station_id, email, bank_count, promo_code, consent, sms_consent } = parsed.data;
+  const { station_id, email, bank_count, promo_code, consent, sms_consent, use_credits } = parsed.data;
   if (!consent) return NextResponse.json({ error: "Please accept the rental terms to continue.", fields: { consent: ["Rental terms acceptance is required."] } }, { status: 422 });
   log("info", "checkout_started", { stationId: station_id, bankCount: bank_count, hasPromo: Boolean(promo_code), smsConsent: Boolean(sms_consent) });
 
@@ -97,12 +99,26 @@ export async function POST(req: Request) {
     }
   } catch { /* sponsorship must never block a rental */ }
 
+  // Entitlement credits: reserve eligible units for signed-in customers.
+  // Reservations are committed only at settlement; released on cancel/failure.
+  if (customerId && use_credits) {
+    try {
+      const { reserveForRental } = await import("@/lib/monetization/credits");
+      await reserveForRental(db, customerId, rental.id, { holdCents: hold, pricing });
+    } catch (e) {
+      recordLog("warning", "credit_reserve_error", { service: "rentals", route: "/api/rentals/checkout", traceId, attrs: { err: e instanceof Error ? e.message.slice(0, 140) : "unknown" } });
+    }
+  }
+
   const { data: pay, error: pErr } = await db.from("payments").insert({
     rental_id: rental.id, state: "authorized", amount_authorized_cents: hold, currency: "usd", receipt_email: email,
   }).select("id").single();
   const rollback = async () => {
     await db.from("rentals").update({ state: "cancelled" }).eq("id", rental.id);
     if (pay) await db.from("payments").update({ state: "failed", failure_code: "checkout_not_created" }).eq("id", pay.id);
+    if (customerId) {
+      try { const { releaseForRental } = await import("@/lib/monetization/credits"); await releaseForRental(db, rental.id); } catch { /* best effort */ }
+    }
     await undoPromo();
   };
   if (pErr || !pay) { await rollback(); log("error", "checkout_hold_failed", { reason: pErr?.code ?? "unknown", rental: rental.reference }); return NextResponse.json({ error: "We couldn't start your rental. Please try again." }, { status: 500 }); }

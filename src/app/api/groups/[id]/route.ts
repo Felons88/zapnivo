@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionUser } from "@/lib/auth";
 import { getGroup, updateGroup } from "@/lib/groups";
+import { rateLimit } from "@/lib/rate-limit";
 import { serviceClient } from "@/lib/supabase";
 
 const patchSchema = z.object({
@@ -25,6 +26,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: "Sign in required." }, { status: 401 });
+  if (!rateLimit(`groups:update:${user.id}`, 30, 60_000).ok) return NextResponse.json({ error: "Too many attempts." }, { status: 429 });
   const db = serviceClient();
   if (!db) return NextResponse.json({ error: "Backend not configured." }, { status: 503 });
   const { id } = await params;

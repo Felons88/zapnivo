@@ -1,0 +1,16 @@
+You're invited to Zapnivo, {{name}}!
+
+A Zapnivo administrator has created a {{role_label}} account for you{{org_phrase}}. Accept the invitation below to set your password and sign in.
+
+Accept your invitation: {{invite_url}}
+
+1. Click the link above to accept your invitation.
+2. Choose a password and confirm your email address.
+3. Sign in — your {{role_label}} access is already configured.
+
+{{expires_note}}
+
+Didn't request this? Contact support@zapnivo.com.
+
+— Zapnivo Team
+{{year}}

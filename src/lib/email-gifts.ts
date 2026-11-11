@@ -67,6 +67,40 @@ ${message ? `<p style="font-style:italic">"${escape(message)}"</p>` : ""}
   return sendToCustomer(recipientEmail, `You've got a Zapnivo charging gift — ${packageLabel}`, body, html, null, { template: "gift_received", event: "gift.received" });
 }
 
+/**
+ * Recipient secure-delivery email — sent by the Stripe webhook (kind 'gift_credit')
+ * once a gift with a recipient_email flips to 'paid'. Carries a one-time claim LINK
+ * (never the redemption code or the raw token beyond the URL itself). Idempotent in
+ * practice: the webhook only sends it when it mints the claim token (claim_token_hash
+ * is null-guarded), so webhook retries can't double-send.
+ */
+export async function giftClaimLink(
+  recipientEmail: string,
+  packageLabel: string,
+  message: string | null,
+  claimUrl: string,
+): Promise<boolean> {
+  const note = message ? `\n\n"${message}"` : "";
+  const body = [
+    `You've been sent a Zapnivo charging gift — ${packageLabel}.`,
+    "",
+    "Claim it here (sign in first if asked):",
+    claimUrl,
+    "",
+    "This link works once and expires in 72 hours.",
+    note,
+    "",
+    "— The Zapnivo team",
+  ].join("\n");
+  const html = `<p>You've been sent a Zapnivo charging gift — <strong>${escape(packageLabel)}</strong>.</p>
+<p><a href="${escape(claimUrl)}" style="display:inline-block;background:#1c2b1c;color:#fff;padding:12px 20px;border-radius:10px;text-decoration:none;font-weight:bold">Claim your gift</a></p>
+<p style="word-break:break-all"><a href="${escape(claimUrl)}">${escape(claimUrl)}</a></p>
+<p style="font-size:13px;color:#555">This link works once and expires in 72 hours.</p>
+${message ? `<p style="font-style:italic">"${escape(message)}"</p>` : ""}
+<p>— The Zapnivo team</p>`;
+  return sendToCustomer(recipientEmail, `You've got a Zapnivo charging gift — ${packageLabel}`, body, html, null, { template: "gift_claim_link", event: "gift.received" });
+}
+
 /** Confirmation to the redeemer that their credit landed (sent from the redeem route). */
 export async function giftRedeemedConfirmation(
   profileEmail: string,

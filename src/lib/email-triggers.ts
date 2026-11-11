@@ -1,4 +1,4 @@
-import { renderEmail } from "./email-templates";
+import { renderEmail, renderEmailText } from "./email-templates";
 import { flushOutbox, getMailer } from "./helpdesk/mailer";
 import { getRepo } from "./helpdesk/repo";
 import { fmt, PRICING_V1 } from "./pricing";
@@ -139,6 +139,21 @@ export async function triggerPaymentFailed(rentalId: string) {
   return sendToCustomer(to, "Your Zapnivo payment didn't go through",
     `We couldn't authorize the payment for rental ${r.reference}, so no power bank was released and you have not been charged. You can try again from the station's QR code, or contact support at support.zapnivo.com with reference ${r.reference}.`,
     null, null, { sender: "billing", template: null, event: "rental.payment_failed" });
+}
+
+/** Branded account-invitation email (replaces the default Supabase invite template). */
+export async function sendAccountInvite(to: string, opts: { name?: string | null; roleLabel: string; orgName?: string | null; inviteUrl: string }) {
+  const name = (opts.name ?? "").trim() || "there";
+  const orgPhrase = opts.orgName ? ` with ${opts.orgName}` : "";
+  return sendToCustomer(to, "You're invited to Zapnivo",
+    renderEmailText("account_invite", {
+      name, role_label: opts.roleLabel, org_phrase: orgPhrase,
+      invite_url: opts.inviteUrl, expires_note: "This invitation link is single-use — ask an administrator to resend it if it expires.", year: year(),
+    }),
+    renderEmail("account_invite", {
+      name, role_label: opts.roleLabel, org_phrase: orgPhrase,
+      invite_url: opts.inviteUrl, expires_note: "This invitation link is single-use — ask an administrator to resend it if it expires.", year: year(),
+    }), null, { sender: "admin", template: "account_invite", event: "account.invite" });
 }
 
 /** Daily cron sweep: reminders inside the deadline window, notices for overdue rentals. */

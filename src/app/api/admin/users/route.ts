@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { auditLog } from "@/lib/audit";
 import { getSessionUser } from "@/lib/auth";
+import { sendAccountInvite } from "@/lib/email-triggers";
 import { serviceClient } from "@/lib/supabase";
 
 const back = (req: Request) => NextResponse.redirect(new URL("/admin/users", req.url), 303);
@@ -20,9 +21,13 @@ export async function POST(req: Request) {
     const p = z.object({ email: z.string().email().max(254), role: z.enum(["admin", "staff"]), name: z.string().trim().max(120).optional() })
       .safeParse({ email: form.get("email"), role: form.get("role"), name: form.get("name") || undefined });
     if (!p.success) return NextResponse.json({ error: "Check the invite fields." }, { status: 422 });
-    const { data, error } = await db.auth.admin.inviteUserByEmail(p.data.email, { redirectTo: `${new URL(req.url).origin}/api/auth/callback`, data: { full_name: p.data.name ?? "" } });
+    const origin = new URL(req.url).origin;
+    const { data, error } = await db.auth.admin.generateLink({ type: "invite", email: p.data.email, options: { redirectTo: `${origin}/api/auth/callback`, data: { full_name: p.data.name ?? "" } } });
     if (error) return NextResponse.json({ error: `Invite failed: ${error.message}` }, { status: 502 });
+    const inviteUrl = data.properties?.action_link;
+    if (!inviteUrl) return NextResponse.json({ error: "Invite failed: no invitation link was generated." }, { status: 502 });
     if (data.user) await db.from("profiles").update({ role: p.data.role, ...(p.data.name ? { full_name: p.data.name } : {}) }).eq("id", data.user.id);
+    await sendAccountInvite(p.data.email, { name: p.data.name, roleLabel: p.data.role === "admin" ? "Administrator" : "Staff", inviteUrl }).catch(() => false);
     await auditLog(user.id, "invite_staff", "profile", data.user?.id, { email: p.data.email, role: p.data.role });
     return back(req);
   }

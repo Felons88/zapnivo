@@ -224,6 +224,12 @@ export async function claimInvite(
   if (m.status !== "invited") return fail("This invite is no longer valid.", 410);
   if (m.profile_id && m.profile_id !== profileId) return fail("This invite is no longer valid.", 410);
 
+  // Closed groups are read-only — outstanding invites can't add new members.
+  // (Re-claims by an already-active member above still succeed.)
+  const { data: g } = await db.from("rental_groups").select(GROUP_SELECT).eq("id", m.group_id).maybeSingle();
+  if (!g) return fail("Group no longer exists.", 404);
+  if ((g as GroupRow).status !== "active") return fail("This group is closed.", 409);
+
   const { data: claimed, error } = await db.from("rental_group_members")
     .update({ profile_id: profileId, status: "active", joined_at: new Date().toISOString() })
     .eq("id", m.id).eq("status", "invited")
@@ -231,17 +237,23 @@ export async function claimInvite(
   if (error) { log("warning", "group_claim_failed", { err: error.message.slice(0, 160) }); return fail("Couldn't claim the invite.", 500); }
   if (!claimed) return fail("This invite has already been claimed.", 409);
 
-  const { data: g } = await db.from("rental_groups").select(GROUP_SELECT).eq("id", m.group_id).maybeSingle();
-  if (!g) return fail("Group no longer exists.", 404);
   log("info", "group_invite_claimed", { group: m.group_id.slice(0, 8) });
   return { ok: true, data: g as GroupRow };
 }
 
+/** Coded exceptions raised by the adjust_group_credit RPC (migration 0035). */
+const GROUP_CREDIT_RPC_ERRORS: Record<string, { error: string; status: number }> = {
+  group_not_found: { error: "Group not found.", status: 404 },
+  negative_balance: { error: "Adjustment would make the pool negative.", status: 409 },
+  invalid_delta: { error: "Credit adjustment must be a non-zero integer (cents).", status: 422 },
+};
+
 /**
  * Admin/staff credit adjustment. credit_cents is an informational pool funded
- * manually — self-serve funding is pending. Writes an entitlement_events audit
- * row (event 'adjust', unit cents) against the organizer. `deltaCents` may be
- * negative; the DB check (credit_cents >= 0) rejects overdrawing the pool.
+ * manually — self-serve funding is pending. The adjust_group_credit RPC
+ * (migration 0035) applies the delta, guards against negative balances, and
+ * writes the entitlement_events audit row atomically in one transaction.
+ * Returns the updated group row (balance comes back as an int from the RPC).
  */
 export async function adjustGroupCredit(
   db: SupabaseClient, groupId: string, deltaCents: number, actor: string, note?: string,
@@ -249,24 +261,23 @@ export async function adjustGroupCredit(
   if (!Number.isInteger(deltaCents) || deltaCents === 0 || Math.abs(deltaCents) > 10_000_000) {
     return fail("Credit adjustment must be a non-zero integer (cents).", 422);
   }
+  const { data: balance, error } = await db.rpc("adjust_group_credit", {
+    p_group: groupId,
+    p_delta: deltaCents,
+    p_actor: actor.startsWith("staff:") ? actor : `staff:${actor}`,
+    p_note: (note ?? "group credit adjustment").slice(0, 300),
+  });
+  if (error) {
+    const msg = error.message ?? "";
+    for (const [code, mapped] of Object.entries(GROUP_CREDIT_RPC_ERRORS)) {
+      if (msg.includes(code)) return fail(mapped.error, mapped.status);
+    }
+    log("warning", "group_credit_failed", { err: msg.slice(0, 160) });
+    return fail("Couldn't update the credit pool.", 500);
+  }
+  // Re-read so callers keep the full GroupRow shape (RPC returns the new balance int).
   const { data: g } = await db.from("rental_groups").select(GROUP_SELECT).eq("id", groupId).maybeSingle();
-  if (!g) return fail("Group not found.", 404);
-  const group = g as GroupRow;
-  const next = group.credit_cents + deltaCents;
-  if (next < 0) return fail("Adjustment would make the pool negative.", 409);
-  const { data, error } = await db.from("rental_groups")
-    .update({ credit_cents: next }).eq("id", groupId).eq("credit_cents", group.credit_cents)
-    .select(GROUP_SELECT).maybeSingle();
-  if (error || !data) { log("warning", "group_credit_failed", { err: error?.message?.slice(0, 160) }); return fail("Couldn't update the credit pool.", 500); }
-
-  // Audit in the entitlement ledger (best-effort; must not fail the adjustment).
-  try {
-    await db.from("entitlement_events").insert({
-      grant_id: null, profile_id: group.organizer_id, event: "adjust",
-      delta: deltaCents, balance_after: next, ref_type: "group_credit", ref_id: groupId,
-      actor: actor.startsWith("staff:") ? actor : `staff:${actor}`, note: (note ?? "group credit adjustment").slice(0, 300),
-    });
-  } catch { /* audit is best-effort */ }
-  log("info", "group_credit_adjusted", { group: groupId.slice(0, 8), delta: deltaCents });
-  return { ok: true, data: data as GroupRow };
+  if (!g) return fail("Couldn't load the updated group.", 500);
+  log("info", "group_credit_adjusted", { group: groupId.slice(0, 8), delta: deltaCents, balance });
+  return { ok: true, data: g as GroupRow };
 }

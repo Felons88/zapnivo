@@ -1,6 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { grant } from "@/lib/monetization/entitlements";
 import { recordLog } from "@/lib/observability";
 
 /**
@@ -252,16 +251,21 @@ export async function issuePass(
   if (!e) return fail("Event not found.", 404);
   const ev = e as EventRow;
   if (ev.status === "closed" || ev.status === "cancelled") return fail("This event is closed.", 409);
-  if (ev.max_redemptions != null) {
-    const { count } = await db.from("event_passes").select("id", { count: "exact", head: true })
-      .eq("event_id", eventId).neq("status", "revoked");
-    if ((count ?? 0) >= ev.max_redemptions) return fail("This event has reached its redemption cap.", 409);
-  }
   const { code, hash } = newPassCode();
-  const { data, error } = await db.from("event_passes").insert({
-    event_id: eventId, code_hash: hash, units_granted: units, expires_at: expiresAt, status: "active",
-  }).select("*").single();
-  if (error || !data) { log("warning", "pass_issue_failed", { err: error?.message?.slice(0, 160) }); return fail("Couldn't issue the pass.", 500); }
+  // Atomic issue: advisory-locked cap check + insert in one transaction (0037).
+  const { data: pid, error: rpcErr } = await db.rpc("issue_event_pass", {
+    p_event: eventId, p_units: units, p_expires_at: expiresAt, p_code_hash: hash,
+  });
+  if (rpcErr) {
+    const msg = rpcErr.message ?? "";
+    if (msg.includes("cap_reached")) return fail("This event has reached its redemption cap.", 409);
+    if (msg.includes("event_closed")) return fail("This event is closed.", 409);
+    if (msg.includes("event_missing")) return fail("Event not found.", 404);
+    log("warning", "pass_issue_failed", { err: msg.slice(0, 160) });
+    return fail("Couldn't issue the pass.", 500);
+  }
+  const { data } = await db.from("event_passes").select("*").eq("id", pid as string).single();
+  if (!data) return fail("Couldn't issue the pass.", 500);
   log("info", "pass_issued", { event: eventId.slice(0, 8), units });
   return { ok: true, data: { pass: data as EventPassRow, code } };
 }
@@ -299,64 +303,53 @@ export type RedeemResult =
   | { ok: true; rentals: number }
   | { ok: false; error: string; status: number };
 
+/** Coded exceptions raised by the redeem_event_pass RPC (migration 0034). */
+const REDEEM_RPC_ERRORS: Record<string, { error: string; status: number }> = {
+  invalid_code: { error: "invalid_code", status: 404 },
+  unpaid: { error: "unpaid", status: 402 },
+  revoked: { error: "revoked", status: 410 },
+  already_redeemed: { error: "already_redeemed", status: 409 },
+  expired: { error: "expired", status: 410 },
+  exhausted: { error: "exhausted", status: 409 },
+  event_missing: { error: "event_missing", status: 404 },
+  event_inactive: { error: "event_inactive", status: 409 },
+  outside_window: { error: "outside_window", status: 409 },
+  unavailable: { error: "unavailable", status: 409 },
+};
+
+function mapRedeemRpcError(message: string | undefined): RedeemResult {
+  const msg = message ?? "";
+  for (const [code, mapped] of Object.entries(REDEEM_RPC_ERRORS)) {
+    if (msg.includes(code)) return { ok: false, ...mapped };
+  }
+  return { ok: false, error: "redeem_failed", status: 500 };
+}
+
 /**
- * Redeems a pass code for the signed-in profile. Guards (in order): code exists,
- * paid_at set (webhook), status active, not expired, event active and inside its
- * window, units remaining. The pass→redeemed flip is an atomic conditional
- * update; the 'rental' entitlement grant happens after the claim, with a
- * compensating revert if the grant fails.
+ * Redeems a pass code for the signed-in profile. All validation, the atomic
+ * pass claim, the 'rental' entitlement grant, and the audit rows happen in a
+ * single DB transaction via the redeem_event_pass RPC (migration 0034) — no
+ * claim-then-compensate window exists. `nowMs` is retained for signature
+ * compatibility; the RPC decides window/expiry against database time.
  */
 export async function redeemPass(
-  db: SupabaseClient, profileId: string, code: string, nowMs = Date.now(),
+  db: SupabaseClient, profileId: string, code: string, _nowMs = Date.now(),
 ): Promise<RedeemResult> {
   const raw = code.trim().toUpperCase();
   if (!/^[A-Z0-9-]{4,32}$/.test(raw)) return { ok: false, error: "invalid_code", status: 422 };
-  const { data: p } = await db.from("event_passes").select("*")
-    .eq("code_hash", hashPassCode(raw)).maybeSingle();
-  if (!p) return { ok: false, error: "invalid_code", status: 404 };
-  const pass = p as EventPassRow;
 
-  if (!pass.paid_at) return { ok: false, error: "unpaid", status: 402 };
-  if (pass.status === "revoked") return { ok: false, error: "revoked", status: 410 };
-  if (pass.status === "redeemed") return { ok: false, error: "already_redeemed", status: 409 };
-  if (pass.status === "expired" || (pass.expires_at && Date.parse(pass.expires_at) <= nowMs)) {
-    if (pass.status === "active") await db.from("event_passes").update({ status: "expired" }).eq("id", pass.id).eq("status", "active");
-    return { ok: false, error: "expired", status: 410 };
-  }
-  if (pass.status !== "active") return { ok: false, error: "unavailable", status: 409 };
-  if (pass.units_used >= pass.units_granted) return { ok: false, error: "exhausted", status: 409 };
-
-  const { data: e } = await db.from("event_programs").select(EVENT_SELECT).eq("id", pass.event_id).maybeSingle();
-  if (!e) return { ok: false, error: "event_missing", status: 404 };
-  const ev = e as EventRow;
-  if (ev.status !== "active") return { ok: false, error: "event_inactive", status: 409 };
-  const s = Date.parse(ev.starts_at), en = Date.parse(ev.ends_at);
-  if (!Number.isFinite(s) || !Number.isFinite(en) || nowMs < s || nowMs > en) {
-    return { ok: false, error: "outside_window", status: 409 };
-  }
-
-  // Atomic claim: only one redeemer wins; guards re-checked in the WHERE clause.
-  const { data: claimed, error } = await db.from("event_passes")
-    .update({ status: "redeemed", units_used: pass.units_granted, holder_id: profileId })
-    .eq("id", pass.id).eq("status", "active").eq("units_used", pass.units_used)
-    .not("paid_at", "is", null)
-    .select("id").maybeSingle();
-  if (error) { log("warning", "pass_redeem_claim_failed", { err: error.message.slice(0, 160) }); return { ok: false, error: "redeem_failed", status: 500 }; }
-  if (!claimed) return { ok: false, error: "already_redeemed", status: 409 };
-
-  const g = await grant(db, {
-    profileId, kind: "event", unit: "rental", amount: pass.units_granted,
-    expiresAt: ev.ends_at, sourceType: "event_pass", sourceId: pass.id, actor: "customer",
-    note: `Event pass ${pass.id.slice(0, 8)} — ${ev.name}`,
+  const { data, error } = await db.rpc("redeem_event_pass", {
+    p_code_hash: hashPassCode(raw),
+    p_profile: profileId,
   });
-  if (!g.ok) {
-    // Compensating revert so the pass isn't burned by a failed grant.
-    await db.from("event_passes")
-      .update({ status: "active", units_used: pass.units_used, holder_id: pass.holder_id })
-      .eq("id", pass.id).eq("status", "redeemed");
-    log("error", "pass_redeem_grant_failed", { pass: pass.id.slice(0, 8), err: g.error.slice(0, 160) });
-    return { ok: false, error: "redeem_failed", status: 500 };
+  if (error) {
+    const out = mapRedeemRpcError(error.message);
+    if (!out.ok && out.status >= 500) {
+      log("error", "pass_redeem_failed", { err: (error.message ?? "").slice(0, 160) });
+    }
+    return out;
   }
-  log("info", "pass_redeemed", { event: ev.id.slice(0, 8), units: pass.units_granted });
-  return { ok: true, rentals: pass.units_granted };
+  const rentals = typeof data === "number" ? data : Number(data) || 0;
+  log("info", "pass_redeemed", { rentals });
+  return { ok: true, rentals };
 }

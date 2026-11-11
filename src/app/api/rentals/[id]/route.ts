@@ -65,13 +65,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 type CaptureOutcome = { status: "captured" | "released" | "skipped" | "flagged" | "charged" | "error"; detail: string; cents?: number };
 
 type RentalCtx = {
-  id: string; reference: string; state: string; started_at: string | null; dispensed_at: string | null; returned_at: string | null;
+  id: string; reference: string; state: string; customer_id: string | null; started_at: string | null; dispensed_at: string | null; returned_at: string | null;
   pricing_version: string; bank_count: number; promo_code: string | null; non_return_deadline: string | null; non_return_fee_status: string | null;
   payments: { id: string; state: string; stripe_payment_intent_id: string | null; amount_authorized_cents: number | null; tax_cents: number | null }[];
 };
 
 async function loadCtx(db: NonNullable<ReturnType<typeof serviceClient>>, id: string) {
-  const { data } = await db.from("rentals").select("id,reference,state,started_at,dispensed_at,returned_at,pricing_version,bank_count,promo_code,non_return_deadline,non_return_fee_status,payments(id,state,stripe_payment_intent_id,amount_authorized_cents,tax_cents)").eq("id", id).maybeSingle();
+  const { data } = await db.from("rentals").select("id,reference,state,customer_id,started_at,dispensed_at,returned_at,pricing_version,bank_count,promo_code,non_return_deadline,non_return_fee_status,payments(id,state,stripe_payment_intent_id,amount_authorized_cents,tax_cents)").eq("id", id).maybeSingle();
   return data as unknown as RentalCtx | null;
 }
 
@@ -116,22 +116,33 @@ async function captureOnReturn(db: NonNullable<ReturnType<typeof serviceClient>>
   const tax = taxEnabled() ? proportionalTaxCents(pay.tax_cents ?? 0, holdCents(pricing, r.bank_count), netCents) : 0;
   const total = netCents + tax;
 
-  if (total <= 0) {
+  // Entitlement credits: commit reserved units against the final charge,
+  // release the remainder. Applied credits reduce what Stripe captures.
+  let creditApplied = 0;
+  try {
+    const { applyCreditsAtSettlement } = await import("@/lib/monetization/credits");
+    creditApplied = await applyCreditsAtSettlement(db, id, r.customer_id, total, pricing, actor);
+  } catch (e) {
+    await auditLog(actor, "credit_settlement_error", "rental", id, { err: e instanceof Error ? e.message.slice(0, 140) : "unknown" });
+  }
+  const chargeTotal = total - creditApplied;
+
+  if (chargeTotal <= 0) {
     const c = await cancelPaymentIntent(pay.stripe_payment_intent_id, `release_${pay.id}`);
     if (!c.ok) return { status: "error", detail: "Couldn't release the hold." };
-    await db.from("payments").update({ state: "released", amount_captured_cents: 0, discount_cents: discountCents, tax_cents: 0 }).eq("id", pay.id);
-    await appendLedger(db, { rentalId: id, kind: "rental_charge", amountCents: 0, stripePaymentIntentId: pay.stripe_payment_intent_id, status: "succeeded", idempotencyKey: `release:${pay.id}`, metadata: { discount_cents: discountCents, sponsor_discount_cents: sponsorDiscount, reason: "hold_released_fully_discounted" } });
+    await db.from("payments").update({ state: "released", amount_captured_cents: 0, discount_cents: discountCents, tax_cents: 0, credit_cents: creditApplied }).eq("id", pay.id);
+    await appendLedger(db, { rentalId: id, kind: "rental_charge", amountCents: 0, stripePaymentIntentId: pay.stripe_payment_intent_id, status: "succeeded", idempotencyKey: `release:${pay.id}`, metadata: { discount_cents: discountCents, sponsor_discount_cents: sponsorDiscount, credit_cents: creditApplied, reason: "hold_released_fully_discounted" } });
     if (sponsorCampaignId && sponsorDiscount > 0) await recordSponsorSpend(db, sponsorCampaignId, sponsorDiscount).catch(() => undefined);
-    await auditLog(actor, "release_hold", "payment", pay.id, { discountCents });
-    return { status: "released", detail: "Fully discounted; the hold was released.", cents: 0 };
+    await auditLog(actor, "release_hold", "payment", pay.id, { discountCents, creditApplied });
+    return { status: "released", detail: creditApplied > 0 ? "Fully covered by credits; the hold was released." : "Fully discounted; the hold was released.", cents: 0 };
   }
-  const cap = await capturePaymentIntent(pay.stripe_payment_intent_id, total, `capture_${pay.id}`);
+  const cap = await capturePaymentIntent(pay.stripe_payment_intent_id, chargeTotal, `capture_${pay.id}`);
   if (!cap.ok) return { status: "error", detail: `Capture failed (${cap.code}). The payment stays authorized.` };
-  await db.from("payments").update({ state: "captured", amount_captured_cents: total, discount_cents: discountCents, tax_cents: tax, captured_at: now.toISOString() }).eq("id", pay.id);
-  await appendLedger(db, { rentalId: id, kind: "rental_charge", amountCents: total, stripePaymentIntentId: pay.stripe_payment_intent_id, status: "succeeded", idempotencyKey: `capture:${pay.id}`, metadata: { discount_cents: discountCents, sponsor_discount_cents: sponsorDiscount, tax_cents: tax, bank_count: r.bank_count } });
+  await db.from("payments").update({ state: "captured", amount_captured_cents: chargeTotal, discount_cents: discountCents, tax_cents: tax, credit_cents: creditApplied, captured_at: now.toISOString() }).eq("id", pay.id);
+  await appendLedger(db, { rentalId: id, kind: "rental_charge", amountCents: chargeTotal, stripePaymentIntentId: pay.stripe_payment_intent_id, status: "succeeded", idempotencyKey: `capture:${pay.id}`, metadata: { discount_cents: discountCents, sponsor_discount_cents: sponsorDiscount, credit_cents: creditApplied, tax_cents: tax, bank_count: r.bank_count } });
   if (sponsorCampaignId && sponsorDiscount > 0) await recordSponsorSpend(db, sponsorCampaignId, sponsorDiscount).catch(() => undefined);
-  await auditLog(actor, "capture_on_return", "payment", pay.id, { total, discountCents, sponsorDiscount, tax, banks: r.bank_count });
-  return { status: "captured", detail: "Charge captured.", cents: total };
+  await auditLog(actor, "capture_on_return", "payment", pay.id, { total, chargeTotal, discountCents, sponsorDiscount, creditApplied, tax, banks: r.bank_count });
+  return { status: "captured", detail: creditApplied > 0 ? `Charge captured (${creditApplied}¢ covered by credits).` : "Charge captured.", cents: chargeTotal };
 }
 
 /**

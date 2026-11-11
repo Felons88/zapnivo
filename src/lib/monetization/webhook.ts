@@ -2,6 +2,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { grant, type EntitlementUnit } from "./entitlements";
 import { recordLog } from "@/lib/observability";
 import { sendMembershipActivated, sendMembershipCancelled, sendMembershipPaymentFailed, sendPackagePurchased } from "@/lib/email-monetization";
+import { sendGroupFunded } from "@/lib/email-groups";
+import { giftClaimLink } from "@/lib/email-gifts";
+import { CLAIM_TOKEN_TTL_HOURS, claimGiftUrl, generateClaimToken, hashClaimToken } from "@/lib/gifts-delivery";
 
 /**
  * Monetization webhook handlers. Called from the Stripe webhook's handleEvent
@@ -94,13 +97,46 @@ async function grantPeriodBenefits(db: SupabaseClient, memId: string, profileId:
   await db.from("customer_memberships").update({ last_granted_period_end: periodEndIso }).eq("id", memId);
 }
 
+type GiftFulfillRow = {
+  id: string; package: string | null; value_cents: number | null;
+  recipient_email: string | null; message: string | null; claim_token_hash: string | null;
+};
+
+/**
+ * Secure delivery for recipient-bound gifts: mint a one-time claim token, store only
+ * its sha256 + 72h expiry, and email the claim link. Best-effort — failures never fail
+ * fulfillment. Idempotent: the status flip above guards webhook retries, and the
+ * claim_token_hash write is additionally guarded by `.is("claim_token_hash", null)`
+ * so the token+email are issued at most once per gift.
+ */
+async function deliverGiftClaim(db: SupabaseClient, g: GiftFulfillRow) {
+  try {
+    if (!g.recipient_email || g.claim_token_hash) return;
+    const token = generateClaimToken(); // raw token lives only inside the emailed URL
+    const { error } = await db.from("gift_credits")
+      .update({ claim_token_hash: hashClaimToken(token), claim_token_expires_at: new Date(Date.now() + CLAIM_TOKEN_TTL_HOURS * 3600_000).toISOString() })
+      .eq("id", g.id).is("claim_token_hash", null);
+    if (error) return;
+    await giftClaimLink(g.recipient_email, g.package ?? "charging gift", g.message, claimGiftUrl(token));
+  } catch {
+    /* delivery is best-effort; the purchaser can still share the code */
+  }
+}
+
 async function fulfillGift(db: SupabaseClient, o: Obj) {
   const giftId = meta(o).gift_id;
   if (!giftId) return;
-  const { data: g } = await db.from("gift_credits").select("id,status").eq("id", giftId).maybeSingle();
+  const { data: g } = await db.from("gift_credits")
+    .select("id,status,package,value_cents,recipient_email,message,claim_token_hash")
+    .eq("id", giftId).maybeSingle();
   if (!g || g.status !== "pending_payment") return; // already fulfilled/refunded
-  await db.from("gift_credits").update({ status: "paid", stripe_payment_intent_id: str(o.payment_intent) }).eq("id", giftId).eq("status", "pending_payment");
+  const { data: paid } = await db.from("gift_credits")
+    .update({ status: "paid", stripe_payment_intent_id: str(o.payment_intent) })
+    .eq("id", giftId).eq("status", "pending_payment")
+    .select("id").maybeSingle();
+  if (!paid) return; // lost a concurrent-fulfillment race
   recordLog("info", "gift_paid", { service: "monetization", attrs: { gift: giftId.slice(0, 8) } });
+  await deliverGiftClaim(db, g as GiftFulfillRow);
 }
 
 async function fulfillPackage(db: SupabaseClient, o: Obj) {
@@ -127,6 +163,40 @@ async function fulfillEventPass(db: SupabaseClient, o: Obj) {
   recordLog("info", "event_pass_paid", { service: "monetization", attrs: { pass: passId.slice(0, 8) } });
 }
 
+/**
+ * Group self-serve pool funding. The purchase row is re-read server-side;
+ * fund_group_credit RPC atomically marks it paid, increments
+ * rental_groups.credit_cents and writes the entitlement_events audit row.
+ * The RPC returns false for non-pending rows, so webhook replays are safe.
+ */
+async function fulfillGroupFunding(db: SupabaseClient, o: Obj) {
+  const purchaseId = meta(o).purchase_id;
+  if (!purchaseId) return;
+  const { data: p } = await db.from("group_credit_purchases")
+    .select("id,group_id,organizer_id,amount_cents,status").eq("id", purchaseId).maybeSingle();
+  const purchase = p as { id: string; group_id: string; organizer_id: string; amount_cents: number; status: string } | null;
+  if (!purchase) return;
+  // The RPC owns the pending guard — it returns false for paid/refunded rows,
+  // so webhook replays and late events are safe no-ops.
+  const { data: funded, error } = await db.rpc("fund_group_credit", { p_purchase_id: purchase.id });
+  if (error) {
+    recordLog("warning", "group_funding_rpc_failed", { service: "monetization", attrs: { purchase: purchase.id.slice(0, 8), err: String((error as { message?: string }).message ?? error).slice(0, 160) } });
+    return;
+  }
+  if (funded !== true) return; // lost a replay race — already funded
+  await db.from("group_credit_purchases").update({ stripe_payment_intent_id: str(o.payment_intent) }).eq("id", purchase.id);
+  recordLog("info", "group_credit_funded", { service: "monetization", attrs: { group: purchase.group_id.slice(0, 8), purchase: purchase.id.slice(0, 8) } });
+  const [{ data: group }, email] = await Promise.all([
+    db.from("rental_groups").select("name").eq("id", purchase.group_id).maybeSingle(),
+    profileEmail(db, purchase.organizer_id),
+  ]);
+  if (email) fire(sendGroupFunded({
+    email, groupId: purchase.group_id,
+    groupName: (group as { name?: string } | null)?.name ?? "your group",
+    amountCents: purchase.amount_cents,
+  }));
+}
+
 /** Returns true if the event was a monetization event (handled or safely ignored). */
 export async function handleMonetizationEvent(db: SupabaseClient, event: { type: string; data: { object: Obj } }): Promise<boolean> {
   const o = event.data.object;
@@ -139,6 +209,7 @@ export async function handleMonetizationEvent(db: SupabaseClient, event: { type:
         case "gift_credit": await fulfillGift(db, o); return true;
         case "package": await fulfillPackage(db, o); return true;
         case "event_pass": await fulfillEventPass(db, o); return true;
+        case "group_funding": await fulfillGroupFunding(db, o); return true;
         default: return false;
       }
     }

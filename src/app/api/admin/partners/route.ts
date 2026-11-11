@@ -3,6 +3,7 @@ import { z } from "zod";
 import { auditLog } from "@/lib/audit";
 import { getSessionUser, isStaff } from "@/lib/auth";
 import { triggerPartnerApproved } from "@/lib/email-extra-triggers";
+import { sendAccountInvite } from "@/lib/email-triggers";
 import { serviceClient } from "@/lib/supabase";
 import { recordLog } from "@/lib/observability";
 
@@ -48,14 +49,18 @@ export async function POST(req: Request) {
     const { data: org } = await db.from("organizations").select("id").eq("id", p.data.organization_id).single();
     if (!org) return back(req, "error", "Unknown organization.");
 
-    // Invite via Supabase Auth (sends the sign-up email), then attach the profile to the org.
+    // Create the auth user without Supabase's default invite email, then send our branded invite.
     const origin = new URL(req.url).origin;
-    const { data, error } = await db.auth.admin.inviteUserByEmail(p.data.email, { redirectTo: `${origin}/api/auth/callback`, data: { full_name: p.data.name ?? "" } });
+    const { data, error } = await db.auth.admin.generateLink({ type: "invite", email: p.data.email, options: { redirectTo: `${origin}/api/auth/callback`, data: { full_name: p.data.name ?? "" } } });
     if (error || !data.user) return back(req, "error", "The invitation could not be sent.");
+    const inviteUrl = data.properties?.action_link;
+    if (!inviteUrl) return back(req, "error", "The invitation link could not be generated.");
     if (data.user) {
       const { error: profileError } = await db.from("profiles").update({ role: "partner", organization_id: p.data.organization_id, ...(p.data.name ? { full_name: p.data.name } : {}) }).eq("id", data.user.id);
-      if (profileError) return back(req, "error", "Invite sent, but the partner profile was not linked. Use Link existing account below.");
+      if (profileError) return back(req, "error", "Invite created, but the partner profile was not linked. Use Link existing account below.");
     }
+    const { data: orgRow } = await db.from("organizations").select("name").eq("id", p.data.organization_id).maybeSingle();
+    await sendAccountInvite(p.data.email, { name: p.data.name, roleLabel: "Partner", orgName: orgRow?.name ?? null, inviteUrl }).catch(() => false);
     await auditLog(user!.id, "invite_partner", "organization", p.data.organization_id, { email: p.data.email });
     partnersLog("partner_invited", { organizationId: p.data.organization_id });
     return back(req, "invited");

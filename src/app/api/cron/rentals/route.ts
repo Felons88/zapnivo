@@ -28,7 +28,11 @@ export async function GET(req: Request) {
   const sms = await recordCron(db, "sms", async () => ({ ...(await runSmsSweep(db)) }));
   const fleet = await recordCron(db, "fleet", async () => ({ ...(await runFleetSweep(db)) }));
   const first = new Date().getUTCDate() === 1;
-  const entitlements = await recordCron(db, "entitlements", async () => ({ expired: await expireSweep(db) }));
+  const entitlements = await recordCron(db, "entitlements", async () => {
+    const { expireSweep } = await import("@/lib/monetization/entitlements");
+    const { releaseOrphanedReservations } = await import("@/lib/monetization/credits");
+    return { expired: await expireSweep(db), released: await releaseOrphanedReservations(db) };
+  });
   const ledgers = first ? await recordCron(db, "ledgers", async () => { const r = await generateLedgers(db, previousPeriod()); return { created: r.created.length, noRate: r.skippedNoRate.length, locked: r.skippedLocked.length }; }) : null;
   const ok = rentals.ok && fleet.ok && sms.ok && entitlements.ok && (ledgers?.ok ?? true);
   return NextResponse.json({ ok, rentals: rentals.detail, sms: sms.detail, fleet: fleet.detail, entitlements: entitlements.detail, ledgers: ledgers?.detail ?? "not first of month" }, { status: ok ? 200 : 500 });

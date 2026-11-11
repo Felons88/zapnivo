@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { createHash } from "node:crypto";
 import {
-  claimInvite, closeGroup, createGroup, getGroup, inviteMember, listGroups, removeMember, updateGroup,
+  adjustGroupCredit, claimInvite, closeGroup, createGroup, getGroup, inviteMember,
+  listGroups, removeMember, updateGroup,
   type GroupRow,
 } from "@/lib/groups";
 import {
@@ -22,12 +23,86 @@ function fakeDb(seed: Record<string, Row[]> = {}) {
     ...seed,
   };
   const rpcCalls: { fn: string; args: Row }[] = [];
+  /** Per-test RPC overrides: return a canned {data,error} to force error paths. */
+  const rpcOverrides: Record<string, (args: Row) => { data?: unknown; error?: { message: string } | null }> = {};
   let seq = 0;
   const genId = () => `00000000-0000-4000-8000-${String(++seq).padStart(12, "0")}`;
 
   const db = {
     rpc: async (fn: string, args: Row) => {
       rpcCalls.push({ fn, args });
+      const ov = rpcOverrides[fn];
+      if (ov) return ov(args);
+      if (fn === "redeem_event_pass") {
+        // Faithful stand-in for migration 0034's redeem_event_pass().
+        const raise = (m: string) => ({ data: null, error: { message: m } });
+        const p = (tables.event_passes as Row[]).find((r) => r.code_hash === args.p_code_hash);
+        if (!p) return raise("invalid_code");
+        const now = Date.now();
+        if (!p.paid_at) return raise("unpaid");
+        if (p.status === "revoked") return raise("revoked");
+        if (p.status === "redeemed") return raise("already_redeemed");
+        if (p.status === "expired" || (p.expires_at && Date.parse(p.expires_at) <= now)) {
+          if (p.status === "active") p.status = "expired";
+          return raise("expired");
+        }
+        if (p.status !== "active") return raise("unavailable");
+        if ((p.units_used ?? 0) >= (p.units_granted ?? 0)) return raise("exhausted");
+        const e = (tables.event_programs as Row[]).find((r) => r.id === p.event_id);
+        if (!e) return raise("event_missing");
+        if (e.status !== "active") return raise("event_inactive");
+        if (now < Date.parse(e.starts_at) || now > Date.parse(e.ends_at)) return raise("outside_window");
+        p.status = "redeemed";
+        p.units_used = p.units_granted;
+        p.holder_id = args.p_profile;
+        tables.entitlement_grants.push({
+          id: genId(), profile_id: args.p_profile, kind: "event", unit: "rental",
+          granted: p.units_granted, remaining: p.units_granted, expires_at: e.ends_at,
+          source_type: "event_pass", source_id: p.id, status: "active",
+        });
+        tables.entitlement_events.push({
+          id: genId(), grant_id: null, profile_id: args.p_profile, event: "grant",
+          delta: p.units_granted, balance_after: p.units_granted,
+          ref_type: "event_pass", ref_id: p.id, actor: "customer", note: "Event pass",
+        });
+        return { data: p.units_granted, error: null };
+      }
+      if (fn === "adjust_group_credit") {
+        // Faithful stand-in for migration 0035's adjust_group_credit().
+        const g = (tables.rental_groups as Row[]).find((r) => r.id === args.p_group);
+        if (!g) return { data: null, error: { message: "group_not_found" } };
+        const d = args.p_delta;
+        if (!Number.isInteger(d) || d === 0 || Math.abs(d) > 10_000_000) {
+          return { data: null, error: { message: "invalid_delta" } };
+        }
+        const next = (g.credit_cents ?? 0) + d;
+        if (next < 0) return { data: null, error: { message: "negative_balance" } };
+        g.credit_cents = next;
+        tables.entitlement_events.push({
+          id: genId(), profile_id: g.organizer_id, event: "adjust", delta: d,
+          balance_after: next, ref_type: "group_credit", ref_id: g.id,
+          actor: args.p_actor, note: args.p_note,
+        });
+        return { data: next, error: null };
+      }
+      if (fn === "issue_event_pass") {
+        // Faithful stand-in for migration 0037's issue_event_pass().
+        const raise = (m: string) => ({ data: null, error: { message: m } });
+        const e = (tables.event_programs as Row[]).find((r) => r.id === args.p_event);
+        if (!e) return raise("event_missing");
+        if (e.status === "closed" || e.status === "cancelled") return raise("event_closed");
+        if (e.max_redemptions != null) {
+          const cnt = (tables.event_passes as Row[]).filter((r) => r.event_id === args.p_event && r.status !== "revoked").length;
+          if (cnt >= e.max_redemptions) return raise("cap_reached");
+        }
+        const id = genId();
+        tables.event_passes.push({
+          id, event_id: args.p_event, code_hash: args.p_code_hash, units_granted: args.p_units,
+          expires_at: args.p_expires_at ?? null, status: "active", units_used: 0,
+          holder_id: null, paid_at: null, created_at: "2026-01-01T00:00:00Z",
+        });
+        return { data: id, error: null };
+      }
       if (fn === "grant_entitlement") {
         tables.entitlement_grants.push({
           id: genId(), profile_id: args.p_profile, kind: args.p_kind, unit: args.p_unit,
@@ -113,7 +188,7 @@ function fakeDb(seed: Record<string, Row[]> = {}) {
       return q;
     },
   };
-  return { db: db as never, tables, rpcCalls };
+  return { db: db as never, tables, rpcCalls, rpcOverrides };
 }
 
 /* ── groups ───────────────────────────────────────────────────────────── */
@@ -200,14 +275,54 @@ describe("groups", () => {
     const g = await makeGroup(db);
     const inv = await inviteMember(db, ORG, g.id, "x@x.com");
     if (!inv.ok) throw new Error("invite failed");
+    const pending = await inviteMember(db, ORG, g.id, "pending@x.com");
+    if (!pending.ok) throw new Error("invite failed");
     const mid = tables.rental_group_members[0].id;
     expect((await removeMember(db, ORG, g.id, mid)).ok).toBe(true);
     expect(tables.rental_group_members[0].status).toBe("removed");
     expect((await closeGroup(db, ORG, g.id)).ok).toBe(true);
+    // Outstanding invites can't add members to a closed group.
+    const late = await claimInvite(db, ORG2, pending.data.token);
+    expect(late.ok).toBe(false);
+    if (!late.ok) expect(late.status).toBe(409);
+    expect(tables.rental_group_members.find((m) => m.id === tables.rental_group_members[1].id)!.status).toBe("invited");
     const after = await inviteMember(db, ORG, g.id, "z@x.com");
     expect(after.ok).toBe(false); // closed groups take no invites
     expect((await updateGroup(db, ORG, g.id, { name: "New" })).ok).toBe(false);
     expect((await getGroup(db, ORG, g.id)).ok).toBe(true); // still readable
+  });
+
+  it("adjusts credit via the adjust_group_credit RPC", async () => {
+    const { db, tables, rpcCalls } = fakeDb();
+    const g = await makeGroup(db);
+    const out = await adjustGroupCredit(db, g.id, 5000, MEMBER, "top up");
+    expect(out.ok).toBe(true);
+    if (out.ok) expect(out.data.credit_cents).toBe(5000);
+
+    const call = rpcCalls.find((c) => c.fn === "adjust_group_credit")!;
+    expect(call.args.p_group).toBe(g.id);
+    expect(call.args.p_delta).toBe(5000);
+    expect(call.args.p_actor).toBe(`staff:${MEMBER}`);
+    expect(call.args.p_note).toBe("top up");
+    // RPC wrote the audit row atomically (no separate lib-side insert).
+    const audit = tables.entitlement_events.find((e) => e.ref_id === g.id && e.event === "adjust");
+    expect(audit).toBeTruthy();
+    expect(audit!.balance_after).toBe(5000);
+
+    // Negative adjustments that would overdraw → 409.
+    const neg = await adjustGroupCredit(db, g.id, -999_999, ORG);
+    expect(neg.ok).toBe(false);
+    if (!neg.ok) expect(neg.status).toBe(409);
+    // Unknown group → 404.
+    const missing = await adjustGroupCredit(db, "99999999-9999-4999-8999-999999999999", 100, ORG);
+    expect(missing.ok).toBe(false);
+    if (!missing.ok) expect(missing.status).toBe(404);
+    // Invalid delta rejected before any RPC call.
+    const before = rpcCalls.length;
+    const bad = await adjustGroupCredit(db, g.id, 0, ORG);
+    expect(bad.ok).toBe(false);
+    if (!bad.ok) expect(bad.status).toBe(422);
+    expect(rpcCalls.length).toBe(before);
   });
 });
 
@@ -218,7 +333,6 @@ const FUTURE = {
   name: "Fest", startsAt: "2026-07-01T18:00:00Z", endsAt: "2026-07-01T23:00:00Z",
   priceCents: 1500, maxRedemptions: 10,
 };
-const ACTIVE_WINDOW = { startsAt: "2026-06-15T10:00:00Z", endsAt: "2026-06-15T14:00:00Z" };
 
 async function makeEvent(db: ReturnType<typeof fakeDb>["db"], organizer = ORG, extra = {}) {
   const e = await createEvent(db, organizer, { ...FUTURE, ...extra });
@@ -290,107 +404,139 @@ describe("event passes", () => {
   });
 });
 
-describe("pass redemption", () => {
-  const redeemNow = Date.parse("2026-06-15T12:00:00Z");
+describe("pass redemption (redeem_event_pass RPC)", () => {
+  // The RPC decides window/expiry against DB time, so tests use a live window.
+  const liveWindow = () => ({
+    startsAt: new Date(Date.now() - 10 * 60_000).toISOString(), // within draft→active grace
+    endsAt: new Date(Date.now() + 60 * 60_000).toISOString(),
+  });
+  const pay = (tables: Record<string, Row[]>, passId: string) => {
+    const row = tables.event_passes.find((r) => r.id === passId)!;
+    row.paid_at = new Date().toISOString();
+  };
 
-  it("rejects unpaid passes", async () => {
-    const { db, tables } = fakeDb();
-    const e = await createEvent(db, ORG, { ...ACTIVE_WINDOW, name: "Live" });
+  async function liveEvent(db: ReturnType<typeof fakeDb>["db"], extra: Row = {}) {
+    const e = await createEvent(db, ORG, { name: "Live", ...liveWindow(), priceCents: 1500, ...extra });
     if (!e.ok) throw new Error(e.error);
-    await transitionEvent(db, ORG, e.data.id, "active", redeemNow - 2 * 3600_000);
-    const p = await issuePass(db, ORG, e.data.id, { units: 2 });
+    const t = await transitionEvent(db, ORG, e.data.id, "active", Date.now());
+    if (!t.ok) throw new Error(t.error);
+    return e.data;
+  }
+
+  it("rejects malformed codes without calling the RPC", async () => {
+    const { db, rpcCalls } = fakeDb();
+    const r = await redeemPass(db, MEMBER, "!!bad!!", Date.now());
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.status).toBe(422);
+    expect(rpcCalls.filter((c) => c.fn === "redeem_event_pass")).toHaveLength(0);
+  });
+
+  it("maps every coded RPC failure to its status", async () => {
+    const cases: [string, string, number][] = [
+      ["invalid_code", "invalid_code", 404],
+      ["unpaid", "unpaid", 402],
+      ["revoked", "revoked", 410],
+      ["already_redeemed", "already_redeemed", 409],
+      ["expired", "expired", 410],
+      ["exhausted", "exhausted", 409],
+      ["event_missing", "event_missing", 404],
+      ["event_inactive", "event_inactive", 409],
+      ["outside_window", "outside_window", 409],
+      ["unavailable", "unavailable", 409],
+    ];
+    for (const [rpcMsg, error, status] of cases) {
+      const { db, rpcOverrides } = fakeDb();
+      rpcOverrides.redeem_event_pass = () => ({ data: null, error: { message: rpcMsg } });
+      const r = await redeemPass(db, MEMBER, "ABCD-EFGH-JKLM", Date.now());
+      expect(r.ok).toBe(false);
+      if (!r.ok) {
+        expect(r.error).toBe(error);
+        expect(r.status).toBe(status);
+      }
+    }
+    // Unknown RPC failure → 500 redeem_failed.
+    const { db, rpcOverrides } = fakeDb();
+    rpcOverrides.redeem_event_pass = () => ({ data: null, error: { message: "connection reset" } });
+    const r = await redeemPass(db, MEMBER, "ABCD-EFGH-JKLM", Date.now());
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.error).toBe("redeem_failed");
+      expect(r.status).toBe(500);
+    }
+  });
+
+  it("rejects unpaid passes via the RPC", async () => {
+    const { db, tables } = fakeDb();
+    const e = await liveEvent(db);
+    const p = await issuePass(db, ORG, e.id, { units: 2 });
     if (!p.ok) throw new Error(p.error);
-    const r = await redeemPass(db, MEMBER, p.data.code, redeemNow);
+    const r = await redeemPass(db, MEMBER, p.data.code, Date.now());
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toBe("unpaid");
     expect(tables.event_passes[0].status).toBe("active");
   });
 
-  it("rejects expired / wrong-window / redeemed / bad codes", async () => {
+  it("redeems once: claims pass, grants rentals, blocks double-redeem", async () => {
+    const { db, tables, rpcCalls } = fakeDb();
+    const e = await liveEvent(db);
+    const p = await issuePass(db, ORG, e.id, { units: 3 });
+    if (!p.ok) throw new Error(p.error);
+    pay(tables, p.data.pass.id);
+
+    const r = await redeemPass(db, MEMBER, p.data.code, Date.now());
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.rentals).toBe(3);
+
+    // RPC was called with the hashed code + profile — never the raw code.
+    const call = rpcCalls.find((c) => c.fn === "redeem_event_pass")!;
+    expect(call.args.p_code_hash).toBe(hashPassCode(p.data.code));
+    expect(call.args.p_profile).toBe(MEMBER);
+    expect(JSON.stringify(call.args)).not.toContain(p.data.code);
+
+    const row = tables.event_passes.find((x) => x.id === p.data.pass.id)!;
+    expect(row.status).toBe("redeemed");
+    expect(row.holder_id).toBe(MEMBER);
+    expect(row.units_used).toBe(row.units_granted);
+    const grant = tables.entitlement_grants.find((g) => g.source_id === row.id);
+    expect(grant).toBeTruthy();
+    expect(grant!.profile_id).toBe(MEMBER);
+    expect(grant!.unit).toBe("rental");
+    expect(grant!.granted).toBe(3);
+
+    // Second redemption → already_redeemed.
+    const again = await redeemPass(db, ORG2, p.data.code, Date.now());
+    expect(again.ok).toBe(false);
+    if (!again.ok) expect(again.error).toBe("already_redeemed");
+  });
+
+  it("surfaces expired / outside_window / event_inactive from the RPC", async () => {
     const { db, tables } = fakeDb();
-    const e = await createEvent(db, ORG, { ...ACTIVE_WINDOW, name: "Live" });
-    if (!e.ok) throw new Error(e.error);
-    await transitionEvent(db, ORG, e.data.id, "active", redeemNow - 2 * 3600_000);
+    const e = await liveEvent(db);
 
-    const pay = async (passId: string) => {
-      const row = tables.event_passes.find((r) => r.id === passId)!;
-      row.paid_at = new Date(redeemNow - 1000).toISOString();
-    };
-
-    // expired pass
-    const p1 = await issuePass(db, ORG, e.data.id, { units: 1, expiresAt: new Date(redeemNow - 1000).toISOString() });
+    // Expired pass.
+    const p1 = await issuePass(db, ORG, e.id, { units: 1, expiresAt: new Date(Date.now() - 1000).toISOString() });
     if (!p1.ok) throw new Error(p1.error);
-    await pay(p1.data.pass.id);
-    const r1 = await redeemPass(db, MEMBER, p1.data.code, redeemNow);
+    pay(tables, p1.data.pass.id);
+    const r1 = await redeemPass(db, MEMBER, p1.data.code, Date.now());
     expect(r1.ok).toBe(false);
     if (!r1.ok) expect(r1.error).toBe("expired");
     expect(tables.event_passes.find((r) => r.id === p1.data.pass.id)!.status).toBe("expired");
 
-    // wrong window (before start)
-    const p2 = await issuePass(db, ORG, e.data.id, { units: 1 });
+    // Event paused → event_inactive.
+    const p2 = await issuePass(db, ORG, e.id, { units: 1 });
     if (!p2.ok) throw new Error(p2.error);
-    await pay(p2.data.pass.id);
-    const early = await redeemPass(db, MEMBER, p2.data.code, Date.parse("2026-06-15T09:00:00Z"));
-    expect(early.ok).toBe(false);
-    if (!early.ok) expect(early.error).toBe("outside_window");
-
-    // happy path then double-redeem
-    const r2 = await redeemPass(db, MEMBER, p2.data.code, redeemNow);
-    expect(r2.ok).toBe(true);
-    if (r2.ok) expect(r2.rentals).toBe(1);
-    const row = tables.event_passes.find((r) => r.id === p2.data.pass.id)!;
-    expect(row.status).toBe("redeemed");
-    expect(row.holder_id).toBe(MEMBER);
-    expect(row.units_used).toBe(row.units_granted);
-    const r3 = await redeemPass(db, ORG2, p2.data.code, redeemNow);
-    expect(r3.ok).toBe(false);
-    if (!r3.ok) expect(r3.error).toBe("already_redeemed");
-
-    // invalid code
-    const bad = await redeemPass(db, MEMBER, "ZZZZ-ZZZZ-ZZZZ", redeemNow);
-    expect(bad.ok).toBe(false);
-    if (!bad.ok) expect(bad.error).toBe("invalid_code");
-  });
-
-  it("grants rental units via the entitlement RPC on redeem", async () => {
-    const { db, tables, rpcCalls } = fakeDb();
-    const e = await createEvent(db, ORG, { ...ACTIVE_WINDOW, name: "Live" });
-    if (!e.ok) throw new Error(e.error);
-    await transitionEvent(db, ORG, e.data.id, "active", redeemNow - 2 * 3600_000);
-    const p = await issuePass(db, ORG, e.data.id, { units: 4 });
-    if (!p.ok) throw new Error(p.error);
-    const row = tables.event_passes[0];
-    row.paid_at = new Date(redeemNow - 1000).toISOString();
-
-    const r = await redeemPass(db, MEMBER, p.data.code, redeemNow);
-    expect(r.ok).toBe(true);
-    const grant = rpcCalls.find((c) => c.fn === "grant_entitlement");
-    expect(grant).toBeTruthy();
-    expect(grant!.args.p_profile).toBe(MEMBER);
-    expect(grant!.args.p_unit).toBe("rental");
-    expect(grant!.args.p_amount).toBe(4);
-    expect(grant!.args.p_source_type).toBe("event_pass");
-    expect(grant!.args.p_source_id).toBe(row.id);
-  });
-
-  it("rejects redemption while event is paused or after it ends", async () => {
-    const { db, tables } = fakeDb();
-    const e = await createEvent(db, ORG, { ...ACTIVE_WINDOW, name: "Live" });
-    if (!e.ok) throw new Error(e.error);
-    await transitionEvent(db, ORG, e.data.id, "active", redeemNow - 2 * 3600_000);
-    const p = await issuePass(db, ORG, e.data.id, { units: 1 });
-    if (!p.ok) throw new Error(p.error);
-    tables.event_passes[0].paid_at = new Date(redeemNow - 1000).toISOString();
-
-    await transitionEvent(db, ORG, e.data.id, "paused", redeemNow);
-    const paused = await redeemPass(db, MEMBER, p.data.code, redeemNow);
+    pay(tables, p2.data.pass.id);
+    await transitionEvent(db, ORG, e.id, "paused", Date.now());
+    const paused = await redeemPass(db, MEMBER, p2.data.code, Date.now());
     expect(paused.ok).toBe(false);
     if (!paused.ok) expect(paused.error).toBe("event_inactive");
 
-    await transitionEvent(db, ORG, e.data.id, "active", redeemNow);
-    const after = await redeemPass(db, MEMBER, p.data.code, Date.parse("2026-06-15T15:00:00Z"));
-    expect(after.ok).toBe(false);
-    if (!after.ok) expect(after.error).toBe("outside_window");
+    // Window no longer contains now → outside_window (injected via override).
+    const { db: db2, rpcOverrides: ov2 } = fakeDb();
+    ov2.redeem_event_pass = () => ({ data: null, error: { message: "outside_window" } });
+    const r3 = await redeemPass(db2, MEMBER, p2.data.code, Date.now());
+    expect(r3.ok).toBe(false);
+    if (!r3.ok) expect(r3.error).toBe("outside_window");
   });
 });
 

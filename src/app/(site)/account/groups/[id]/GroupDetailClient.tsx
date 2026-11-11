@@ -1,8 +1,13 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { btnClass } from "@/components/ui";
+import { Badge, btnClass } from "@/components/ui";
 import { inputCls } from "@/components/forms";
+
+const FUND_PRESETS = [1000, 2500, 5000]; // $10 / $25 / $50
+const FUND_MIN = 500, FUND_MAX = 50000;
+
+type FundingPurchase = { id: string; amount_cents: number; status: string; created_at: string; paid_at: string | null };
 
 export function GroupDetailClient({ groupId, status, creditCents, maxMembers, name }: {
   groupId: string; status: string; creditCents: number; maxMembers: number; name: string;
@@ -10,13 +15,33 @@ export function GroupDetailClient({ groupId, status, creditCents, maxMembers, na
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [invite, setInvite] = useState<{ url: string; email: string } | null>(null);
-  const [busy, setBusy] = useState<"invite" | "close" | "edit" | null>(null);
+  const [busy, setBusy] = useState<"invite" | "close" | "edit" | "fund" | null>(null);
   const [error, setError] = useState("");
   const [editName, setEditName] = useState(name);
   const [editMax, setEditMax] = useState(maxMembers);
   const [copied, setCopied] = useState(false);
+  const [fundDollars, setFundDollars] = useState("25");
+  const [fundHistory, setFundHistory] = useState<FundingPurchase[] | null>(null);
+  const [fundedFlash, setFundedFlash] = useState(false);
   const active = status === "active";
   const fmt = `$${(creditCents / 100).toFixed(2)}`;
+
+  useEffect(() => {
+    let dead = false;
+    fetch(`/api/groups/${groupId}/fund`)
+      .then((r) => (r.ok ? r.json() : { purchases: [] }))
+      .then((j: { purchases?: FundingPurchase[] }) => { if (!dead) setFundHistory(j.purchases ?? []); })
+      .catch(() => { if (!dead) setFundHistory([]); });
+    return () => { dead = true; };
+  }, [groupId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (new URLSearchParams(window.location.search).get("funded") === "1") {
+      setFundedFlash(true);
+      router.refresh();
+    }
+  }, [router]);
 
   async function call(path: string, body?: unknown, method = "POST") {
     const res = await fetch(path, {
@@ -58,16 +83,82 @@ export function GroupDetailClient({ groupId, status, creditCents, maxMembers, na
     } finally { setBusy(null); }
   }
 
+  async function fundPool(amountCents: number) {
+    setBusy("fund"); setError("");
+    try {
+      const { res, j } = await call(`/api/groups/${groupId}/fund`, { amountCents });
+      const url = (j as { url?: string }).url;
+      if (!res.ok || !url) { setError(j.error ?? "Couldn't start the payment."); return; }
+      window.location.href = url;
+    } finally { setBusy(null); }
+  }
+
+  function submitFund(e: React.FormEvent) {
+    e.preventDefault();
+    const cents = Math.round(parseFloat(fundDollars) * 100);
+    if (!Number.isFinite(cents) || cents < FUND_MIN || cents > FUND_MAX) {
+      setError(`Enter an amount between $${FUND_MIN / 100} and $${FUND_MAX / 100}.`);
+      return;
+    }
+    void fundPool(cents);
+  }
+
+  const when = (iso: string | null) =>
+    iso ? new Date(iso).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" }) : "—";
+
   return (
     <div className="space-y-6">
       <div className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
         <h2 className="font-display text-lg font-bold">Shared credit pool</h2>
         <p className="mt-2 font-display text-3xl font-bold">{fmt}</p>
         <p className="mt-2 text-xs text-graphite">
-          Informational pool — members see it read-only. Self-serve funding isn&apos;t available yet;
-          staff adjust it from the admin console.
+          Informational pool — members see it read-only. Fund it below; the balance tops up
+          automatically once Stripe confirms the payment.
         </p>
+        {fundedFlash && (
+          <p className="mt-3 rounded-xl border border-lime bg-lime/20 p-3 text-sm font-bold">
+            Payment received — the pool updates as soon as Stripe confirms it.
+          </p>
+        )}
       </div>
+
+      {active && (
+        <form onSubmit={submitFund} className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+          <h2 className="font-display text-lg font-bold">Fund the pool</h2>
+          <p className="mt-1 text-xs text-graphite">Between $5 and $500 per payment, secure checkout via Stripe.</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {FUND_PRESETS.map((c) => (
+              <button key={c} type="button" onClick={() => setFundDollars(String(c / 100))}
+                className={`min-h-9 rounded-full border px-4 text-sm font-bold ${Math.round(parseFloat(fundDollars) * 100) === c ? "border-ink bg-ink text-white" : "border-mist bg-white text-ink hover:border-ink/40"}`}>
+                ${c / 100}
+              </button>
+            ))}
+          </div>
+          <label htmlFor="fund-amt" className="mb-1 mt-3 block text-xs font-bold">Custom amount (USD)</label>
+          <input id="fund-amt" type="number" min={FUND_MIN / 100} max={FUND_MAX / 100} step="0.01" required
+            value={fundDollars} onChange={(e) => setFundDollars(e.target.value)} className={inputCls} />
+          <button disabled={busy === "fund"} className={`${btnClass("primary")} mt-4 w-full`}>
+            {busy === "fund" ? "Starting checkout…" : "Continue to payment"}
+          </button>
+        </form>
+      )}
+
+      {(fundHistory?.length ?? 0) > 0 && (
+        <div className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+          <h2 className="font-display text-lg font-bold">Funding history</h2>
+          <ul className="mt-3 divide-y divide-mist">
+            {fundHistory!.map((p) => (
+              <li key={p.id} className="flex items-center justify-between gap-3 py-2.5 text-sm">
+                <div>
+                  <p className="font-bold">${(p.amount_cents / 100).toFixed(2)}</p>
+                  <p className="text-xs text-graphite">{when(p.paid_at ?? p.created_at)}</p>
+                </div>
+                <Badge tone={p.status === "paid" ? "lime" : p.status === "refunded" ? "ink" : "amber"}>{p.status}</Badge>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {active && (
         <form onSubmit={sendInvite} className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
