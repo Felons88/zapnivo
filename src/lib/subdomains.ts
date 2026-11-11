@@ -25,6 +25,12 @@ export const baseDomain = () => (process.env.BASE_DOMAIN ?? DEFAULT_BASE_DOMAIN)
  * Cookie domain that shares a session across every zapnivo.com subdomain; undefined
  * on any other host so the cookie stays host-only (localhost, previews).
  */
+/** True when the host is the system console (system.zapnivo.com / system.localhost). */
+export const isSystemHost = (host: string) => {
+  const h = host.split(":")[0].toLowerCase();
+  return h === `system.${baseDomain()}` || h === "system.localhost";
+};
+
 export const apexCookieDomain = (host: string) => {
   const h = host.split(":")[0].toLowerCase();
   const b = baseDomain();

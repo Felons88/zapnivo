@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { ANCHOR_COOKIE, makeAnchorCookie, SESSION_COOKIE } from "@/lib/auth";
-import { apexCookieDomain } from "@/lib/subdomains";
+import { apexCookieDomain, isSystemHost } from "@/lib/subdomains";
 import { oauthClient, serviceClient } from "@/lib/supabase";
 import { authCallbackOrigin } from "@/lib/auth-callback-origin";
 import { postAuthDestination } from "@/lib/auth-next";
@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
 
   const svc = serviceClient();
   const { data: profile } = svc
-    ? await svc.from("profiles").select("role").eq("id", data.user.id).single()
+    ? await svc.from("profiles").select("role, system_role").eq("id", data.user.id).single()
     : { data: null };
 
   // Phone-claim binding: /api/auth/phone recorded (email, phone) after the SMS code verified.
@@ -40,7 +40,10 @@ export async function GET(req: NextRequest) {
     }
   }
   // Single post-auth funnel: sanitized ?next= wins over the role home.
-  const dest = postAuthDestination(req.nextUrl.searchParams.get("next"), profile?.role);
+  const dest = postAuthDestination(req.nextUrl.searchParams.get("next"), profile?.role, {
+    systemRole: profile?.system_role ?? null,
+    systemHost: isSystemHost(new URL(callbackOrigin).host),
+  });
 
   const res = NextResponse.redirect(`${callbackOrigin}${dest}`);
   const domain = apexCookieDomain(new URL(callbackOrigin).host);

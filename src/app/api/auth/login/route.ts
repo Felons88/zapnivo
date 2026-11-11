@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { rateLimit } from "@/lib/rate-limit";
 import { ANCHOR_COOKIE, makeAnchorCookie, revokeCurrentSession, SESSION_COOKIE } from "@/lib/auth";
-import { apexCookieDomain } from "@/lib/subdomains";
+import { apexCookieDomain, isSystemHost } from "@/lib/subdomains";
+import { homeFor } from "@/lib/customer";
 import { anonClient, serviceClient } from "@/lib/supabase";
 
 const schema = z.object({ email: z.string().email().max(254), password: z.string().min(1).max(200) });
@@ -26,10 +27,11 @@ export async function POST(req: Request) {
 
   const svc = serviceClient();
   const { data: profile } = svc
-    ? await svc.from("profiles").select("role").eq("id", data.user.id).single()
+    ? await svc.from("profiles").select("role, system_role").eq("id", data.user.id).single()
     : { data: null };
 
-  const res = NextResponse.json({ ok: true, role: profile?.role ?? null });
+  const home = isSystemHost(req.headers.get("host") ?? "") && profile?.system_role ? "/system" : homeFor(profile?.role);
+  const res = NextResponse.json({ ok: true, role: profile?.role ?? null, home });
   const domain = cookieDomain(req);
   res.cookies.set(SESSION_COOKIE, data.session.access_token, {
     httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", path: "/", maxAge: Math.min(data.session.expires_in, 3600), domain,

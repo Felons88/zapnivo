@@ -64,7 +64,7 @@ export function LoginForm({ configured, oauthError, next }: { configured: boolea
     setSending(false);
     if (!res.ok) return setErr(data.error ?? "Sign-in failed.");
     // `next` is sanitized server-side (same-origin paths only); fall back to the role home.
-    router.push(next ?? homeFor(data.role));
+    router.push(next ?? data.home ?? homeFor(data.role));
     router.refresh();
   }
   return (
