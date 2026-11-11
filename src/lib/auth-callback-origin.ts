@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { baseDomain } from "./subdomains";
 
-const APP_SUBDOMAINS = new Set(["www", "support", "customer", "partners", "internal", "api"]);
+const APP_SUBDOMAINS = new Set(["www", "support", "customer", "partners", "internal", "system", "api"]);
 
 function configuredHost(value: string | undefined): string | null {
   if (!value) return null;

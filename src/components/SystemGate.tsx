@@ -21,7 +21,14 @@ export async function SystemGate({
 }) {
   const user = await getSessionUser();
   if (!user) {
-    return <Restricted reason="unauthenticated" detail="Sign in to continue." perm={perm} />;
+    return (
+      <Restricted
+        reason="unauthenticated"
+        detail="Sign in to continue."
+        perm={perm}
+        signIn
+      />
+    );
   }
   const role = await systemRole(user);
   if (!role) {
@@ -46,7 +53,7 @@ export async function SystemGate({
   return <>{children}</>;
 }
 
-function Restricted({ reason, detail, perm }: { reason: string; detail: string; perm: SystemPermission }) {
+function Restricted({ reason, detail, perm, signIn }: { reason: string; detail: string; perm: SystemPermission; signIn?: boolean }) {
   return (
     <div className="grid min-h-[60vh] place-items-center px-6">
       <div className="w-full max-w-lg rounded-2xl border border-red-900/20 bg-white p-8 text-center shadow-sm">
@@ -58,7 +65,11 @@ function Restricted({ reason, detail, perm }: { reason: string; detail: string; 
           <div className="flex justify-between gap-4"><dt className="text-graphite">Reason</dt><dd className="font-mono font-bold">{reason}</dd></div>
         </dl>
         <div className="mt-6 flex items-center justify-center gap-3">
-          <Link href="/system" className="rounded-full bg-ink px-4 py-2 text-xs font-bold text-white hover:bg-graphite">Command Center</Link>
+          {signIn ? (
+            <Link href="/login?next=%2Fsystem" className="rounded-full bg-ink px-4 py-2 text-xs font-bold text-white hover:bg-graphite">Sign in</Link>
+          ) : (
+            <Link href="/system" className="rounded-full bg-ink px-4 py-2 text-xs font-bold text-white hover:bg-graphite">Command Center</Link>
+          )}
           <LogoutButton light />
         </div>
       </div>
