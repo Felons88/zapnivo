@@ -5,6 +5,7 @@ import { runRentalSweep } from "@/lib/email-triggers";
 import { recordCron, runFleetSweep } from "@/lib/fleet-sweep";
 import { runSmsSweep } from "@/lib/notifications";
 import { generateLedgers, previousPeriod } from "@/lib/ledgers";
+import { expireSweep } from "@/lib/monetization/entitlements";
 import { serviceClient } from "@/lib/supabase";
 
 /**
@@ -27,7 +28,8 @@ export async function GET(req: Request) {
   const sms = await recordCron(db, "sms", async () => ({ ...(await runSmsSweep(db)) }));
   const fleet = await recordCron(db, "fleet", async () => ({ ...(await runFleetSweep(db)) }));
   const first = new Date().getUTCDate() === 1;
+  const entitlements = await recordCron(db, "entitlements", async () => ({ expired: await expireSweep(db) }));
   const ledgers = first ? await recordCron(db, "ledgers", async () => { const r = await generateLedgers(db, previousPeriod()); return { created: r.created.length, noRate: r.skippedNoRate.length, locked: r.skippedLocked.length }; }) : null;
-  const ok = rentals.ok && fleet.ok && sms.ok && (ledgers?.ok ?? true);
-  return NextResponse.json({ ok, rentals: rentals.detail, sms: sms.detail, fleet: fleet.detail, ledgers: ledgers?.detail ?? "not first of month" }, { status: ok ? 200 : 500 });
+  const ok = rentals.ok && fleet.ok && sms.ok && entitlements.ok && (ledgers?.ok ?? true);
+  return NextResponse.json({ ok, rentals: rentals.detail, sms: sms.detail, fleet: fleet.detail, entitlements: entitlements.detail, ledgers: ledgers?.detail ?? "not first of month" }, { status: ok ? 200 : 500 });
 }

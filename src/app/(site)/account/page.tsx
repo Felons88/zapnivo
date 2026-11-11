@@ -121,6 +121,19 @@ export default async function Account() {
             <Notice title="This is a staff or partner account.">Customer rentals are shown on customer accounts. <a className="underline font-bold" href={console_.href}>Open the {console_.label}</a>.</Notice>
           ) : (
             <>
+              <nav aria-label="Account sections" className="grid gap-3 sm:grid-cols-2">
+                {([
+                  ["Charging benefits", "/account/charging", "Memberships, prepaid credits and billing"],
+                  ["Gift credits", "/account/gifts", "Buy and redeem gift charging credit"],
+                  ["Group rentals", "/account/groups", "Organize rentals for your group"],
+                  ["Events", "/account/events", "Event passes and programs"],
+                ] as const).map(([label, href, hint]) => (
+                  <a key={href} href={subUrl("customer", href)} className="rounded-xl bg-white p-4 transition-colors hover:bg-mist/50">
+                    <p className="font-bold">{label}</p>
+                    <p className="mt-0.5 text-sm text-graphite">{hint}</p>
+                  </a>
+                ))}
+              </nav>
               {unavailable ? (
                 <div role="status" className="rounded-xl bg-white p-6"><p className="font-bold">Your rental history isn't available right now.</p><p className="mt-1 text-graphite">Please try again later, or contact support.</p></div>
               ) : rows.length === 0 ? (

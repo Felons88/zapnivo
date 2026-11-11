@@ -4,6 +4,7 @@ import { triggerPaymentDispute, triggerPaymentFailedHtml } from "@/lib/email-ext
 import { fmt } from "@/lib/pricing";
 import { verifyStripeSignature } from "@/lib/stripe";
 import { handleAdChargeRefunded, handleAdCheckoutCompleted, handleAdPaymentIntent } from "@/lib/ads/billing";
+import { handleMonetizationEvent } from "@/lib/monetization/webhook";
 import { serviceClient } from "@/lib/supabase";
 import { trackServer } from "@/lib/analytics";
 import { newTraceId, recordLog, recordSpan, reportError } from "@/lib/observability";
@@ -65,6 +66,8 @@ const CLOSED_DISPUTE = new Set(["won", "lost", "warning_closed"]);
 
 async function handleEvent(db: Db, event: StripeEvent): Promise<boolean> {
   const o = event.data.object;
+  // Monetization products (membership/gift/package/event pass + subscription lifecycle).
+  if (await handleMonetizationEvent(db, event)) return true;
   switch (event.type) {
     case "checkout.session.completed": {
       if ((o.metadata as Record<string, string> | undefined)?.kind === "ad_campaign") {
