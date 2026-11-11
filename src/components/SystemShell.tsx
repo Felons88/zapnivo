@@ -20,8 +20,8 @@ const NAV: NavGroup[] = [
     name: "Command Center",
     items: [
       { href: "/system", label: "Overview" },
-      { label: "Incidents", soon: true },
-      { label: "Status page", soon: true },
+      { href: "/system/incidents", label: "Incidents" },
+      { href: "/system/status", label: "Status page" },
     ],
   },
   {
@@ -38,14 +38,15 @@ const NAV: NavGroup[] = [
       { href: "/system/integrations", label: "Integrations" },
       { href: "/system/webhooks", label: "Webhooks" },
       { href: "/system/secrets", label: "Secrets" },
-      { label: "API keys", soon: true },
+      { href: "/system/keys", label: "API keys" },
     ],
   },
   {
     name: "Database",
     items: [
-      { label: "Schema", soon: true },
-      { label: "Migrations", soon: true },
+      { href: "/system/database", label: "Overview" },
+      { href: "/system/database/schema", label: "Schema" },
+      { href: "/system/database/migrations", label: "Migrations" },
       { label: "Query console", soon: true },
     ],
   },
@@ -53,18 +54,18 @@ const NAV: NavGroup[] = [
     name: "Application",
     items: [
       { href: "/system/jobs", label: "Jobs & workers" },
+      { href: "/system/app", label: "Deployments" },
       { href: "/system/settings/flags", label: "Feature flags" },
-      { label: "Deployments", soon: true },
-      { label: "Environments", soon: true },
+      { href: "/system/app/environments", label: "Environments" },
     ],
   },
   {
     name: "AI Infrastructure",
     items: [
       { href: "/system/ai", label: "Agents & models" },
-      { label: "Models", soon: true },
-      { label: "Evals", soon: true },
-      { label: "Guardrails", soon: true },
+      { href: "/system/ai/models", label: "Models" },
+      { href: "/system/ai/evals", label: "Evals" },
+      { href: "/system/ai/guardrails", label: "Guardrails" },
     ],
   },
   {
@@ -73,9 +74,9 @@ const NAV: NavGroup[] = [
       { href: "/system/observability", label: "Overview" },
       { href: "/system/observability/errors", label: "Errors" },
       { href: "/system/observability/logs", label: "Logs" },
+      { href: "/system/observability/traces", label: "Traces" },
       { href: "/system/observability/crons", label: "Cron jobs" },
-      { label: "Traces", soon: true },
-      { label: "Alerts", soon: true },
+      { href: "/system/observability/alerts", label: "Alerts" },
     ],
   },
   {
@@ -91,9 +92,9 @@ const NAV: NavGroup[] = [
   {
     name: "Developer Tools",
     items: [
-      { label: "API explorer", soon: true },
-      { label: "Webhooks tester", soon: true },
-      { label: "Feature toggles", soon: true },
+      { href: "/system/dev/api-explorer", label: "API explorer" },
+      { href: "/system/dev/webhooks-tester", label: "Webhook inspector" },
+      { href: "/system/dev/simulator", label: "Kiosk simulator" },
     ],
   },
   {
