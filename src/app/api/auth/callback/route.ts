@@ -1,9 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { ANCHOR_COOKIE, makeAnchorCookie, SESSION_COOKIE } from "@/lib/auth";
 import { apexCookieDomain } from "@/lib/subdomains";
-import { homeFor } from "@/lib/customer";
 import { oauthClient, serviceClient } from "@/lib/supabase";
 import { authCallbackOrigin } from "@/lib/auth-callback-origin";
+import { postAuthDestination } from "@/lib/auth-next";
 
 const toLogin = (origin: string, error = "oauth") => NextResponse.redirect(`${origin}/login?error=${error}`);
 
@@ -39,7 +39,8 @@ export async function GET(req: NextRequest) {
       await svc.from("phone_claims").delete().eq("email", email);
     }
   }
-  const dest = homeFor(profile?.role);
+  // Single post-auth funnel: sanitized ?next= wins over the role home.
+  const dest = postAuthDestination(req.nextUrl.searchParams.get("next"), profile?.role);
 
   const res = NextResponse.redirect(`${callbackOrigin}${dest}`);
   const domain = apexCookieDomain(new URL(callbackOrigin).host);

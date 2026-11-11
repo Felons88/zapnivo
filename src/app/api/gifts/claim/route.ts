@@ -66,6 +66,7 @@ export async function POST(req: Request) {
       case "expired": return fail(410, "That gift link has expired. Ask the sender for a new one.");
       case "unavailable": return fail(409, "That gift has already been claimed or is no longer available.");
       case "no_value": return fail(422, "That gift has no claimable credit.");
+      case "recipient_mismatch": return fail(403, "This gift was sent to a different email address.");
       case "invalid_token":
       default: return fail(404, INVALID);
     }

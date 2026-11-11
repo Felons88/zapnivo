@@ -4,7 +4,7 @@ import { triggerPaymentDispute, triggerPaymentFailedHtml } from "@/lib/email-ext
 import { fmt } from "@/lib/pricing";
 import { verifyStripeSignature } from "@/lib/stripe";
 import { handleAdChargeRefunded, handleAdCheckoutCompleted, handleAdPaymentIntent } from "@/lib/ads/billing";
-import { handleMonetizationEvent } from "@/lib/monetization/webhook";
+import { handleMonetizationDispute, handleMonetizationEvent, handleMonetizationRefund } from "@/lib/monetization/webhook";
 import { serviceClient } from "@/lib/supabase";
 import { trackServer } from "@/lib/analytics";
 import { newTraceId, recordLog, recordSpan, reportError } from "@/lib/observability";
@@ -136,11 +136,15 @@ async function handleEvent(db: Db, event: StripeEvent): Promise<boolean> {
     }
     case "charge.dispute.created":
     case "charge.dispute.updated":
-    case "charge.dispute.closed": {
+    case "charge.dispute.closed":
+    case "charge.dispute.funds_withdrawn":
+    case "charge.dispute.funds_reinstated": {
       const piId = typeof o.payment_intent === "string" ? o.payment_intent : null;
       if (!piId) return true;
       const { data: pay } = await db.from("payments").select("id,rental_id").eq("stripe_payment_intent_id", piId).maybeSingle();
-      if (!pay) return true;
+      // Monetization PIs (gift/package/group/event pass/membership) aren't in
+      // `payments` — log + audit the dispute for staff, never auto-act.
+      if (!pay) return handleMonetizationDispute(db, o);
       const status = String(o.status ?? "");
       const closed = event.type === "charge.dispute.closed" || CLOSED_DISPUTE.has(status);
       const row: Record<string, unknown> = {
@@ -174,6 +178,10 @@ async function handleEvent(db: Db, event: StripeEvent): Promise<boolean> {
       if (await handleAdChargeRefunded(db, o)) return true;
       const piId = typeof o.payment_intent === "string" ? o.payment_intent : null;
       if (!piId) return true;
+      // Monetization products reconcile by their own rows (gift/package/group/
+      // event pass/membership); skip the Stripe PI lookup when it's a rental.
+      const { data: rentalPay } = await db.from("payments").select("id").eq("stripe_payment_intent_id", piId).limit(1).maybeSingle();
+      if (!rentalPay && (await handleMonetizationRefund(db, o))) return true;
       const refunded = typeof o.amount_refunded === "number" ? o.amount_refunded : 0;
       const captured = typeof o.amount_captured === "number" ? o.amount_captured : typeof o.amount === "number" ? o.amount : 0;
       await requireWrite(db.from("payments").update({

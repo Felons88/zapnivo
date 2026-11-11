@@ -26,11 +26,18 @@ export type DispenseResult =
   | { status: "failed"; reason: "offline" | "no_inventory" | "hardware_fault" | "unsupported" | "duplicate" };
 
 export interface KioskAdapter {
+  /**
+   * Stable identifier for readiness reporting. `"none"` means no hardware adapter is
+   * wired in (NullKioskAdapter). A real vendor adapter reports its own name once the
+   * KIOSK_ADAPTER selection lands — see adapter-contract.ts.
+   */
+  readonly name?: string;
   health(stationId: string): Promise<KioskHealth | null>;
   dispense(req: DispenseRequest): Promise<DispenseResult>;
 }
 
 export class NullKioskAdapter implements KioskAdapter {
+  readonly name = "none";
   async health(_stationId: string): Promise<KioskHealth | null> { return null; }
   async dispense(_req: DispenseRequest): Promise<DispenseResult> { return { status: "failed", reason: "unsupported" }; }
 }
@@ -39,6 +46,7 @@ export class NullKioskAdapter implements KioskAdapter {
 export class IdempotentKioskAdapter implements KioskAdapter {
   private seen = new Map<string, Promise<DispenseResult>>();
   constructor(private inner: KioskAdapter) {}
+  get name() { return this.inner.name ?? "wrapped"; }
   health(id: string) { return this.inner.health(id); }
   dispense(req: DispenseRequest) {
     const hit = this.seen.get(req.idempotencyKey);

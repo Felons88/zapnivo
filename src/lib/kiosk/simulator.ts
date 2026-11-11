@@ -6,6 +6,7 @@ import type { KioskAdapter, DispenseRequest, DispenseResult, KioskHealth, SlotSt
  * so tests exercise the real pipeline (ingestKioskEvents / processKioskEvent) end to end.
  */
 export class MockKioskAdapter implements KioskAdapter {
+  readonly name = "simulator";
   /** Bank ids available to dispense, FIFO. */
   banks: string[] = [];
   slots = new Map<number, { status: SlotStatus; powerBankId?: string }>();

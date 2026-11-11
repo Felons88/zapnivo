@@ -8,8 +8,17 @@ import { subUrl } from "./site";
  * token and stores ONLY its sha256 (claim_token_hash) plus a 72h expiry on the
  * gift_credits row. The raw token exists solely inside the emailed claim URL — it is
  * never persisted or logged. The recipient claims via POST /api/gifts/claim, which
- * calls the atomic claim_gift RPC (migration 0034): validate hash + expiry + status,
- * mark redeemed, grant 'cent' credits — all in one transaction.
+ * calls the atomic claim_gift RPC (migration 0034/0040): validate hash + expiry +
+ * status, mark redeemed, grant 'cent' credits — all in one transaction.
+ *
+ * Claim policies (gift_credits.claim_policy, migration 0040):
+ *   'bearer'    — default; whoever holds the token may claim. Used for gifts with
+ *                 no recipient_email (purchaser-share flow).
+ *   'recipient' — set by the webhook when it mints a token for a gift that HAS a
+ *                 recipient_email; claim_gift then requires the claiming profile's
+ *                 email to match recipient_email (case-insensitive), returning
+ *                 'recipient_mismatch' otherwise. Forwarded-secret links alone are
+ *                 no longer sufficient for recipient-bound gifts.
  */
 
 export const CLAIM_TOKEN_TTL_HOURS = 72;

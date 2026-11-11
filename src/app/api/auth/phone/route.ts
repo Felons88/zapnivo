@@ -6,6 +6,7 @@ import { normalizePhone, sendSms, smsConfigured } from "@/lib/sms";
 import { getSessionUser } from "@/lib/auth";
 import { oauthClient, serviceClient } from "@/lib/supabase";
 import { authCallbackOrigin } from "@/lib/auth-callback-origin";
+import { withNextParam } from "@/lib/auth-next";
 import { recordLog } from "@/lib/observability";
 
 const secret = () => {
@@ -27,7 +28,7 @@ export async function POST(req: NextRequest) {
   if (!db) return NextResponse.json({ error: "Backend not configured" }, { status: 503 });
   if (!secret()) return NextResponse.json({ error: "Auth is not configured." }, { status: 503 });
   const body = await req.json().catch(() => null);
-  const p = z.object({ action: z.enum(["send", "verify", "link_send", "link_verify"]), phone: z.string().min(5).max(20), code: z.string().optional() }).safeParse(body);
+  const p = z.object({ action: z.enum(["send", "verify", "link_send", "link_verify"]), phone: z.string().min(5).max(20), code: z.string().optional(), next: z.string().max(600).optional() }).safeParse(body);
   if (!p.success) return NextResponse.json({ error: "Invalid request." }, { status: 422 });
   // Action + outcome only — never the phone number or OTP.
   const FAIL_RESULTS = new Set(["wrong_code", "send_failed", "session_failed", "link_failed", "email_link_failed"]);
@@ -36,6 +37,9 @@ export async function POST(req: NextRequest) {
       `phone_auth_${p.data.action}`, { service: "auth", route: "auth/phone", attrs: { action: p.data.action, result, ...attrs } });
   const phone = normalizePhone(p.data.phone);
   if (!phone) return NextResponse.json({ error: "Enter a valid phone number." }, { status: 422 });
+  // Post-auth redirect target — sanitized; rides on the Supabase redirectTo URLs below
+  // so /api/auth/callback can send the user back (e.g. to a gift claim page).
+  const next = withNextParam(`${callbackOrigin}/api/auth/callback`, p.data.next);
 
   // ── Authenticated phone linking (account settings): session proves identity, OTP proves the phone.
   if (p.data.action === "link_send" || p.data.action === "link_verify") {
@@ -105,7 +109,7 @@ export async function POST(req: NextRequest) {
   // Fast path: this phone was previously verified and bound to an account.
   const { data: bound } = await db.from("profiles").select("email").eq("phone", phone).maybeSingle();
   if (bound?.email) {
-    const { data, error } = await db.auth.admin.generateLink({ type: "magiclink", email: bound.email, options: { redirectTo: `${callbackOrigin}/api/auth/callback` } });
+    const { data, error } = await db.auth.admin.generateLink({ type: "magiclink", email: bound.email, options: { redirectTo: next } });
     if (error || !data.properties?.action_link) { log("session_failed"); return NextResponse.json({ error: "Couldn't create the session." }, { status: 500 }); }
     log("ok", { path: "bound_profile" });
     return NextResponse.json({ ok: true, continue_url: data.properties.action_link });
@@ -128,7 +132,7 @@ export async function POST(req: NextRequest) {
   if (!oauth) return NextResponse.json({ error: "Sign-in is not configured yet." }, { status: 503 });
   const { error: otpErr } = await oauth.client.auth.signInWithOtp({
     email,
-    options: { emailRedirectTo: `${callbackOrigin}/api/auth/callback`, shouldCreateUser: true },
+    options: { emailRedirectTo: next, shouldCreateUser: true },
   });
   if (otpErr) {
     console.error(JSON.stringify({ level: "error", scope: "phone-verify", msg: otpErr.message }));

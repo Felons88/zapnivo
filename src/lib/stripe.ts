@@ -5,6 +5,8 @@ import { createHmac, timingSafeEqual } from "node:crypto";
  * Every call needs STRIPE_SECRET_KEY; callers must answer 503 payments_unconfigured when it is absent.
  */
 export const stripeConfigured = () => Boolean(process.env.STRIPE_SECRET_KEY);
+/** Presence check only — never exposes the webhook secret value. */
+export const isStripeWebhookConfigured = () => Boolean(process.env.STRIPE_WEBHOOK_SECRET);
 export const taxEnabled = () => process.env.STRIPE_TAX_ENABLED === "1";
 
 export const PAYMENTS_UNCONFIGURED = { error: "Payments are not available yet.", code: "payments_unconfigured" } as const;

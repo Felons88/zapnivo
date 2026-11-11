@@ -1,6 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { grant, type EntitlementUnit } from "./entitlements";
 import { recordLog } from "@/lib/observability";
+import { auditLog } from "@/lib/audit";
+import { retrievePaymentIntent } from "@/lib/stripe";
 import { sendMembershipActivated, sendMembershipCancelled, sendMembershipPaymentFailed, sendPackagePurchased } from "@/lib/email-monetization";
 import { sendGroupFunded } from "@/lib/email-groups";
 import { giftClaimLink } from "@/lib/email-gifts";
@@ -49,13 +51,60 @@ async function activateOneTimeMembership(db: SupabaseClient, o: Obj) {
   const { data: mem } = await db.from("customer_memberships").insert({
     profile_id: profileId, plan_id: planId, status: "active",
     current_period_end: periodEnd(days),
-  }).select("id").single();
+  }).select("id,created_at").single();
   if (!mem) return;
   const g = benefitToGrant(plan.benefit);
   if (g) await grant(db, { profileId, kind: "membership", unit: g.unit, amount: g.amount, expiresAt: periodEnd(days), sourceType: "membership", sourceId: mem.id, actor: "webhook" });
+  // No unique constraint on (profile_id, plan_id) exists — two checkout sessions
+  // completing concurrently can both pass the `existing` check above. The
+  // dedupe sweep below cancels every duplicate past the first and revokes the
+  // grants sourced from it, so the double-grant self-heals on the next pass.
+  // Residual risk: two truly-simultaneous inserts can both miss each other's
+  // rows; needs a unique index migration to fully close.
+  await dedupeOneTimeMemberships(db, profileId, planId);
   recordLog("info", "membership_activated", { service: "monetization", attrs: { plan: planId } });
   const email = await profileEmail(db, profileId);
   if (email) fire(sendMembershipActivated({ email, planName: plan.name, interval: plan.interval, periodEnd: periodEnd(days) }));
+}
+
+/**
+ * Keeps the earliest active/trialing membership for (profile, plan) and cancels
+ * any duplicates, revoking the entitlement grants each duplicate issued
+ * (source_type 'membership', source_id = membership id). Guarded updates make
+ * it idempotent and safe to run from concurrent webhook deliveries.
+ */
+async function dedupeOneTimeMemberships(db: SupabaseClient, profileId: string, planId: string) {
+  try {
+    const { data: rows } = await db.from("customer_memberships")
+      .select("id,status,created_at").eq("profile_id", profileId).eq("plan_id", planId)
+      .in("status", ["active", "trialing"])
+      .order("created_at", { ascending: true }).order("id", { ascending: true });
+    const list = (rows ?? []) as { id: string; created_at: string | null }[];
+    if (list.length < 2) return;
+    for (const dup of list.slice(1)) {
+      const { data: cancelled } = await db.from("customer_memberships")
+        .update({ status: "cancelled", updated_at: new Date().toISOString() })
+        .eq("id", dup.id).in("status", ["active", "trialing"])
+        .select("id").maybeSingle();
+      if (!cancelled) continue;
+      const { data: grants } = await db.from("entitlement_grants")
+        .select("id,remaining").eq("source_type", "membership").eq("source_id", dup.id).eq("status", "active");
+      for (const gr of (grants ?? []) as { id: string; remaining: number }[]) {
+        const { error: revErr } = await db.from("entitlement_grants")
+          .update({ status: "revoked", remaining: 0, updated_at: new Date().toISOString() })
+          .eq("id", gr.id).eq("status", "active");
+        if (revErr) continue;
+        await db.from("entitlement_events").insert({
+          grant_id: gr.id, profile_id: profileId, event: "refund",
+          delta: -gr.remaining, balance_after: 0, ref_type: "membership", ref_id: dup.id,
+          actor: "webhook", note: "duplicate one-time membership purchase",
+        });
+      }
+      recordLog("warning", "membership_duplicate_cancelled", { service: "monetization", attrs: { plan: planId, membership: dup.id.slice(0, 8) } });
+    }
+  } catch (e) {
+    recordLog("warning", "membership_dedupe_failed", { service: "monetization", attrs: { plan: planId, err: e instanceof Error ? e.message.slice(0, 120) : "unknown" } });
+  }
 }
 
 async function activateSubscription(db: SupabaseClient, o: Obj) {
@@ -114,7 +163,10 @@ async function deliverGiftClaim(db: SupabaseClient, g: GiftFulfillRow) {
     if (!g.recipient_email || g.claim_token_hash) return;
     const token = generateClaimToken(); // raw token lives only inside the emailed URL
     const { error } = await db.from("gift_credits")
-      .update({ claim_token_hash: hashClaimToken(token), claim_token_expires_at: new Date(Date.now() + CLAIM_TOKEN_TTL_HOURS * 3600_000).toISOString() })
+      // claim_policy 'recipient' (migration 0040): claim_gift requires the claiming
+      // profile's email to match recipient_email. Gifts without a recipient never
+      // reach this code path and keep the default 'bearer' policy.
+      .update({ claim_token_hash: hashClaimToken(token), claim_token_expires_at: new Date(Date.now() + CLAIM_TOKEN_TTL_HOURS * 3600_000).toISOString(), claim_policy: "recipient" })
       .eq("id", g.id).is("claim_token_hash", null);
     if (error) return;
     await giftClaimLink(g.recipient_email, g.package ?? "charging gift", g.message, claimGiftUrl(token));
@@ -147,10 +199,21 @@ async function fulfillPackage(db: SupabaseClient, o: Obj) {
   if (!p || p.status !== "pending") return;
   const { data: pkg } = await db.from("prepaid_packages").select("id,name,kind,units,validity_days,active").eq("id", p.package_id).maybeSingle();
   if (!pkg || !pkg.active) { recordLog("warning", "package_inactive", { service: "monetization", attrs: { package: p.package_id } }); return; }
+  // Flip pending→paid FIRST (guarded): only the caller that wins this update may
+  // grant. Granting before the flip let a webhook retry/crash double-grant.
+  const { data: paid } = await db.from("package_purchases")
+    .update({ status: "paid", paid_at: new Date().toISOString(), stripe_payment_intent_id: str(o.payment_intent) })
+    .eq("id", purchaseId).eq("status", "pending")
+    .select("id").maybeSingle();
+  if (!paid) return; // lost a concurrent-fulfillment race — already paid
   const expires = pkg.validity_days ? new Date(Date.now() + pkg.validity_days * 86400_000).toISOString() : null;
   const g = await grant(db, { profileId, kind: "prepaid", unit: pkg.kind as EntitlementUnit, amount: pkg.units, expiresAt: expires, sourceType: "package_purchase", sourceId: purchaseId, actor: "webhook" });
-  if (!g.ok) return;
-  await db.from("package_purchases").update({ status: "paid", paid_at: new Date().toISOString(), stripe_payment_intent_id: str(o.payment_intent) }).eq("id", purchaseId).eq("status", "pending");
+  if (!g.ok) {
+    // Paid but ungranted: leave 'paid' (never re-grant on replay) and flag for
+    // staff reconciliation — the customer paid, so this needs a human.
+    recordLog("error", "package_fulfillment_failed", { service: "monetization", attrs: { purchase: purchaseId.slice(0, 8), package: p.package_id, err: g.error.slice(0, 160) } });
+    return;
+  }
   recordLog("info", "package_fulfilled", { service: "monetization", attrs: { package: p.package_id } });
   const email = await profileEmail(db, profileId);
   if (email) fire(sendPackagePurchased({ email, packageName: pkg.name, kind: pkg.kind, units: pkg.units, validityDays: pkg.validity_days }));
@@ -270,4 +333,192 @@ export async function handleMonetizationEvent(db: SupabaseClient, event: { type:
     default:
       return false;
   }
+}
+
+/* ── Refund / dispute reconciliation ────────────────────────────────────────
+ * charge.refunded and charge.dispute.* only carried rental `payments` lookups,
+ * so monetization PaymentIntents were invisible. These handlers resolve a
+ * charge's PaymentIntent back to the product row (DB stripe_payment_intent_id
+ * columns first; event_passes/memberships have no PI column, so the checkout
+ * metadata copied onto the PaymentIntent is the fallback) and reconcile
+ * idempotently. Disputes are log+audit only — no automatic action.
+ */
+
+type ChargeProduct =
+  | { kind: "gift_credit" | "package" | "group_funding" | "event_pass"; id: string }
+  | { kind: "membership"; profileId: string; planId: string }
+  | { kind: "membership_subscription" };
+
+const MONETIZATION_KINDS = new Set(["gift_credit", "package", "group_funding", "event_pass", "membership", "membership_subscription"]);
+
+const refLabel = (r: ChargeProduct) =>
+  "id" in r ? r.id : r.kind === "membership" ? `${r.kind}:${r.profileId}` : r.kind;
+
+async function resolveChargeProduct(db: SupabaseClient, piId: string): Promise<ChargeProduct | null> {
+  // Rows that persist stripe_payment_intent_id at fulfillment time.
+  for (const [table, kind] of [["gift_credits", "gift_credit"], ["package_purchases", "package"], ["group_credit_purchases", "group_funding"]] as const) {
+    const { data } = await db.from(table).select("id").eq("stripe_payment_intent_id", piId).limit(1);
+    const row = (data ?? [])[0] as { id?: string } | undefined;
+    if (row?.id) return { kind, id: row.id };
+  }
+  // event_passes / customer_memberships never store the PI — recover the
+  // checkout metadata Stripe copied onto the PaymentIntent (payment_intent_data.metadata).
+  try {
+    const res = await retrievePaymentIntent(piId);
+    if (!res.ok) return null;
+    const m = ((res.data as { metadata?: Record<string, string> } | undefined)?.metadata) ?? {};
+    if (!MONETIZATION_KINDS.has(m.kind ?? "")) return null;
+    if (m.kind === "gift_credit" && m.gift_id) return { kind: "gift_credit", id: m.gift_id };
+    if (m.kind === "package" && m.purchase_id) return { kind: "package", id: m.purchase_id };
+    if (m.kind === "group_funding" && m.purchase_id) return { kind: "group_funding", id: m.purchase_id };
+    if (m.kind === "event_pass" && m.pass_id) return { kind: "event_pass", id: m.pass_id };
+    if (m.kind === "membership" && m.profile_id && m.plan_id) return { kind: "membership", profileId: m.profile_id, planId: m.plan_id };
+    if (m.kind === "membership_subscription") return { kind: "membership_subscription" };
+  } catch { /* Stripe unreachable — unresolved is safe (caller falls through) */ }
+  return null;
+}
+
+/** Revokes active grants issued from a source row; writes entitlement_events 'refund' per grant. Idempotent via status guards. */
+async function revokeSourceGrants(db: SupabaseClient, sourceType: string, sourceId: string, refType: string, note: string): Promise<number> {
+  const { data: grants } = await db.from("entitlement_grants")
+    .select("id,profile_id,remaining").eq("source_type", sourceType).eq("source_id", sourceId).eq("status", "active");
+  let revoked = 0;
+  for (const g of (grants ?? []) as { id: string; profile_id: string; remaining: number }[]) {
+    const { error } = await db.from("entitlement_grants")
+      .update({ status: "revoked", remaining: 0, updated_at: new Date().toISOString() })
+      .eq("id", g.id).eq("status", "active");
+    if (error) continue;
+    await db.from("entitlement_events").insert({
+      grant_id: g.id, profile_id: g.profile_id, event: "refund",
+      delta: -g.remaining, balance_after: 0, ref_type: refType, ref_id: sourceId,
+      actor: "webhook", note,
+    });
+    revoked += 1;
+  }
+  return revoked;
+}
+
+const guardedFlip = (db: SupabaseClient, table: string, id: string, from: string[], to: Record<string, unknown>) =>
+  db.from(table).update(to).eq("id", id).in("status", from).select("id").maybeSingle();
+
+/**
+ * charge.refunded reconciliation for monetization products. Returns true when
+ * the charge resolved to a monetization product (handled — including partial
+ * refunds, which are logged for staff); false lets the caller continue to the
+ * rental `payments` path. Full refunds flip the row and revoke entitlements.
+ */
+export async function handleMonetizationRefund(db: SupabaseClient, o: Obj): Promise<boolean> {
+  const piId = str(o.payment_intent);
+  if (!piId) return false;
+  const ref = await resolveChargeProduct(db, piId);
+  if (!ref) return false;
+  const refunded = typeof o.amount_refunded === "number" ? o.amount_refunded : 0;
+  const captured = typeof o.amount_captured === "number" ? o.amount_captured : typeof o.amount === "number" ? o.amount : 0;
+  const full = refunded > 0 && captured > 0 && refunded >= captured;
+  const label = refLabel(ref);
+  if (!full) {
+    recordLog("info", "monetization_partial_refund", { service: "monetization", attrs: { kind: ref.kind, ref: label.slice(0, 12), refunded, captured } });
+    return true;
+  }
+  const now = new Date().toISOString();
+  try {
+    switch (ref.kind) {
+      case "gift_credit": {
+        const { data: g } = await db.from("gift_credits").select("id,status").eq("id", ref.id).maybeSingle();
+        if (!g || !["paid", "redeemed"].includes(g.status)) break;
+        const { data: flipped } = await guardedFlip(db, "gift_credits", ref.id, ["paid", "redeemed"], { status: "refunded", refunded_at: now });
+        if (!flipped) break;
+        const revoked = await revokeSourceGrants(db, "gift_credit", ref.id, "gift", "gift refund (Stripe charge.refunded)");
+        recordLog("info", "gift_refunded_webhook", { service: "monetization", attrs: { gift: ref.id.slice(0, 8), revoked } });
+        break;
+      }
+      case "package": {
+        const { data: p } = await db.from("package_purchases").select("id,status,profile_id").eq("id", ref.id).maybeSingle();
+        if (!p || !["paid", "redeemed"].includes(p.status)) break;
+        const { data: flipped } = await guardedFlip(db, "package_purchases", ref.id, ["paid", "redeemed"], { status: "refunded" });
+        if (!flipped) break;
+        const revoked = await revokeSourceGrants(db, "package_purchase", ref.id, "package_purchase", "package refund (Stripe charge.refunded)");
+        recordLog("info", "package_refunded_webhook", { service: "monetization", attrs: { purchase: ref.id.slice(0, 8), revoked } });
+        break;
+      }
+      case "group_funding": {
+        const { data: p } = await db.from("group_credit_purchases").select("id,group_id,amount_cents,status").eq("id", ref.id).maybeSingle();
+        const purchase = p as { id: string; group_id: string; amount_cents: number; status: string } | null;
+        if (!purchase || purchase.status !== "paid") break;
+        const { data: flipped } = await guardedFlip(db, "group_credit_purchases", ref.id, ["paid"], { status: "refunded" });
+        if (!flipped) break;
+        const { error: rpcErr } = await db.rpc("adjust_group_credit", {
+          p_group: purchase.group_id, p_delta: -purchase.amount_cents,
+          p_actor: "system:stripe_refund", p_note: "Group funding refund (Stripe charge.refunded)",
+        });
+        if (rpcErr) {
+          // Restore 'paid' so the refund can be retried/reconciled cleanly.
+          await db.from("group_credit_purchases").update({ status: "paid" }).eq("id", ref.id).eq("status", "refunded");
+          recordLog("error", "group_funding_refund_rpc_failed", { service: "monetization", attrs: { purchase: ref.id.slice(0, 8), err: String(rpcErr.message ?? rpcErr).slice(0, 160) } });
+          break;
+        }
+        recordLog("info", "group_funding_refunded_webhook", { service: "monetization", attrs: { purchase: ref.id.slice(0, 8), group: purchase.group_id.slice(0, 8) } });
+        break;
+      }
+      case "event_pass": {
+        const { data: pass } = await db.from("event_passes").select("id,status,holder_id").eq("id", ref.id).maybeSingle();
+        const p = pass as { id: string; status: string; holder_id: string | null } | null;
+        if (!p) break;
+        if (p.status === "active") {
+          await db.from("event_passes").update({ status: "revoked" }).eq("id", p.id).eq("status", "active");
+          recordLog("info", "event_pass_refunded_webhook", { service: "monetization", attrs: { pass: p.id.slice(0, 8) } });
+        } else {
+          // Redeemed/expired pass: grants may already be consumed — flag for staff.
+          recordLog("warning", "event_pass_refund_needs_review", { service: "monetization", attrs: { pass: p.id.slice(0, 8), status: p.status } });
+        }
+        break;
+      }
+      case "membership": {
+        const { data: mem } = await db.from("customer_memberships")
+          .select("id,status").eq("profile_id", ref.profileId).eq("plan_id", ref.planId)
+          .in("status", ["active", "trialing", "past_due"]).order("created_at", { ascending: false }).limit(1).maybeSingle();
+        const m = mem as { id: string; status: string } | null;
+        if (!m) break;
+        const { data: flipped } = await db.from("customer_memberships")
+          .update({ status: "cancelled", updated_at: now })
+          .eq("id", m.id).in("status", ["active", "trialing", "past_due"])
+          .select("id").maybeSingle();
+        if (!flipped) break;
+        const revoked = await revokeSourceGrants(db, "membership", m.id, "membership", "membership refund (Stripe charge.refunded)");
+        recordLog("info", "membership_refunded_webhook", { service: "monetization", attrs: { membership: m.id.slice(0, 8), revoked } });
+        break;
+      }
+      case "membership_subscription": {
+        // Subscription invoice refunds can't be tied to a period without more
+        // data — flag for staff reconciliation.
+        recordLog("warning", "membership_refund_needs_review", { service: "monetization", attrs: { pi: piId.slice(0, 14) } });
+        break;
+      }
+    }
+  } catch (e) {
+    recordLog("error", "monetization_refund_failed", { service: "monetization", attrs: { kind: ref.kind, ref: label.slice(0, 12), err: e instanceof Error ? e.message.slice(0, 160) : "unknown" } });
+  }
+  return true;
+}
+
+/**
+ * charge.dispute.* for monetization charges: record + audit only, no automatic
+ * action (funds are already withdrawn by Stripe; staff decide next steps).
+ * Returns true when the dispute resolved to a monetization product.
+ */
+export async function handleMonetizationDispute(db: SupabaseClient, o: Obj): Promise<boolean> {
+  const piId = str(o.payment_intent);
+  if (!piId) return false;
+  const ref = await resolveChargeProduct(db, piId);
+  if (!ref) return false;
+  const detail = {
+    kind: ref.kind,
+    ref: refLabel(ref).slice(0, 40),
+    dispute: str(o.id), reason: str(o.reason), status: str(o.status),
+    amount: typeof o.amount === "number" ? o.amount : null,
+    currency: str(o.currency),
+  };
+  recordLog("warning", "monetization_dispute", { service: "monetization", attrs: detail });
+  await auditLog(null, "stripe_dispute", ref.kind, "id" in ref ? ref.id : piId, detail);
+  return true;
 }

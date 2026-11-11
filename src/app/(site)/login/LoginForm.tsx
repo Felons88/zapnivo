@@ -6,6 +6,9 @@ import { inputCls } from "@/components/forms";
 import { homeFor } from "@/lib/customer";
 
 export function LoginForm({ configured, oauthError, next }: { configured: boolean; oauthError?: boolean; next?: string | null }) {
+  // `next` arrives already sanitized server-side (sanitizeNextPath); every auth
+  // path below forwards it so the user lands back where they started.
+  const nextQuery = next ? `?next=${encodeURIComponent(next)}` : "";
   const [err, setErr] = useState<string | null>(oauthError ? "Google sign-in didn't complete. Please try again." : null);
   const [sending, setSending] = useState(false);
   const router = useRouter();
@@ -28,7 +31,7 @@ export function LoginForm({ configured, oauthError, next }: { configured: boolea
     e.preventDefault();
     setPhoneBusy(true); setPhoneErr(null); setPhoneMsg(null);
     const code = String(new FormData(e.currentTarget).get("code") ?? "");
-    const res = await fetch("/api/auth/phone", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "verify", phone, code }) }).catch(() => null);
+    const res = await fetch("/api/auth/phone", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "verify", phone, code, ...(next ? { next } : {}) }) }).catch(() => null);
     const data = await res?.json().catch(() => ({})) ?? {};
     setPhoneBusy(false);
     if (!res || !res.ok) return setPhoneErr(data.error ?? "That didn't work — try again.");
@@ -45,7 +48,7 @@ export function LoginForm({ configured, oauthError, next }: { configured: boolea
   async function sendLink(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setLinkSending(true); setLinkErr(null); setLinkMsg(null);
-    const body = Object.fromEntries(new FormData(e.currentTarget).entries());
+    const body = { ...Object.fromEntries(new FormData(e.currentTarget).entries()), ...(next ? { next } : {}) };
     const res = await fetch("/api/auth/email-link", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).catch(() => null);
     const data = await res?.json().catch(() => ({})) ?? {};
     setLinkSending(false);
@@ -66,7 +69,7 @@ export function LoginForm({ configured, oauthError, next }: { configured: boolea
   }
   return (
     <div className="space-y-5">
-      <a href="/api/auth/google" className={btnClass("light", "w-full border border-mist")}>
+      <a href={`/api/auth/google${nextQuery}`} className={btnClass("light", "w-full border border-mist")}>
         <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden>
           <path fill="#4285F4" d="M23.5 12.3c0-.9-.1-1.5-.3-2.2H12v4.2h6.5c-.1 1.1-.8 2.7-2.4 3.8l3.7 2.9c2.2-2 3.7-5 3.7-8.7z"/>
           <path fill="#34A853" d="M12 24c3.2 0 6-1.1 7.9-2.9l-3.7-2.9c-1 .7-2.4 1.2-4.2 1.2-3.2 0-6-2.2-7-5.1L1.2 17.1C3.1 21 7.2 24 12 24z"/>

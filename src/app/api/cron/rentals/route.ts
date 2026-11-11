@@ -30,8 +30,9 @@ export async function GET(req: Request) {
   const first = new Date().getUTCDate() === 1;
   const entitlements = await recordCron(db, "entitlements", async () => {
     const { expireSweep } = await import("@/lib/monetization/entitlements");
-    const { releaseOrphanedReservations } = await import("@/lib/monetization/credits");
-    return { expired: await expireSweep(db), released: await releaseOrphanedReservations(db) };
+    const { releaseOrphanedReservations, expireStaleAuthorizedRentals } = await import("@/lib/monetization/credits");
+    const stale = await expireStaleAuthorizedRentals(db);
+    return { expired: await expireSweep(db), released: await releaseOrphanedReservations(db), stale };
   });
   const ledgers = first ? await recordCron(db, "ledgers", async () => { const r = await generateLedgers(db, previousPeriod()); return { created: r.created.length, noRate: r.skippedNoRate.length, locked: r.skippedLocked.length }; }) : null;
   const ok = rentals.ok && fleet.ok && sms.ok && entitlements.ok && (ledgers?.ok ?? true);

@@ -3,8 +3,9 @@ import { z } from "zod";
 import { rateLimit } from "@/lib/rate-limit";
 import { oauthClient } from "@/lib/supabase";
 import { authCallbackOrigin } from "@/lib/auth-callback-origin";
+import { withNextParam } from "@/lib/auth-next";
 
-const schema = z.object({ email: z.string().trim().email().max(254), website: z.string().max(200).optional() });
+const schema = z.object({ email: z.string().trim().email().max(254), website: z.string().max(200).optional(), next: z.string().max(600).optional() });
 
 /**
  * Passwordless sign-in (PKCE). Same host rules as /api/auth/google: the code-verifier cookie is
@@ -33,7 +34,7 @@ export async function POST(req: NextRequest) {
 
   const { error } = await oauth.client.auth.signInWithOtp({
     email: parsed.data.email,
-    options: { emailRedirectTo: `${callbackOrigin}/api/auth/callback`, shouldCreateUser: true },
+    options: { emailRedirectTo: withNextParam(`${callbackOrigin}/api/auth/callback`, parsed.data.next), shouldCreateUser: true },
   });
   if (error) {
     console.error(JSON.stringify({ level: "error", scope: "email-link", msg: error.message }));

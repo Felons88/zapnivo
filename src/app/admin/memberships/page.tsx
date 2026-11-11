@@ -4,8 +4,10 @@ import { AdminGate } from "@/components/AdminShell";
 import { EmptyCard } from "@/components/PortalShell";
 import { Badge } from "@/components/ui";
 import { fmt } from "@/lib/pricing";
+import { paymentReadiness } from "@/lib/payments/readiness";
 import { serviceClient } from "@/lib/supabase";
 import { ActiveToggle, PackageEditor } from "./MembershipTools";
+import { PaymentReadinessCard } from "./PaymentReadinessCard";
 
 export const metadata: Metadata = { title: "Memberships & packages", robots: { index: false, follow: false } };
 
@@ -34,6 +36,7 @@ export default async function MembershipsAdmin({ searchParams }: { searchParams:
   const sp = await searchParams;
   const db = serviceClient();
   const profileFilter = sp.profile?.trim() || null;
+  const readiness = await paymentReadiness(db);
 
   let plans: Plan[] = [], packages: Pkg[] = [], memberships: Membership[] = [], grants: Grant[] = [];
   if (db) {
@@ -57,6 +60,7 @@ export default async function MembershipsAdmin({ searchParams }: { searchParams:
 
   return (
     <AdminGate title="Memberships & packages" nav="payouts">
+      <div className="mb-8"><PaymentReadinessCard readiness={readiness} /></div>
       {!db ? <EmptyCard title="Monetization data not connected">Connect Supabase and apply migrations 0027 + 0031.</EmptyCard> : (
         <div className="space-y-8">
           {sp.result === "saved" && <p className="rounded-xl bg-lime px-4 py-2.5 text-sm font-bold text-ink">Saved.</p>}
