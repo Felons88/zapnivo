@@ -33,7 +33,7 @@ export function HealthButtons({ id, configured }: { id: string; configured: bool
           {state.status}{state.latencyMs != null ? ` · ${state.latencyMs}ms` : ""} — {state.detail.slice(0, 80)}
         </span>
       )}
-      {!configured && state === "idle" && <span className="font-mono text-[10px] text-slate-600">skipped: unconfigured</span>}
+      {!configured && state === "idle" && <span className="font-mono text-[10px] text-slate-500">skipped: unconfigured</span>}
     </div>
   );
 }

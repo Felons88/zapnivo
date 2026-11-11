@@ -50,7 +50,7 @@ export default async function WebhooksPage() {
         <div className="overflow-x-auto rounded-2xl border border-white/10">
           <table className="w-full min-w-[860px] text-left text-sm">
             <thead>
-              <tr className="border-b border-white/10 bg-white/[0.03] font-mono text-[11px] uppercase tracking-wider text-slate-400">
+              <tr className="border-b border-white/[0.08] bg-white/[0.06] font-mono text-[11px] uppercase tracking-wider text-slate-400">
                 <th className="px-4 py-3">Provider</th>
                 <th className="px-4 py-3">Endpoint</th>
                 <th className="px-4 py-3">Last event</th>
@@ -80,7 +80,7 @@ export default async function WebhooksPage() {
                   </td>
                   <td className="px-4 py-3 font-mono text-xs">{s.pending ?? "—"}</td>
                   <td className="px-4 py-3 font-mono text-xs">
-                    {s.failures24h == null ? <span className="text-slate-600">not tracked</span> : s.failures24h}
+                    {s.failures24h == null ? <span className="text-slate-500">not tracked</span> : s.failures24h}
                   </td>
                   <td className="max-w-[240px] px-4 py-3 text-[11px] leading-snug text-slate-500">{s.note}</td>
                 </tr>
@@ -92,7 +92,7 @@ export default async function WebhooksPage() {
           </table>
         </div>
 
-        <section className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+        <section className="rounded-2xl border border-white/[0.08] bg-white/[0.05] shadow-[0_12px_32px_-16px_rgba(0,0,0,0.8)] p-5">
           <h2 className="eyebrow text-slate-400">Failed / dead inbound jobs</h2>
           <p className="mt-1 text-xs text-slate-400">
             The only replayable rows. Requeue sets status → queued; the /api/cron/inbound worker re-processes

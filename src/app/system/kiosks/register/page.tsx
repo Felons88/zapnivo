@@ -28,7 +28,7 @@ export default async function RegisterKioskPage() {
             <code className="font-mono text-xs">system.kiosks.manage</code>.
           </p>
         </div>
-        <section className="rounded-2xl border border-white/10 bg-white/[0.04] p-6">
+        <section className="rounded-2xl border border-white/[0.08] bg-white/[0.05] shadow-[0_12px_32px_-16px_rgba(0,0,0,0.8)] p-6">
           {!db ? (
             <p className="text-sm text-slate-400">Backend not configured — registration unavailable.</p>
           ) : (

@@ -16,7 +16,7 @@ const usd = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
 function Card({ title, children, className = "" }: { title: string; children: React.ReactNode; className?: string }) {
   return (
-    <section className={`rounded-2xl border border-white/10 bg-white/[0.04] p-5 ${className}`}>
+    <section className={`rounded-2xl border border-white/[0.08] bg-white/[0.05] shadow-[0_12px_32px_-16px_rgba(0,0,0,0.8)] p-5 ${className}`}>
       <h2 className="eyebrow text-slate-400">{title}</h2>
       <div className="mt-4">{children}</div>
     </section>

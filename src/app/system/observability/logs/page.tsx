@@ -52,7 +52,7 @@ export default async function SystemLogsPage({ searchParams }: { searchParams: P
           )}
         </div>
 
-        <section className="overflow-x-auto rounded-2xl border border-white/10 bg-white/[0.04]">
+        <section className="overflow-x-auto rounded-2xl border border-white/[0.08] bg-white/[0.05] shadow-[0_12px_32px_-16px_rgba(0,0,0,0.8)]">
           {!db ? (
             <p className="px-6 py-10 text-sm text-slate-400">Backend not configured — logs unavailable.</p>
           ) : logs.length === 0 ? (

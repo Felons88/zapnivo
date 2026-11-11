@@ -38,7 +38,7 @@ export default async function SecretsPage() {
         <div className="overflow-x-auto rounded-2xl border border-white/10">
           <table className="w-full min-w-[900px] text-left text-sm">
             <thead>
-              <tr className="border-b border-white/10 bg-white/[0.03] font-mono text-[11px] uppercase tracking-wider text-slate-400">
+              <tr className="border-b border-white/[0.08] bg-white/[0.06] font-mono text-[11px] uppercase tracking-wider text-slate-400">
                 <th className="px-4 py-3">Env var</th>
                 <th className="px-4 py-3">Provider</th>
                 <th className="px-4 py-3">Purpose</th>
@@ -67,7 +67,7 @@ export default async function SecretsPage() {
         </div>
 
         {canRotate ? (
-          <section className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+          <section className="rounded-2xl border border-white/[0.08] bg-white/[0.05] shadow-[0_12px_32px_-16px_rgba(0,0,0,0.8)] p-5">
             <h2 className="eyebrow text-slate-400">Request a rotation</h2>
             <p className="mt-2 text-xs text-slate-400">
               Creates an approved-via-change-request record (risk: high) and returns manual Vercel steps.

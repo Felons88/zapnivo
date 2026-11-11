@@ -44,7 +44,7 @@ export default async function SystemCronsPage() {
         </div>
 
         {/* Cron summary per job */}
-        <section className="overflow-x-auto rounded-2xl border border-white/10 bg-white/[0.04]">
+        <section className="overflow-x-auto rounded-2xl border border-white/[0.08] bg-white/[0.05] shadow-[0_12px_32px_-16px_rgba(0,0,0,0.8)]">
           <div className="border-b border-white/10 px-5 py-3">
             <h2 className="eyebrow text-slate-400">Jobs — last 24h</h2>
           </div>
@@ -71,7 +71,7 @@ export default async function SystemCronsPage() {
         </section>
 
         {/* Recent cron run rows */}
-        <section className="rounded-2xl border border-white/10 bg-white/[0.04]">
+        <section className="rounded-2xl border border-white/[0.08] bg-white/[0.05] shadow-[0_12px_32px_-16px_rgba(0,0,0,0.8)]">
           <div className="border-b border-white/10 px-5 py-3">
             <h2 className="eyebrow text-slate-400">Recent runs</h2>
           </div>
@@ -94,7 +94,7 @@ export default async function SystemCronsPage() {
         </section>
 
         {/* Uptime */}
-        <section className="overflow-x-auto rounded-2xl border border-white/10 bg-white/[0.04]">
+        <section className="overflow-x-auto rounded-2xl border border-white/[0.08] bg-white/[0.05] shadow-[0_12px_32px_-16px_rgba(0,0,0,0.8)]">
           <div className="border-b border-white/10 px-5 py-3">
             <h2 className="eyebrow text-slate-400">Uptime targets — latest check</h2>
           </div>

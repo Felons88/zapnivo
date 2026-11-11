@@ -46,7 +46,7 @@ export default async function JobsPage() {
         {/* Queue cards */}
         <div className="grid gap-4 md:grid-cols-3">
           {jobs.queues.map((q) => (
-            <section key={q.name} className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+            <section key={q.name} className="rounded-2xl border border-white/[0.08] bg-white/[0.05] shadow-[0_12px_32px_-16px_rgba(0,0,0,0.8)] p-5">
               <div className="flex items-baseline justify-between">
                 <h2 className="font-mono text-sm font-bold">{q.name}</h2>
                 <span className="font-mono text-[10px] text-slate-500">{q.table}</span>
@@ -67,7 +67,7 @@ export default async function JobsPage() {
         </div>
 
         {/* Cron schedule */}
-        <section className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+        <section className="rounded-2xl border border-white/[0.08] bg-white/[0.05] shadow-[0_12px_32px_-16px_rgba(0,0,0,0.8)] p-5">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <h2 className="eyebrow text-slate-400">Cron routes</h2>
             <p className="font-mono text-[10px] text-slate-500">schedules from vercel.json · pause/resume: not_supported</p>
@@ -110,7 +110,7 @@ export default async function JobsPage() {
         </section>
 
         {/* Failed outbox emails */}
-        <section className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+        <section className="rounded-2xl border border-white/[0.08] bg-white/[0.05] shadow-[0_12px_32px_-16px_rgba(0,0,0,0.8)] p-5">
           <h2 className="eyebrow text-slate-400">Failed email outbox</h2>
           <p className="mt-1 text-xs text-slate-400">
             Retry requeues the row (failed → queued); the next mailer flush sends it. Recipient addresses are not shown.
@@ -148,14 +148,14 @@ export default async function JobsPage() {
 
         {/* Observability strip */}
         <section className="grid gap-4 md:grid-cols-2">
-          <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+          <div className="rounded-2xl border border-white/[0.08] bg-white/[0.05] shadow-[0_12px_32px_-16px_rgba(0,0,0,0.8)] p-5">
             <h2 className="eyebrow text-slate-400">Observability backlog</h2>
             <dl className="mt-3 space-y-1 font-mono text-xs text-slate-300">
               <div className="flex justify-between"><dt>error_events (24h)</dt><dd className="font-bold">{jobs.observability.errorEvents24h ?? "—"}</dd></div>
               <div className="flex justify-between"><dt>open error_issues</dt><dd className="font-bold">{jobs.observability.openErrorIssues ?? "—"}</dd></div>
             </dl>
           </div>
-          <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+          <div className="rounded-2xl border border-white/[0.08] bg-white/[0.05] shadow-[0_12px_32px_-16px_rgba(0,0,0,0.8)] p-5">
             <h2 className="eyebrow text-slate-400">Controls</h2>
             <p className="mt-2 text-xs text-slate-400">{jobs.controls.note}</p>
             <p className="mt-2 font-mono text-[11px] text-slate-500">pause/resume: {jobs.controls.pauseResume}</p>

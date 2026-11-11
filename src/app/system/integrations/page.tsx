@@ -39,7 +39,7 @@ export default async function IntegrationsPage() {
         <div className="overflow-x-auto rounded-2xl border border-white/10">
           <table className="w-full min-w-[900px] text-left text-sm">
             <thead>
-              <tr className="border-b border-white/10 bg-white/[0.03] font-mono text-[11px] uppercase tracking-wider text-slate-400">
+              <tr className="border-b border-white/[0.08] bg-white/[0.06] font-mono text-[11px] uppercase tracking-wider text-slate-400">
                 <th className="px-4 py-3">Provider</th>
                 <th className="px-4 py-3">Purpose</th>
                 <th className="px-4 py-3">Env vars</th>

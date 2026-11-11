@@ -30,11 +30,11 @@ export default async function SystemSessionsPage() {
         </div>
 
         <div className="flex gap-4">
-          <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-3">
+          <div className="rounded-2xl border border-white/[0.08] bg-white/[0.05] shadow-[0_12px_32px_-16px_rgba(0,0,0,0.8)] px-5 py-3">
             <p className="eyebrow text-slate-500">Active now</p>
             <p className="mt-1 font-mono text-2xl font-bold text-lime">{active}</p>
           </div>
-          <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-3">
+          <div className="rounded-2xl border border-white/[0.08] bg-white/[0.05] shadow-[0_12px_32px_-16px_rgba(0,0,0,0.8)] px-5 py-3">
             <p className="eyebrow text-slate-500">Listed</p>
             <p className="mt-1 font-mono text-2xl font-bold">{sessions.length}</p>
           </div>
@@ -43,7 +43,7 @@ export default async function SystemSessionsPage() {
           </Link>
         </div>
 
-        <section className="overflow-x-auto rounded-2xl border border-white/10 bg-white/[0.04]">
+        <section className="overflow-x-auto rounded-2xl border border-white/[0.08] bg-white/[0.05] shadow-[0_12px_32px_-16px_rgba(0,0,0,0.8)]">
           {!db ? (
             <p className="px-6 py-10 text-sm text-slate-400">Backend not configured — session registry unavailable.</p>
           ) : sessions.length === 0 ? (

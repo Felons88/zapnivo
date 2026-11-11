@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 
 type VenueOption = { id: string; label: string };
 
-const inputCls = "w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-lime/50 focus:outline-none";
+const inputCls = "w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-lime/50 focus:outline-none";
 const labelCls = "mb-1 block text-[10px] font-extrabold uppercase tracking-wider text-slate-500";
 
 export function RegisterForm({ venues }: { venues: VenueOption[] }) {

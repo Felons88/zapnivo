@@ -56,19 +56,19 @@ export async function SystemGate({
 function Restricted({ reason, detail, perm, signIn }: { reason: string; detail: string; perm: SystemPermission; signIn?: boolean }) {
   return (
     <div className="grid min-h-[60vh] place-items-center px-6">
-      <div className="w-full max-w-lg rounded-2xl border border-red-900/20 bg-white p-8 text-center shadow-sm">
-        <p className="eyebrow text-red-700">Access restricted</p>
-        <h2 className="mt-3 font-display text-2xl font-bold">403 — system permission required</h2>
-        <p className="mt-3 text-sm text-graphite">{detail}</p>
+      <div className="w-full max-w-lg rounded-2xl border border-red-400/20 bg-[#101130] p-8 text-center shadow-2xl shadow-black/40 ring-1 ring-white/[0.06]">
+        <p className="eyebrow text-red-300">Access restricted</p>
+        <h2 className="mt-3 font-display text-2xl font-bold text-white">403 — system permission required</h2>
+        <p className="mt-3 text-sm text-slate-400">{detail}</p>
         <dl className="mx-auto mt-5 max-w-xs space-y-1 text-left text-xs">
-          <div className="flex justify-between gap-4"><dt className="text-graphite">Required</dt><dd className="font-mono font-bold">{perm}</dd></div>
-          <div className="flex justify-between gap-4"><dt className="text-graphite">Reason</dt><dd className="font-mono font-bold">{reason}</dd></div>
+          <div className="flex justify-between gap-4"><dt className="text-slate-500">Required</dt><dd className="font-mono font-bold text-slate-200">{perm}</dd></div>
+          <div className="flex justify-between gap-4"><dt className="text-slate-500">Reason</dt><dd className="font-mono font-bold text-red-300">{reason}</dd></div>
         </dl>
         <div className="mt-6 flex items-center justify-center gap-3">
           {signIn ? (
-            <Link href="/login?next=%2Fsystem" className="rounded-full bg-ink px-4 py-2 text-xs font-bold text-white hover:bg-graphite">Sign in</Link>
+            <Link href="/login?next=%2Fsystem" className="rounded-full bg-lime px-4 py-2 text-xs font-bold text-ink hover:bg-[#e6ffa8]">Sign in</Link>
           ) : (
-            <Link href="/system" className="rounded-full bg-ink px-4 py-2 text-xs font-bold text-white hover:bg-graphite">Command Center</Link>
+            <Link href="/system" className="rounded-full bg-lime px-4 py-2 text-xs font-bold text-ink hover:bg-[#e6ffa8]">Command Center</Link>
           )}
           <LogoutButton light />
         </div>

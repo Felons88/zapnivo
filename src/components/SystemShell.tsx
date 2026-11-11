@@ -150,9 +150,9 @@ export function SystemShell({
   const env = environment ?? process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? "development";
   const isProd = env === "production";
   return (
-    <div className="min-h-screen bg-[#0d0e24] text-slate-100">
+    <div data-theme="dark" className="min-h-screen bg-[#08091a] text-slate-100 [background-image:radial-gradient(ellipse_80%_50%_at_50%_-10%,rgba(217,255,115,0.06),transparent),radial-gradient(ellipse_60%_40%_at_100%_0%,rgba(80,80,200,0.10),transparent)]">
       {/* Sidebar */}
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-72 flex-col border-r border-white/10 bg-[#11122b] lg:flex">
+      <aside className="fixed inset-y-0 left-0 z-40 hidden w-72 flex-col border-r border-white/[0.07] bg-[#0b0c22]/90 backdrop-blur lg:flex">
         <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
           <Link href="/system" aria-label="Zapnivo system"><Logo className="text-[1.15rem]! text-white" /></Link>
           <span className="rounded-full bg-lime px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-widest text-ink">System</span>
@@ -182,10 +182,14 @@ export function SystemShell({
 
       <div className="lg:pl-72">
         {/* Topbar */}
-        <header className="sticky top-0 z-30 border-b border-white/10 bg-[#0d0e24]/85 backdrop-blur">
+        <header className="sticky top-0 z-30 border-b border-white/[0.07] bg-[#08091a]/80 backdrop-blur-md">
           <div className="flex h-14 items-center justify-between gap-4 px-5">
             <div className="flex items-center gap-3">
               <span className="lg:hidden"><Logo className="text-[1rem]! text-white" /></span>
+              <span className="hidden items-center gap-2 font-mono text-[11px] text-slate-500 md:flex">
+                <span className="inline-block h-1.5 w-1.5 rounded-full bg-lime shadow-[0_0_8px_rgba(217,255,115,0.8)]" aria-hidden />
+                system.zapnivo.com
+              </span>
               <span className={`rounded-full px-3 py-1 font-mono text-[10px] font-extrabold uppercase tracking-widest ring-1 ${isProd ? "bg-red-500/10 text-red-300 ring-red-400/30" : "bg-lime/10 text-lime ring-lime/30"}`}>
                 env: {env}
               </span>
