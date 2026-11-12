@@ -47,10 +47,10 @@ export const CERTIFICATION_CHECKS: readonly CertificationCheck[] = [
   { key: "expired_credential", label: "Expired credential rejection", tier: "simulated", automated: true, evidence: "hardware-certification.test.ts C14" },
 
   /* ── GATEWAY_CONTRACT — gateway protocol conformance ────────────────────── */
-  { key: "message_schema_conformance", label: "Ingest message schema conformance (zod contract)", tier: "gateway_contract", automated: true, evidence: "src/lib/kiosk/ingest.ts" },
-  { key: "idempotency_keys", label: "Idempotency keys (event_id dedup, command idempotency)", tier: "gateway_contract", automated: true, evidence: "tests/hardware-certification.test.ts C11" },
-  { key: "dispense_command_path", label: "Dispense/command path round-trip", tier: "gateway_contract", automated: false, note: "BLOCKED: no ingest/command contract for dispense yet (C10) — record 'blocked' honestly" },
-  { key: "ack_correlation", label: "Command ack correlation (command_id ↔ ack)", tier: "gateway_contract", automated: false, needsHardware: true, note: "Needs a live gateway or simulator session" },
+  { key: "message_schema_conformance", label: "Ingest message schema conformance (zod contract)", tier: "gateway_contract", automated: true, evidence: "src/lib/kiosk/ingest.ts + certification-runner" },
+  { key: "idempotency_keys", label: "Idempotency keys (event_id dedup, message_id nonce 409, command idempotency)", tier: "gateway_contract", automated: true, evidence: "certification-runner.ts" },
+  { key: "dispense_command_path", label: "Dispense/command path round-trip (queue → sim adapter → correlated ack → rental activated)", tier: "gateway_contract", automated: true, evidence: "certification-runner.ts via kiosk simulator", note: "Exercised through the simulator — simulated:true evidence, not hardware" },
+  { key: "ack_correlation", label: "Command ack correlation (command_id ↔ ack; unknown command → rental_exceptions)", tier: "gateway_contract", automated: true, evidence: "certification-runner.ts via kiosk simulator", note: "Simulator session evidence — a live gateway remains the physical-tier proof" },
 
   /* ── PHYSICAL — real hardware only; route requires step-up elevation ────── */
   { key: "dispense_ack", label: "Physical dispense acknowledgement (motor/lock telemetry)", tier: "physical", automated: false, needsHardware: true, needsElevation: true, note: "Requires real device + fresh MFA step-up" },

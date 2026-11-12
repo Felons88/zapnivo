@@ -1,6 +1,7 @@
 import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { rateLimit } from "@/lib/rate-limit";
+import { reportError } from "@/lib/observability";
 import { systemAudit, type SystemActor } from "./audit";
 import { DEVICE_TRANSITIONS, deviceAuditResource, isUuid, type SystemDeviceStatus } from "./kiosks";
 
@@ -697,6 +698,25 @@ export async function recordDeviceAuthMessage(
         : {}),
     });
   } catch { /* telemetry is best-effort */ }
+
+  // Phase 2.5 alert emitter (device.revoked_credential_attempts): a rejected
+  // auth attempt against a revoked/expired credential emits a warning via
+  // reportError → error_events/error_issues. The message is stable per
+  // device+reason so the fingerprint dedups to one grouped issue; scope is
+  // the device id/uid + coarse reason code only — never secrets, signatures,
+  // or hashes. Fire-and-forget: no extra queries, alerting never blocks ingest.
+  if (msg.result === "rejected") {
+    const reason = typeof msg.detail?.reason === "string" ? msg.detail.reason : "";
+    if (reason === "credential_revoked" || reason === "credential_expired") {
+      const scope =
+        msg.deviceId ??
+        (typeof msg.detail?.device_uid === "string" ? msg.detail.device_uid : "unknown");
+      reportError(new Error(`device.auth_rejected_${reason} device=${scope}`), {
+        severity: "warning",
+        route: "device-auth",
+      });
+    }
+  }
 }
 
 async function findDevice(db: SupabaseClient, deviceId: string): Promise<DeviceAuthRow | null> {

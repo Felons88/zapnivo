@@ -64,6 +64,12 @@ export type CommandEnvelope = {
   issuedAt: string;
   /** Commands past this instant MUST be rejected by the device. */
   expiresAt: string;
+  /**
+   * Phase 2.5: ack event types allowed to resolve this command (maps to
+   * device_commands.expected_response_types). Omit/empty = any ack type.
+   * An ack of a different type raises an `unexpected_ack_type` exception.
+   */
+  expectedResponseTypes?: string[];
   /** Random per-command value for replay detection alongside commandId. */
   nonce: string;
   /** Command-specific payload (slot number, dispense request, etc.). */
@@ -173,6 +179,17 @@ export type DeviceAckOutcome = "acknowledged" | "failed" | "rejected" | "detecte
  * duplicate | already_returned | returned | return_disputed | ack_recorded |
  * already_recorded | unmatched | exception_raised | rejected:*. Ambiguous acks
  * write rental_exceptions rows (migration 0050) — never auto-settle.
+ *
+ * Phase 2.5 integrity rules (commands.ts state machine + lifecycle.gateCommandAck):
+ *  - acks only correlate to commands owned by the AUTHENTICATED kiosk — an ack for
+ *    another device's command raises `cross_device_ack`;
+ *  - commands in inactive states (timeout | cancelled | expired | unknown_outcome |
+ *    requires_investigation) reject every ack as `stale_ack` — a late ack never
+ *    restarts a closed rental or re-opens the command;
+ *  - a second ack matching the recorded outcome is `already_recorded`; a
+ *    contradictory one raises `conflicting_ack`;
+ *  - commands unanswered past expires_at are swept to `unknown_outcome` (a lost
+ *    ack is not a failed action) + `command_timeout` exception when rental-linked.
  */
 export type DeviceAckCorrelation = {
   commandId?: string;

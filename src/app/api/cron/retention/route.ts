@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { serviceClient } from "@/lib/supabase";
 import { runRetention } from "@/lib/system/retention";
 import { sweepExpiredRotations } from "@/lib/system/device-auth";
+import { runAlertSweep } from "@/lib/system/alert-sweep";
 import { recordLog, traced } from "@/lib/observability";
 
 /**
@@ -47,6 +48,19 @@ export async function GET(req: Request) {
     ? { ok: true, swept: 0, skipped: "dry_run" as const }
     : await sweepExpiredRotations(db);
 
+  // Phase 2.5 alert sweep — emits reportError warnings for unresolved rental
+  // exceptions, stuck device commands, pending settlements and stale device
+  // heartbeats (ALERT_POLICY rules). Read-only probes; skipped on dry runs and
+  // internally fault-tolerant (missing tables → 'skipped', never throws).
+  const alertSweep = dryRun
+    ? { ok: true, emitted: 0, skipped: "dry_run" as const }
+    : await runAlertSweep(db).catch((e) => ({
+        ok: false,
+        emitted: 0,
+        checks: {},
+        error: e instanceof Error ? e.message : "alert sweep failed",
+      }));
+
   // Record the outcome in cron_runs so Jobs & workers / status surfaces see it.
   await db.from("cron_runs").insert({
     job: "retention",
@@ -58,6 +72,7 @@ export async function GET(req: Request) {
       tables: report.results.length,
       run_id: report.runId,
       credential_rotation_sweep: rotationSweep,
+      alert_sweep: alertSweep,
       error: report.error ?? undefined,
     },
   }).then(() => undefined, () => undefined);
@@ -67,5 +82,5 @@ export async function GET(req: Request) {
     attrs: { deleted: report.results.reduce((a, r) => a + r.deleted, 0), ok: report.ok },
   });
 
-  return NextResponse.json({ ok: report.ok && rotationSweep.ok !== false, report, credential_rotation_sweep: rotationSweep }, { status: report.ok ? 200 : 207 });
+  return NextResponse.json({ ok: report.ok && rotationSweep.ok !== false, report, credential_rotation_sweep: rotationSweep, alert_sweep: alertSweep }, { status: report.ok ? 200 : 207 });
 }

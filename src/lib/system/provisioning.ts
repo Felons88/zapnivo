@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
+import { reportError, scrub } from "@/lib/observability";
 import { systemAudit, type SystemActor } from "./audit";
 import { issueDeviceCredential, type DeviceAuthRow } from "./device-auth";
 import { deviceAuditResource, provisionTokenHash, type SystemDeviceStatus } from "./kiosks";
@@ -95,6 +96,52 @@ export type ProvisionRedeemResult = ProvisionRedeemOk | ProvisionRedeemFail;
 
 const UNKNOWN_RESOURCE = "system_device:unknown";
 
+/* ── Alert emitter: kiosk.provisioning_failed_burst (Phase 2.5) ────────────
+ * Counts recent kiosk.provisioning_failed / kiosk.provisioning_denied audit
+ * rows scoped to this device; at PROVISION_BURST_THRESHOLD inside the window
+ * it emits a warning via reportError. The message is deliberately stable per
+ * device (no counts/timestamps) so the observability fingerprint dedups to
+ * ONE error_issue per device. Audit detail carries ids/uids only — the token
+ * and its hash are never part of the alert. */
+export const PROVISION_BURST_THRESHOLD = 5;
+export const PROVISION_BURST_WINDOW_MS = 15 * 60_000;
+
+/**
+ * [column, value] eq-filter scoping an audit query to one device.
+ * Audit rows CANNOT be matched on `resource` verbatim: systemAudit scrub()s it
+ * before insert (secret-looking patterns — e.g. all-digit uuids — become
+ * '[redacted]'). The stable per-device scope is detail->>device_uid, which the
+ * provisioning audit paths always populate. When a device row has no uid the
+ * fallback is the deterministically-scrubbed resource string.
+ */
+function provisioningEventScope(device: ProvisionableDevice): [string, string] {
+  return device.device_uid
+    ? ["detail->>device_uid", device.device_uid]
+    : ["resource", scrub(deviceAuditResource(device.id), 200)];
+}
+
+async function maybeEmitProvisioningBurst(
+  db: SupabaseClient,
+  device: ProvisionableDevice,
+): Promise<void> {
+  try {
+    const since = new Date(Date.now() - PROVISION_BURST_WINDOW_MS).toISOString();
+    const { data, error } = await db
+      .from("system_audit_events")
+      .select("id")
+      .in("action", ["kiosk.provisioning_failed", "kiosk.provisioning_denied"])
+      .gte("created_at", since)
+      .eq(...provisioningEventScope(device))
+      .limit(PROVISION_BURST_THRESHOLD);
+    if (error || (data?.length ?? 0) < PROVISION_BURST_THRESHOLD) return;
+    const scope = device.device_uid ?? device.id;
+    reportError(new Error(`kiosk.provisioning_failed_burst device=${scope}`), {
+      severity: "warning",
+      route: "api/devices/provision",
+    });
+  } catch { /* alerting is best-effort — never break a denial response */ }
+}
+
 export async function redeemProvisionToken(
   db: SupabaseClient,
   input: ProvisionRedeemInput,
@@ -116,6 +163,9 @@ export async function redeemProvisionToken(
       // to whoever holds the high-entropy token).
       detail: { reason: code, device_uid: device?.device_uid ?? null },
     });
+    // Burst detection is device-scoped — an unknown token (device=null) has
+    // no stable scope and is covered by route rate limits instead.
+    if (device) await maybeEmitProvisioningBurst(db, device);
     return { ok: false, status, error, code };
   };
 
@@ -209,6 +259,33 @@ export async function redeemProvisionToken(
       credential_expires_at: issued.expiresAt,
     },
   });
+
+  // ── Recovery audit (Phase 2.5): a successful claim shortly after recorded
+  //    provisioning_failures is evidence the compensating-release path (claim
+  //    → issuance failure → used_at reset → retry) actually worked. One extra
+  //    bounded read per redemption; failure here never breaks the response. ──
+  try {
+    const dayAgo = new Date(now.getTime() - 24 * 3600_000).toISOString();
+    const { data: prior, error: priorErr } = await db
+      .from("system_audit_events")
+      .select("id")
+      .eq("action", "kiosk.provisioning_failed")
+      .gte("created_at", dayAgo)
+      .eq(...provisioningEventScope(device))
+      .limit(1);
+    if (!priorErr && (prior?.length ?? 0) > 0) {
+      await systemAudit(db, {
+        actor: PROVISIONING_ACTOR,
+        action: "kiosk.provisioning_recovered",
+        resource: deviceAuditResource(device.id),
+        detail: {
+          device_uid: device.device_uid,
+          serial_number: device.serial_number,
+          prior_failures_within: "24h",
+        },
+      });
+    }
+  } catch { /* recovery audit must never break redemption */ }
 
   return { ok: true, device, secret: issued.secret, expiresAt: issued.expiresAt };
 }

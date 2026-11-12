@@ -257,11 +257,11 @@ describe("ALERT_POLICY rules", () => {
     }
   });
 
-  it("rental_exceptions + settlement rules are marked pending (emitter not live yet)", () => {
+  it("rental_exceptions + settlement rules are live via the cron alert sweep", () => {
     const rental = ALERT_POLICY.rules.find((r) => r.id === "rental.exceptions_unresolved");
     const settlement = ALERT_POLICY.rules.find((r) => r.id === "finance.unresolved_settlement");
-    expect(rental?.emitter).toBe("pending");
-    expect(settlement?.emitter).toBe("pending");
+    expect(rental?.emitter).toBe("live");
+    expect(settlement?.emitter).toBe("live");
     expect(rental?.source).toMatch(/rental_exceptions/);
   });
 

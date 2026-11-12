@@ -186,20 +186,20 @@ export const ALERT_POLICY = {
   rules: [
     {
       id: "kiosk.provisioning_failed_burst",
-      source: "system_audit_events (action kiosk.provisioning_failed / kiosk.provisioning_denied)",
-      match: ">= 5 provisioning failure/denial events for one device_uid within the window",
+      source: "system_audit_events (action kiosk.provisioning_failed / kiosk.provisioning_denied) + inline emitter in src/lib/system/provisioning.ts",
+      match: ">= 5 provisioning failure/denial events for one device within 15 min → reportError warning, fingerprinted per device",
       severity: "sev3",
       windowMinutes: 15,
-      dedup: "one alert per device_uid per hour (fingerprint = device_uid)",
-      emitter: "pending",
+      dedup: "one error_issue per device_uid (stable fingerprint message); audit rows remain the trail",
+      emitter: "live",
     },
     {
       id: "device.revoked_credential_attempts",
-      source: "system_device_messages WHERE result='rejected' AND detail->>reason='credential_revoked'",
-      match: ">= 3 rejected auth attempts using a revoked credential within the window",
+      source: "system_device_messages WHERE result='rejected' AND detail->>reason IN ('credential_revoked','credential_expired') + inline emitter in recordDeviceAuthMessage (src/lib/system/device-auth.ts)",
+      match: "any rejected auth attempt using a revoked/expired credential → reportError warning per attempt, fingerprinted per device+reason",
       severity: "sev2",
       windowMinutes: 15,
-      dedup: "one alert per device_id per hour",
+      dedup: "one error_issue per device+reason (stable fingerprint message)",
       emitter: "live",
     },
     {
@@ -240,30 +240,31 @@ export const ALERT_POLICY = {
     },
     {
       id: "rental.exceptions_unresolved",
-      source: "rental_exceptions (table created by the rental-exceptions workstream)",
-      match: "unresolved exception rows older than 24h; count >= 1",
+      source: "rental_exceptions status='open' older than 24h — probed by runAlertSweep (src/lib/system/alert-sweep.ts) in cron.retention",
+      match: "unresolved exception rows older than 24h; count >= 1 → one reportError per exception id",
       severity: "sev2",
       windowMinutes: 1440,
-      dedup: "one alert per exception id; re-alert daily while unresolved",
-      // Probe MUST tolerate the table being absent (pre-migration) — treat
-      // 'relation does not exist' as zero rows, never as an alert.
-      emitter: "pending",
+      dedup: "one error_issue per exception id (stable fingerprint message); re-alerts daily while unresolved",
+      // Probe MUST tolerate the table being absent (pre-migration) — the sweep
+      // marks the check 'skipped', never an alert and never a cron failure.
+      emitter: "live",
     },
     {
       id: "finance.unresolved_settlement",
-      source: "settlement/ledger records awaiting resolution (finance tables)",
-      match: "unresolved settlement older than 24h; count >= 1",
+      source: "rentals.state IN ('return_pending','overdue','non_return_fee_pending') older than 24h — probed by runAlertSweep (src/lib/system/alert-sweep.ts); no dedicated settlement table exists, these rental states ARE the unsettled-money signal",
+      match: "settlement-pending rental older than 24h; count >= 1 → one reportError per rental id",
       severity: "sev2",
       windowMinutes: 1440,
-      dedup: "one alert per settlement reference; re-alert daily while unresolved",
-      emitter: "pending",
+      dedup: "one error_issue per rental id (stable fingerprint message); re-alerts daily while unresolved",
+      emitter: "live",
     },
   ] as const satisfies readonly AlertRule[],
   notes: [
     "In-app signals (uptime_checks, cron_runs, error_events) are recorded here but do not page anyone — alerting is the external workflow + issue tracker.",
     "Incidents rows are operational records; severity sev1–sev4 maps to business impact, not paging urgency.",
     "This console is read-only — incident lifecycle changes happen in the incident workflow, not here.",
-    "Phase 2.4 rules above are declarative policy, not a live matcher: 'emitter: live' means the underlying signal exists in the DB today; 'pending' means the emitting code/table lands with another workstream — a pending rule matching zero rows is NOT coverage.",
+    "Phase 2.4 rules above are declarative policy describing what SHOULD alert; 'emitter: live' means a code path emits the signal today (inline reportError in provisioning.ts/device-auth.ts, or the runAlertSweep cron probes); 'pending' means the emitter has not landed — a pending rule matching zero rows is NOT coverage.",
+    "Phase 2.5: all 8 rules now have live emitters. Inline emitters (provisioning burst, revoked/expired credential rejects) write error_events fingerprinted per device; aggregate probes (rental exceptions, stuck commands, pending settlements, stale heartbeats) run in cron.retention via runAlertSweep and are skipped on dry_run.",
     "error_events/error_issues already group by fingerprint (observability.ts); critical-severity issues alert via alertStaff + ALERT_WEBHOOK_URL external fallback.",
   ],
 } as const;

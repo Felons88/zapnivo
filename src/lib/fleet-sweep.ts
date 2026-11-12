@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { renderEmail } from "./email-templates";
 import { flushOutbox, getMailer } from "./helpdesk/mailer";
 import { getRepo } from "./helpdesk/repo";
-import { expireStaleCommands } from "./kiosk/commands";
+import { expireStaleCommands, sweepStaleCommands } from "./kiosk/commands";
 import { HEARTBEAT_STALE_MIN } from "./kiosk/heartbeat";
 import { subUrl } from "./site";
 import { newTraceId, traced } from "./observability";
@@ -64,7 +64,10 @@ export async function runFleetSweep(db: SupabaseClient, now = new Date()) {
   }
 
   const expired = await expireStaleCommands(db, now);
-  return { offline: stations.length, lowBattery: banks.length, expiredCommands: expired };
+  // Phase 2.5: open commands past expires_at → unknown_outcome (a lost ack is
+  // not a failed dispense) + rental_exceptions for linked rentals.
+  const staleCommands = await sweepStaleCommands(db, now);
+  return { offline: stations.length, lowBattery: banks.length, expiredCommands: expired, staleCommands };
 }
 
 /** Records a cron run and emails staff if it failed — so a broken sweep is never silent. */

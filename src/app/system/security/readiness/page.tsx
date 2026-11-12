@@ -104,6 +104,23 @@ export default async function SecurityReadinessPage() {
           </p>
         )}
 
+        {/* Backup warning (Phase 2.5): anything short of a passed restore test
+            means recovery is NOT assured — surface it above the fold. */}
+        {r.configured && r.backup.state !== "restore_tested" && r.backup.state !== "recovery_verified" && (
+          <div className="rounded-2xl border border-red-400/40 bg-red-400/10 px-5 py-4">
+            <p className="text-sm font-bold text-red-200">NO VERIFIED BACKUP — recovery not assured</p>
+            <p className="mt-1 text-xs leading-relaxed text-red-200/80">
+              Backup state: <code className="font-mono">{r.backup.state}</code>. Action needed: in the
+              Supabase Dashboard → Database → Backups, enable PITR or confirm a restorable backup exists,
+              refresh the provider snapshot, then record a restore test. Until a restore test passes,
+              treat all data as unrecoverable.
+            </p>
+            <Link href="/system/recovery" className="mt-2 inline-block text-xs font-bold text-red-200 underline">
+              Open recovery runbook →
+            </Link>
+          </div>
+        )}
+
         <CountTable title="Devices" rows={[
           ["total", r.devices.total],
           ["auth: hmac_sha256", r.devices.by_auth_method.hmac_sha256 ?? null],

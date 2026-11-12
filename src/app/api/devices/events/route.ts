@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { serviceClient } from "@/lib/supabase";
 import { ingestBodySchema, ingestKioskEvents } from "@/lib/kiosk/ingest";
+import { resolveDeviceCapabilities, type DeviceCapabilitySource } from "@/lib/kiosk/capabilities";
 import {
   legacyIngestEnabled, recordDeviceAuthMessage, verifyDeviceAuth,
   type DeviceAuthRow,
@@ -33,15 +34,22 @@ import {
  */
 const safeEq = (a: string, b: string) => { const x = Buffer.from(a), y = Buffer.from(b); return x.length === y.length && timingSafeEqual(x, y); };
 
+/** system_devices row as needed by auth + Phase 2.5 capability resolution. */
+type StationDeviceRow = DeviceAuthRow & {
+  capabilities?: unknown;
+  manufacturer?: string | null;
+  model?: string | null;
+};
+
 /** Finds a system_devices row bound to this station_id (device_uid or serial). */
-async function findStationDevice(db: NonNullable<ReturnType<typeof serviceClient>>, stationId: string): Promise<DeviceAuthRow | null> {
+async function findStationDevice(db: NonNullable<ReturnType<typeof serviceClient>>, stationId: string): Promise<StationDeviceRow | null> {
   // PostgREST .or() filter — restrict to safe chars to avoid filter injection.
   if (!/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}$/.test(stationId)) return null;
   const { data } = await db.from("system_devices")
-    .select("id,device_uid,serial_number,status,auth_method,device_secret_hash,device_secret_enc,credential_issued_at,credential_expires_at,credential_revoked_at,last_authed_at,last_message_ts")
+    .select("id,device_uid,serial_number,status,auth_method,device_secret_hash,device_secret_enc,credential_issued_at,credential_expires_at,credential_revoked_at,last_authed_at,last_message_ts,capabilities,manufacturer,model")
     .or(`device_uid.eq.${stationId},serial_number.eq.${stationId}`)
     .limit(1);
-  const rows = (data ?? []) as DeviceAuthRow[];
+  const rows = (data ?? []) as StationDeviceRow[];
   return rows[0] ?? null;
 }
 
@@ -112,7 +120,9 @@ export async function POST(req: Request) {
   // it is registered as (device_uid or serial_number). Legacy clients are bound
   // only by the shared secret — and are refused entirely for stations whose
   // system_devices row already holds a live hmac credential.
-  const stationDevice = authedDevice ?? (await findStationDevice(db, body.station_id));
+  const stationDevice: StationDeviceRow | null = authedDevice
+    ? (authedDevice as StationDeviceRow) // verifyDeviceAuth's select lacks capability columns
+    : await findStationDevice(db, body.station_id);
   if (authedDevice) {
     const bound = authedDevice.device_uid === body.station_id || authedDevice.serial_number === body.station_id;
     if (!bound) {
@@ -130,7 +140,24 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const result = await ingestKioskEvents(db, kiosk as { id: string; state?: string }, body);
+  // Phase 2.5 — resolve enforced capabilities from STORED device records only
+  // (system_devices.capabilities + certified system_hardware_profiles match).
+  // Event payloads are never consulted. Applies identically to the HMAC path
+  // (authedDevice) and the legacy shared-secret path (stationDevice); a station
+  // with no system_devices row resolves to the empty set → baseline-only,
+  // fail-closed. The HMAC-authed row needs one extra select because
+  // verifyDeviceAuth's AUTH_SELECT doesn't carry the capability columns.
+  let capabilitySource: DeviceCapabilitySource = null;
+  if (authedDevice) {
+    const { data: capRow } = await db.from("system_devices")
+      .select("capabilities,manufacturer,model").eq("id", authedDevice.id).maybeSingle();
+    capabilitySource = (capRow ?? null) as DeviceCapabilitySource;
+  } else if (stationDevice) {
+    capabilitySource = stationDevice; // findStationDevice select already carries the columns
+  }
+  const capabilities = await resolveDeviceCapabilities(db, capabilitySource);
+
+  const result = await ingestKioskEvents(db, kiosk as { id: string; state?: string }, body, new Date(), {}, capabilities);
 
   // Connectivity telemetry: a verified heartbeat proves the bound system_devices
   // row is alive — deriveConnectivity reads last_heartbeat_at, which ingest

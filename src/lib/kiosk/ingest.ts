@@ -1,6 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { processKioskEvent, type KioskEventDeps, type KioskEventOutcome } from "./lifecycle";
+import { normalizeCapabilityName, requiredCapabilityFor } from "./capabilities";
+import { recordLog, reportError } from "../observability";
 
 /**
  * Shared ingest pipeline for authenticated kiosk event batches. The HTTP route and the
@@ -55,16 +57,73 @@ export const KNOWN_EVENT_TYPES = new Set([
   "bank_released", "return_rejected", "hardware_fault",
 ]);
 
+/**
+ * Phase 2.5 — an event denied by server-side capability enforcement. Denied
+ * events NEVER reach processKioskEvent (no kiosk_events claim, no slot/bank
+ * projection, no rental effect); they are recorded only in the immutable
+ * device_events log with payload.denied_reason='capability_denied' plus a
+ * warning-level observability signal. `outcomes`/`KioskEventOutcome` are owned
+ * by lifecycle.ts, so denials travel in this parallel list instead.
+ */
+export type DeniedKioskEvent = {
+  /** Index into body.events. */
+  index: number;
+  event_id: string | null;
+  type: string;
+  required_capability: string;
+};
+
+export type IngestResult = {
+  /** Events that entered the lifecycle pipeline (denied events excluded). */
+  accepted: number;
+  outcomes: KioskEventOutcome[];
+  denied: DeniedKioskEvent[];
+};
+
+/**
+ * @param capabilities Phase 2.5 enforcement input — the RESOLVED capability set
+ *   from stored device records (see capabilities.ts), passed by the HTTP route.
+ *   Semantics: `undefined` → enforcement OFF (internal callers: simulator/tests
+ *   keep legacy behavior); `null`/empty set → enforced, baseline-only
+ *   (fail-closed). Names are normalized, so raw or canonical spellings both work.
+ *   Event payloads are never consulted — self-reported `capabilities`/`caps`
+ *   fields in the body cannot escalate privileges.
+ */
 export async function ingestKioskEvents(
   db: SupabaseClient,
   kiosk: { id: string; state?: string },
   body: IngestBody,
   now = new Date(),
   deps: KioskEventDeps = {},
-): Promise<{ accepted: number; outcomes: KioskEventOutcome[] }> {
+  capabilities?: ReadonlySet<string> | readonly string[] | null,
+): Promise<IngestResult> {
   const outcomes: KioskEventOutcome[] = [];
+  const denied: DeniedKioskEvent[] = [];
+  const enforce = capabilities !== undefined;
+  const capSet = enforce
+    ? new Set<string>((capabilities == null ? [] : [...capabilities]).map(normalizeCapabilityName))
+    : null;
 
-  for (const e of body.events) {
+  for (const [index, e] of body.events.entries()) {
+    // Capability gate FIRST — a denied event must not upsert power_banks,
+    // claim a kiosk_events row, project slots, or touch rentals.
+    if (capSet) {
+      const required = requiredCapabilityFor(e.type);
+      if (required && !capSet.has(required)) {
+        denied.push({ index, event_id: e.event_id ?? null, type: e.type, required_capability: required });
+        await db.from("device_events").insert({
+          kiosk_id: kiosk.id, slot_number: e.slot ?? null, event_type: e.type,
+          payload: {
+            denied_reason: "capability_denied",
+            required_capability: required,
+            ...(e.event_id ? { event_id: e.event_id } : {}),
+            ...(e.simulated != null ? { simulated: e.simulated } : {}),
+          },
+          occurred_at: e.at ?? e.hw_timestamp ?? now.toISOString(),
+        });
+        continue;
+      }
+    }
     let bankId: string | null = null;
     if (e.power_bank_serial) {
       const { data: bank } = await db.from("power_banks")
@@ -117,5 +176,22 @@ export async function ingestKioskEvents(
   if (kiosk.state === "offline" || kiosk.state === "provisioning") { next.state = "online"; next.offline_alerted_at = null; if (kiosk.state === "provisioning") next.installed_at = now.toISOString(); }
   await db.from("kiosks").update(next).eq("id", kiosk.id);
 
-  return { accepted: body.events.length, outcomes };
+  // Security signal: capability-denied events are already in device_events;
+  // surface a batch-level warning so repeated attempts are visible in
+  // app_logs + the grouped error_issues feed. Fail-open, no secrets.
+  if (denied.length) {
+    const summary = denied
+      .map((d) => `${d.type}${d.required_capability ? `:${d.required_capability}` : ""}`)
+      .slice(0, 10).join(",");
+    recordLog("warning", "kiosk.ingest_capability_denied", {
+      service: "kiosk-ingest", route: "/api/devices/events",
+      attrs: { kiosk_id: kiosk.id, station_id: body.station_id, denied: denied.length, events: summary },
+    });
+    reportError(new Error(`Kiosk ingest denied ${denied.length} event(s) by capability policy (${summary})`), {
+      route: "/api/devices/events", severity: "warning",
+      attrs: { kiosk_id: kiosk.id, station_id: body.station_id },
+    });
+  }
+
+  return { accepted: body.events.length - denied.length, outcomes, denied };
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
 import {
   CERTIFICATION_STATUSES, CERTIFICATION_TIERS,
   checksForTier, type CertificationStatus, type CertificationTier,
@@ -51,6 +52,24 @@ const when = (iso: string) =>
 const inputCls =
   "w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-200 outline-none focus:border-lime/50";
 
+type SuiteCheckResult = {
+  check_key: string;
+  tier: CertificationTier;
+  status: CertificationStatus;
+  recorded: boolean;
+  record_hash?: string;
+};
+type SuiteResponse = {
+  ok: boolean;
+  refused?: boolean;
+  refusal_reason?: string;
+  suite_run_id: string;
+  device_id: string | null;
+  simulated: true;
+  recorded: number;
+  results: SuiteCheckResult[];
+};
+
 export function CertificationConsole({
   devices, runs: initialRuns, canManage, backendConfigured, loadError,
 }: {
@@ -60,9 +79,17 @@ export function CertificationConsole({
   backendConfigured: boolean;
   loadError: string | null;
 }) {
+  const router = useRouter();
   const [runs, setRuns] = useState<ConsoleRun[]>(initialRuns);
   const [tierFilter, setTierFilter] = useState<string>("");
   const [deviceFilter, setDeviceFilter] = useState<string>("");
+
+  // Automated suite state
+  const [suiteDeviceId, setSuiteDeviceId] = useState("");
+  const [suiteBusy, setSuiteBusy] = useState(false);
+  const [suiteMsg, setSuiteMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [suiteResults, setSuiteResults] = useState<SuiteCheckResult[] | null>(null);
+  const [suiteRunId, setSuiteRunId] = useState<string | null>(null);
 
   // Recorder state
   const [deviceId, setDeviceId] = useState("");
@@ -149,6 +176,41 @@ export function CertificationConsole({
     }
   }
 
+  async function runSuite() {
+    if (suiteBusy) return;
+    setSuiteBusy(true);
+    setSuiteMsg(null);
+    setSuiteResults(null);
+    try {
+      const res = await fetch("/api/system/kiosks/certification", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "run_suite", tier: "simulated", ...(suiteDeviceId ? { device_id: suiteDeviceId } : {}) }),
+      });
+      const json = (await res.json().catch(() => ({}))) as Partial<SuiteResponse> & { error?: string; code?: string };
+      if (!res.ok && res.status !== 207) {
+        setSuiteMsg({ ok: false, text: `Error ${res.status}: ${json.error ?? "suite failed"}` });
+        return;
+      }
+      const suite = json as SuiteResponse;
+      setSuiteResults(suite.results ?? []);
+      setSuiteRunId(suite.suite_run_id ?? null);
+      const fails = (suite.results ?? []).filter((r) => r.status === "fail").length;
+      const blockedN = (suite.results ?? []).filter((r) => r.status === "blocked").length;
+      setSuiteMsg({
+        ok: suite.ok !== false,
+        text: `Suite ${suite.suite_run_id?.slice(0, 8)}… — ${suite.recorded ?? 0} runs recorded` +
+          (fails ? `, ${fails} FAILED` : "") + (blockedN ? `, ${blockedN} blocked` : "") +
+          ". All results are simulated-tier software-contract evidence.",
+      });
+      router.refresh(); // reload the runs table from the server
+    } catch {
+      setSuiteMsg({ ok: false, text: "Network error — suite did not complete." });
+    } finally {
+      setSuiteBusy(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       {/* Header + honesty statement */}
@@ -225,6 +287,68 @@ export function CertificationConsole({
           );
         })}
       </section>
+
+      {/* Automated suite runner */}
+      {canManage && backendConfigured && (
+        <section className="rounded-2xl border border-lime/20 bg-lime/[0.04] p-5">
+          <h2 className="font-display text-lg font-bold text-white">Run simulated suite</h2>
+          <p className="mt-1 text-xs text-slate-400">
+            Executes the automated checks against the real device-auth, provisioning, ingest and
+            command libs via the kiosk simulator, then records each result into the same
+            hash-chained ledger. With no device selected a fresh <code className="font-mono">sim-</code>{" "}
+            namespace device is provisioned for the run. Select an existing{" "}
+            <span className="font-semibold text-lime">simulator-marked</span> device to bind results to it —
+            physical devices are refused. Physical-tier checks are never automated.
+          </p>
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <select className={inputCls + " w-auto"} value={suiteDeviceId} onChange={(e) => setSuiteDeviceId(e.target.value)} aria-label="Suite device">
+              <option value="">auto — create sim device</option>
+              {devices.map((d) => (
+                <option key={d.id} value={d.id}>{d.label}{d.serial_number ? ` · ${d.serial_number}` : ""}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={runSuite}
+              disabled={suiteBusy}
+              className="rounded-full bg-lime px-5 py-2 text-xs font-bold text-ink hover:bg-[#e6ffa8] disabled:opacity-50"
+            >
+              {suiteBusy ? "Running suite…" : "Run simulated suite"}
+            </button>
+            {suiteMsg && (
+              <p className={`text-xs ${suiteMsg.ok ? "text-lime" : "text-red-300"}`}>{suiteMsg.text}</p>
+            )}
+          </div>
+          {suiteResults && suiteResults.length > 0 && (
+            <div className="mt-4 overflow-x-auto rounded-xl border border-white/10">
+              <table className="w-full text-left text-xs">
+                <thead className="border-b border-white/10 text-[10px] uppercase tracking-wider text-slate-500">
+                  <tr>{["Tier", "Check", "Status", "Recorded"].map((h) => (
+                    <th key={h} className="px-3 py-2 font-extrabold">{h}</th>
+                  ))}</tr>
+                </thead>
+                <tbody>
+                  {suiteResults.map((r) => (
+                    <tr key={`${r.tier}:${r.check_key}`} className="border-b border-white/5 last:border-0">
+                      <td className="px-3 py-2">
+                        <span className={`rounded-full px-2 py-0.5 font-mono text-[10px] font-bold ring-1 ${TIER_TONE[r.tier]}`}>{r.tier}</span>
+                      </td>
+                      <td className="px-3 py-2 font-mono font-bold text-slate-200">{r.check_key}</td>
+                      <td className="px-3 py-2">
+                        <span className={`rounded-full px-2 py-0.5 font-mono text-[10px] font-bold ring-1 ${STATUS_TONE[r.status]}`}>{r.status}</span>
+                      </td>
+                      <td className="px-3 py-2 font-mono text-slate-400">{r.recorded ? (r.record_hash ? `${r.record_hash.slice(0, 10)}…` : "yes") : "no"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {suiteRunId && (
+            <p className="mt-2 font-mono text-[10px] text-slate-600">suite_run_id {suiteRunId} — group filter via run detail.suite_run_id</p>
+          )}
+        </section>
+      )}
 
       {/* Run recorder */}
       {canManage && backendConfigured && (

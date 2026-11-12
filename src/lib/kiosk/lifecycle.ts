@@ -4,6 +4,10 @@ import { notifyReturnFailed } from "../notifications";
 import { PRICING_V1 } from "../pricing";
 import { assertTransition, type RentalState } from "../rental-state";
 import { trackServer } from "../analytics";
+import {
+  COMMAND_SELECT, INACTIVE_COMMAND_STATES, OPEN_COMMAND_STATES,
+  RESOLVED_COMMAND_STATES, TERMINAL_SUCCESS_STATES,
+} from "./commands";
 
 /** Device event types that mean "a power bank was physically docked/returned". Vendor aliases land here. */
 export const RETURN_EVENT_TYPES = new Set(["power_bank_docked", "bank_returned", "return_detected", "return_acknowledged"]);
@@ -32,7 +36,6 @@ export const RETURNABLE_STATES = ["active", "return_pending", "overdue", "unretu
 const TERMINAL_STATES = ["returned", "closed", "cancelled", "charged_off", "disputed"];
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const COMMAND_SELECT = "id,kiosk_id,command,idempotency_key,status,payload,created_at,resolved_at";
 
 export type KioskEventInput = {
   /** Vendor-supplied event id — the replay-protection key. Null events are still processed once. */
@@ -78,6 +81,8 @@ type RentalRow = {
 type CommandRow = {
   id: string; kiosk_id: string; command: string; idempotency_key: string;
   status: string; payload: Record<string, unknown> | null;
+  resolved_at?: string | null; expires_at?: string | null;
+  expected_response_types?: string[] | null; resolved_outcome?: string | null;
 };
 
 const RENTAL_SELECT = "id,state,power_bank_id,kiosk_id,non_return_deadline,returned_at";
@@ -110,6 +115,23 @@ async function findCommand(db: SupabaseClient, kioskId: string, commandId: strin
   if (!cmd && UUID_RE.test(commandId)) {
     const { data: byId } = await db.from("device_commands").select(COMMAND_SELECT)
       .eq("kiosk_id", kioskId).eq("id", commandId).maybeSingle();
+    cmd = (byId as CommandRow | null) ?? null;
+  }
+  return cmd;
+}
+
+/**
+ * Global (NOT kiosk-scoped) command lookup — used only to prove an ack came from the
+ * WRONG device. idempotency_key is globally unique, so a hit here with a different
+ * kiosk_id is a genuine cross-device attempt, never a legitimate correlation.
+ */
+async function findCommandAny(db: SupabaseClient, commandId: string): Promise<CommandRow | null> {
+  const { data: byKey } = await db.from("device_commands").select(COMMAND_SELECT)
+    .eq("idempotency_key", commandId).maybeSingle();
+  let cmd = (byKey as CommandRow | null) ?? null;
+  if (!cmd && UUID_RE.test(commandId)) {
+    const { data: byId } = await db.from("device_commands").select(COMMAND_SELECT)
+      .eq("id", commandId).maybeSingle();
     cmd = (byId as CommandRow | null) ?? null;
   }
   return cmd;
@@ -164,7 +186,90 @@ async function raiseException(
 }
 
 /**
- * Phase 2.4 ack handler. Correlates dispense/fault acknowledgements against
+ * Phase 2.5 ack-integrity windows.
+ *  - COMMAND_ACK_GRACE_MS: a device may ack slightly past expires_at (clock skew);
+ *    beyond that the ack is stale evidence, not a resolution.
+ *  - STALE_ACK_WINDOW_MS: an ack whose hardware/occurred time predates the command's
+ *    resolved_at by more than this is a replayed/ancient signal — stale_ack.
+ */
+const COMMAND_ACK_GRACE_MS = 60_000;
+const STALE_ACK_WINDOW_MS = 10 * 60_000;
+
+/** Coarse ack polarity used for conflict detection — independent of event type sets. */
+function ackPolarity(ev: KioskEventInput): "acknowledged" | "failed" | "neutral" {
+  if (DISPENSE_CONFIRM_TYPES.has(ev.type)) return "acknowledged";
+  if (DISPENSE_FAIL_TYPES.has(ev.type) || RETURN_FAIL_TYPES.has(ev.type)) return "failed";
+  if (ev.ackOutcome === "acknowledged" || ev.ackOutcome === "released" || ev.ackOutcome === "detected") return "acknowledged";
+  if (ev.ackOutcome === "failed" || ev.ackOutcome === "rejected") return "failed";
+  return "neutral";
+}
+
+/**
+ * Phase 2.5 command-state gate. Runs AFTER kiosk-scoped correlation and BEFORE any
+ * rental resolution/transition. Returns an outcome to short-circuit with, or null
+ * when the command is open and the ack may proceed:
+ *
+ *  - inactive states (timeout | cancelled | expired | unknown_outcome |
+ *    requires_investigation): any ack → 'stale_ack' exception. These commands were
+ *    already resolved one way or another; a late ack is evidence for staff, NEVER a
+ *    transition — it must not restart a closed rental or re-open the command.
+ *  - resolved states (acknowledged | confirmed | failed): same outcome →
+ *    already_recorded; contradictory outcome → 'conflicting_ack' exception;
+ *    ack older than resolved_at by > STALE_ACK_WINDOW_MS → 'stale_ack'.
+ *  - open states (queued | sent | awaiting_ack): ack event time beyond
+ *    expires_at + grace → 'stale_ack'; event type outside the command's
+ *    expected_response_types → 'unexpected_ack_type' exception.
+ */
+async function gateCommandAck(
+  db: SupabaseClient, kiosk: { id: string }, ev: KioskEventInput,
+  command: CommandRow,
+  done: (o: KioskEventOutcome) => Promise<KioskEventOutcome>,
+): Promise<KioskEventOutcome | null> {
+  const status = command.status;
+  const evMs = Date.parse(ev.occurredAt);
+  const raise = async (kind: string, detail: Record<string, unknown>) => {
+    await raiseException(db, kiosk, ev, kind, { command_id: command.id, command_status: status, ...detail });
+    return done({ result: "exception_raised", kind });
+  };
+
+  if (INACTIVE_COMMAND_STATES.has(status)) {
+    return raise("stale_ack", { reason: "command_inactive" });
+  }
+
+  if (RESOLVED_COMMAND_STATES.has(status)) {
+    const resolvedMs = command.resolved_at ? Date.parse(command.resolved_at) : NaN;
+    if (Number.isFinite(evMs) && Number.isFinite(resolvedMs) && evMs < resolvedMs - STALE_ACK_WINDOW_MS) {
+      return raise("stale_ack", { reason: "ack_predates_resolution", resolved_at: command.resolved_at });
+    }
+    const recorded = command.resolved_outcome
+      ?? (TERMINAL_SUCCESS_STATES.has(status) ? "acknowledged" : "failed");
+    const pol = ackPolarity(ev);
+    if (pol !== "neutral" && recorded && pol !== recorded) {
+      return raise("conflicting_ack", { recorded_outcome: recorded, ack_outcome: pol });
+    }
+    return done({ result: "already_recorded" });
+  }
+
+  if (!OPEN_COMMAND_STATES.has(status)) {
+    // Unknown legacy status — do not guess; record and investigate.
+    return raise("unexpected_command_state", {});
+  }
+
+  const expMs = command.expires_at ? Date.parse(command.expires_at) : NaN;
+  if (Number.isFinite(expMs) && Number.isFinite(evMs) && evMs > expMs + COMMAND_ACK_GRACE_MS) {
+    return raise("stale_ack", { reason: "ack_after_expiry", expires_at: command.expires_at });
+  }
+
+  const expected = command.expected_response_types;
+  if (Array.isArray(expected) && expected.length > 0 && !expected.includes(ev.type)) {
+    return raise("unexpected_ack_type", { event_type: ev.type, expected_response_types: expected });
+  }
+
+  return null;
+}
+
+/**
+ * Phase 2.4/2.5 ack handler. Correlates dispense/fault acknowledgements against
  * device_commands + rentals, records honest outcomes, and raises rental_exceptions
  * on ambiguity. NEVER settles, captures, or closes anything — settlement stays with
  * the verified return path (staff captureOnReturn) and verified returns only.
@@ -181,15 +286,26 @@ async function handleDeviceAck(
   // Nothing correlates this event to a command, rental or bank — logged, never acted on.
   if (!commandId && !rentalRef && !bankId) return done({ result: "unmatched" });
 
-  // Command correlation: device_commands.id (uuid) or .idempotency_key (text).
+  // Command correlation: device_commands.id (uuid) or .idempotency_key (text),
+  // scoped to the AUTHENTICATED kiosk. A command owned by a different kiosk is a
+  // cross-device ack attempt — exception, never a correlation.
   const command = commandId ? await findCommand(db, kiosk.id, commandId) : null;
   if (commandId && !command) {
+    const foreign = await findCommandAny(db, commandId);
+    if (foreign && foreign.kiosk_id !== kiosk.id) {
+      await raiseException(db, kiosk, ev, "cross_device_ack", {
+        command_id: commandId, owner_kiosk_id: foreign.kiosk_id, owner_command_id: foreign.id,
+      });
+      return done({ result: "exception_raised", kind: "cross_device_ack" });
+    }
     await raiseException(db, kiosk, ev, "unknown_command", { command_id: commandId });
     return done({ result: "exception_raised", kind: "unknown_command" });
   }
-  // Idempotent command correlation: a second ack for an already-resolved command is a no-op.
-  if (command && (command.status === "acknowledged" || command.status === "failed")) {
-    return done({ result: "already_recorded" });
+  // Phase 2.5: command state machine gate — stale/conflicting/unexpected acks are
+  // exceptions; only open commands proceed to rental resolution.
+  if (command) {
+    const gated = await gateCommandAck(db, kiosk, ev, command, done);
+    if (gated) return gated;
   }
 
   // Rental resolution: command payload hint > explicit rental_ref > bank→latest rental.
@@ -234,10 +350,13 @@ async function handleDeviceAck(
   const positive = DISPENSE_CONFIRM_TYPES.has(ev.type);
   const failure = DISPENSE_FAIL_TYPES.has(ev.type) || RETURN_FAIL_TYPES.has(ev.type);
 
-  // Command status reconciliation (idempotent — terminal states were handled above).
+  // Command status reconciliation (idempotent — non-open states were gated above).
   if (command && (positive || failure)) {
     const status = positive ? "acknowledged" : "failed";
-    await db.from("device_commands").update({ status, resolved_at: nowIso }).eq("id", command.id);
+    await db.from("device_commands").update({
+      status, resolved_at: nowIso, resolved_outcome: positive ? "acknowledged" : "failed",
+      last_transition_at: nowIso,
+    }).eq("id", command.id);
   }
 
   if (positive) {
@@ -309,8 +428,24 @@ async function reconcileReturnCommand(
     await raiseException(db, kiosk, ev, "unknown_command", { command_id: commandId });
     return;
   }
-  if (command.status !== "acknowledged" && command.status !== "failed") {
-    await db.from("device_commands").update({ status: "acknowledged", resolved_at: nowIso }).eq("id", command.id);
+  // Phase 2.5: only open commands may be resolved by this ack. A command that
+  // already failed contradicts a return acknowledgement → conflicting_ack; an
+  // inactive/unknown-outcome command → stale_ack. Neither changes the return
+  // outcome — the verified physical return already happened.
+  if (OPEN_COMMAND_STATES.has(command.status)) {
+    await db.from("device_commands").update({
+      status: "acknowledged", resolved_at: nowIso,
+      resolved_outcome: "acknowledged", last_transition_at: nowIso,
+    }).eq("id", command.id);
+  } else if (command.status === "failed") {
+    await raiseException(db, kiosk, ev, "conflicting_ack", {
+      command_id: command.id, command_status: command.status,
+      recorded_outcome: command.resolved_outcome ?? "failed", ack_outcome: "acknowledged",
+    });
+  } else if (!TERMINAL_SUCCESS_STATES.has(command.status)) {
+    await raiseException(db, kiosk, ev, "stale_ack", {
+      command_id: command.id, command_status: command.status, reason: "command_inactive",
+    });
   }
 }
 
