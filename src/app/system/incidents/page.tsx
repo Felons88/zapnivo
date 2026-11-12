@@ -5,8 +5,9 @@ import { SystemGate } from "@/components/SystemGate";
 import { serviceClient } from "@/lib/supabase";
 import { getSessionUser } from "@/lib/auth";
 import { roleCan, systemRole } from "@/lib/system/rbac";
-import { listIncidents, INCIDENT_STATUSES } from "@/lib/system/incidents";
+import { listIncidents, INCIDENT_STATUSES, INCIDENT_TRANSITIONS, isIncidentStatus } from "@/lib/system/incidents";
 import { AcknowledgeButton } from "./AcknowledgeButton";
+import { IncidentActions } from "./IncidentActions";
 
 export const metadata: Metadata = { title: "Incidents" };
 
@@ -22,6 +23,7 @@ const sevTone = (s: string) =>
 const statusTone = (s: string) =>
   s === "resolved" ? "bg-lime/15 text-lime ring-lime/30"
   : s === "monitoring" || s === "mitigating" ? "bg-sky-400/15 text-sky-300 ring-sky-400/30"
+  : s === "reopened" ? "bg-orange-500/15 text-orange-300 ring-orange-400/30"
   : s === "investigating" || s === "identified" ? "bg-amber-400/15 text-amber-300 ring-amber-400/30"
   : "bg-white/10 text-slate-300 ring-white/15";
 
@@ -49,8 +51,9 @@ export default async function IncidentsPage({ searchParams }: { searchParams: Pr
             Observability incidents from the <code className="font-mono">incidents</code> table (uptime / cron /
             error-spike / manual sources). Acknowledge stamps{" "}
             <code className="font-mono">acknowledged_at</code> only — the status lifecycle is owned by the
-            incident workflow. Status changes beyond acknowledgement are{" "}
-            <span className="font-mono">not_supported</span> here. Mutations require{" "}
+            incident workflow. Lifecycle transitions (detected → investigating → … → resolved,
+            reopen requires a reason) are available per row and recorded in{" "}
+            <code className="font-mono">system_incident_events</code>. Mutations require{" "}
             <code className="font-mono">system.changes.request</code>.
           </p>
         </div>
@@ -95,7 +98,7 @@ export default async function IncidentsPage({ searchParams }: { searchParams: Pr
               {rows.map((i) => (
                 <tr key={i.id} className="border-b border-white/5 align-top last:border-0 hover:bg-white/[0.02]">
                   <td className="max-w-[280px] px-4 py-3">
-                    <p className="font-bold text-slate-200">{i.title}</p>
+                    <Link href={`/system/incidents/${i.id}`} className="font-bold text-slate-200 hover:text-lime">{i.title}</Link>
                     <p className="font-mono text-[11px] text-slate-500">{i.number} · {i.id.slice(0, 8)}…</p>
                     {i.summary && (
                       <details className="mt-1">
@@ -124,8 +127,13 @@ export default async function IncidentsPage({ searchParams }: { searchParams: Pr
                     <div>resolved: {when(i.resolved_at)}</div>
                   </td>
                   {canMutate && (
-                    <td className="px-4 py-3 text-right">
-                      <AcknowledgeButton incidentId={i.id} acknowledged={!!i.acknowledged_at} resolved={i.status === "resolved"} />
+                    <td className="px-4 py-3">
+                      <div className="flex flex-col items-end gap-2">
+                        <AcknowledgeButton incidentId={i.id} acknowledged={!!i.acknowledged_at} resolved={i.status === "resolved"} />
+                        {isIncidentStatus(i.status) && (
+                          <IncidentActions incidentId={i.id} current={i.status} targets={INCIDENT_TRANSITIONS[i.status]} />
+                        )}
+                      </div>
                     </td>
                   )}
                 </tr>

@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { SYSTEM_ROLES, type SystemRole } from "./rbac";
-import { systemAudit, type SystemActor } from "./audit";
+import { systemAudit, type ChangeRisk, type SystemActor } from "./audit";
 
 /**
  * Technical user administration for system.zapnivo.com.
@@ -21,6 +21,8 @@ export type SystemUserRow = {
   business_role: string;
   system_role: SystemRole | null;
   mfa_required: boolean;
+  /** profiles.system_suspended (0043) — suspended users keep the role but lose access. */
+  suspended: boolean;
   created_at: string;
 };
 
@@ -31,14 +33,14 @@ export type SystemUserRow = {
 export async function listSystemUsers(db: SupabaseClient): Promise<SystemUserRow[]> {
   const { data, error } = await db
     .from("profiles")
-    .select("id,email,full_name,role,system_role,mfa_required,created_at")
+    .select("id,email,full_name,role,system_role,mfa_required,system_suspended,created_at")
     .or("system_role.not.is.null,role.in.(admin,staff)")
     .order("created_at", { ascending: false })
     .limit(500);
   if (error) return [];
   return ((data ?? []) as {
     id: string; email: string; full_name: string | null; role: string;
-    system_role: string | null; mfa_required: boolean; created_at: string;
+    system_role: string | null; mfa_required: boolean; system_suspended: boolean | null; created_at: string;
   }[]).map((p) => ({
     id: p.id,
     email: p.email,
@@ -46,6 +48,7 @@ export async function listSystemUsers(db: SupabaseClient): Promise<SystemUserRow
     business_role: p.role,
     system_role: (SYSTEM_ROLES as readonly string[]).includes(p.system_role ?? "") ? (p.system_role as SystemRole) : null,
     mfa_required: p.mfa_required === true,
+    suspended: p.system_suspended === true,
     created_at: p.created_at,
   }));
 }
@@ -53,6 +56,16 @@ export async function listSystemUsers(db: SupabaseClient): Promise<SystemUserRow
 export type RoleChangeResult =
   | { ok: true; user: SystemUserRow }
   | { ok: false; status: number; error: string };
+
+/**
+ * Change-request risk for a system_role grant/revoke. 'breakglass' AND
+ * 'sysadmin' are high-risk: they require an approved change request decided
+ * by a different principal before the mutation executes (route enforces via
+ * assertApprovedOrRequest; this helper keeps the policy in one place).
+ */
+export function roleGrantRisk(role: SystemRole | null): ChangeRisk {
+  return role === "breakglass" || role === "sysadmin" ? "high" : "medium";
+}
 
 /**
  * Grants or revokes a system_role. `newRole = null` revokes.
@@ -67,12 +80,12 @@ export async function setSystemRole(
 ): Promise<RoleChangeResult> {
   const { data: target, error: readErr } = await db
     .from("profiles")
-    .select("id,email,full_name,role,system_role,mfa_required,created_at")
+    .select("id,email,full_name,role,system_role,mfa_required,system_suspended,created_at")
     .eq("id", targetUserId)
     .maybeSingle();
   if (readErr) return { ok: false, status: 500, error: readErr.message };
   if (!target) return { ok: false, status: 404, error: "User not found" };
-  const t = target as { id: string; email: string; full_name: string | null; role: string; system_role: string | null; mfa_required: boolean; created_at: string };
+  const t = target as { id: string; email: string; full_name: string | null; role: string; system_role: string | null; mfa_required: boolean; system_suspended: boolean | null; created_at: string };
 
   const { error: upErr } = await db
     .from("profiles")
@@ -91,7 +104,8 @@ export async function setSystemRole(
     ok: true,
     user: {
       id: t.id, email: t.email, full_name: t.full_name, business_role: t.role,
-      system_role: newRole, mfa_required: t.mfa_required === true, created_at: t.created_at,
+      system_role: newRole, mfa_required: t.mfa_required === true,
+      suspended: t.system_suspended === true, created_at: t.created_at,
     },
   };
 }

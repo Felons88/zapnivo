@@ -39,9 +39,11 @@ export default async function SystemUsersPage() {
           <h1 className="mt-2 font-display text-3xl font-bold tracking-tight">System users</h1>
           <p className="mt-1 max-w-3xl text-sm text-slate-400">
             Technical access tier (<code className="font-mono text-xs">profiles.system_role</code>) — separate from
-            business roles. Granting <code className="font-mono text-xs">breakglass</code> or any change by a
-            breakglass principal requires an approved change request (separation of duties). You cannot modify your
-            own role. Every change is written to the{" "}
+            business roles. Granting <code className="font-mono text-xs">breakglass</code> or{" "}
+            <code className="font-mono text-xs">sysadmin</code>, suspending users, revoking sessions, and
+            breakglass mutations require an approved change request (separation of duties); privileged grants and
+            lifecycle actions also need a live <Link href="/system/security/mfa" className="text-lime underline">MFA step-up</Link>.
+            You cannot modify your own access. Every change is written to the{" "}
             <Link href="/system/security/audit" className="text-lime underline">system audit log</Link>.
           </p>
         </div>
@@ -79,7 +81,7 @@ export default async function SystemUsersPage() {
                       {u.id === selfId ? (
                         <span className="font-mono text-[10px] text-slate-500">self — locked</span>
                       ) : (
-                        <UserAdmin userId={u.id} currentRole={u.system_role} canManage={canManage} />
+                        <UserAdmin userId={u.id} currentRole={u.system_role} suspended={u.suspended} canManage={canManage} />
                       )}
                     </td>
                   </tr>

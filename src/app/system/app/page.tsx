@@ -35,9 +35,14 @@ export default function AppInfraPage() {
             <h1 className="mt-2 font-display text-3xl font-bold tracking-tight">Application infrastructure</h1>
             <p className="mt-1 font-mono text-xs text-slate-400">checked {new Date(d.checkedAt).toISOString()}</p>
           </div>
-          <Link href="/system/app/environments" className="rounded-full bg-white/10 px-4 py-2 text-xs font-bold text-slate-200 ring-1 ring-white/15 hover:bg-white/15">
-            Environments
-          </Link>
+          <div className="flex gap-2">
+            <Link href="/system/app/deployments" className="rounded-full bg-white/10 px-4 py-2 text-xs font-bold text-slate-200 ring-1 ring-white/15 hover:bg-white/15">
+              Deployments
+            </Link>
+            <Link href="/system/app/environments" className="rounded-full bg-white/10 px-4 py-2 text-xs font-bold text-slate-200 ring-1 ring-white/15 hover:bg-white/15">
+              Environments
+            </Link>
+          </div>
         </div>
 
         <div className="grid gap-4 lg:grid-cols-2">

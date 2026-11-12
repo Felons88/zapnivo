@@ -29,7 +29,8 @@ const NAV: NavGroup[] = [
     items: [
       { href: "/system/kiosks", label: "Fleet registry" },
       { href: "/system/kiosks/register", label: "Register kiosk" },
-      { label: "Firmware", soon: true },
+      { href: "/system/kiosks/firmware", label: "Firmware" },
+      { href: "/system/kiosks/hardware", label: "Hardware readiness" },
     ],
   },
   {
@@ -85,8 +86,10 @@ const NAV: NavGroup[] = [
       { href: "/system/security/audit", label: "Audit log" },
       { href: "/system/changes", label: "Change requests" },
       { href: "/system/security/users", label: "Technical users" },
+      { href: "/system/security/mfa", label: "MFA & step-up" },
       { href: "/system/security/sessions", label: "Sessions" },
       { href: "/system/security/policy", label: "Security policy" },
+      { href: "/system/security/bootstrap", label: "Admin bootstrap" },
     ],
   },
   {
@@ -101,8 +104,10 @@ const NAV: NavGroup[] = [
     name: "System Settings",
     items: [
       { href: "/system/security/users", label: "Roles & access" },
-      { label: "Integrations config", soon: true },
-      { label: "Retention", soon: true },
+      { href: "/system/app/environments", label: "Integrations config" },
+      { href: "/system/settings/retention", label: "Retention" },
+      { href: "/system/recovery", label: "Disaster recovery" },
+      { href: "/system/app/deployments", label: "Deployment requests" },
     ],
   },
 ];

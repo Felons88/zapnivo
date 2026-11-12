@@ -129,8 +129,10 @@ export async function systemRole(user: SessionUser | null, db?: SupabaseClient |
   const client = db === undefined ? serviceClient() : db;
   if (!client) return null;
   try {
-    const { data, error } = await client.from("profiles").select("system_role").eq("id", user.id).maybeSingle();
+    const { data, error } = await client.from("profiles").select("system_role,system_suspended").eq("id", user.id).maybeSingle();
     if (error || !data) return null;
+    // Suspended technical users lose ALL system access even with a role set (0043).
+    if ((data as { system_suspended?: unknown }).system_suspended === true) return null;
     const role = (data as { system_role?: unknown }).system_role;
     return isSystemRole(role) ? role : null;
   } catch {

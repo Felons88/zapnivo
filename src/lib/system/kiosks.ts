@@ -4,6 +4,7 @@ import { z } from "zod";
 import { systemAudit, assertApprovedOrRequest, type ChangeRisk, type SystemActor } from "./audit";
 import { getKioskAdapter } from "@/lib/kiosk/adapter";
 import { HEARTBEAT_STALE_MIN } from "@/lib/kiosk/heartbeat";
+import { classifyReadiness, type ReadinessCheck } from "./hardware";
 
 /**
  * Kiosk fleet registry helpers (system.zapnivo.com → KIOSK INFRASTRUCTURE).
@@ -73,7 +74,7 @@ export const DEVICE_STATUS_TONE: Record<string, string> = {
 export const deviceAuditResource = (deviceId: string) => `system_device:${deviceId}`;
 
 export const SYSTEM_DEVICE_SELECT =
-  "id,device_uid,serial_number,manufacturer,model,gateway,adapter_type,capabilities,slot_count,firmware_version,venue_id,region,status,provision_token_hash,provision_token_expires_at,provision_token_used_at,credential_rotated_at,installed_at,last_heartbeat_at,last_message_at,created_by,created_at,updated_at";
+  "id,device_uid,serial_number,manufacturer,model,gateway,adapter_type,capabilities,slot_count,firmware_version,venue_id,region,status,provision_token_hash,provision_token_expires_at,provision_token_used_at,credential_rotated_at,installed_at,last_heartbeat_at,last_message_at,created_by,created_at,updated_at,auth_method,device_secret_hash,credential_issued_at,credential_expires_at,credential_revoked_at,last_authed_at,last_message_ts";
 
 export type SystemDeviceRow = {
   id: string;
@@ -99,6 +100,15 @@ export type SystemDeviceRow = {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  // Per-device ingest credential columns (migration 0044). device_secret_hash
+  // stores sha256(secret) — the raw secret is never persisted.
+  auth_method: string | null;
+  device_secret_hash: string | null;
+  credential_issued_at: string | null;
+  credential_expires_at: string | null;
+  credential_revoked_at: string | null;
+  last_authed_at: string | null;
+  last_message_ts: number | string | null;
 };
 
 export type VenueRef = { id: string; name: string | null; city: string | null } | null;
@@ -330,6 +340,8 @@ export type DiagnosticResult = {
   checked_at: string;
   checks: DiagnosticCheck[];
   heartbeat_age_minutes: number | null;
+  /** Per-stage hardware-path readiness (api_reachable → hardware_confirmed). */
+  readiness: ReadinessCheck[];
 };
 
 /**
@@ -366,7 +378,24 @@ export async function runDeviceDiagnostics(db: SupabaseClient, device: SystemDev
     : adapter === "simulator" ? "simulated"
     : heartbeatAgeMin == null ? "no_heartbeat"
     : "ok_no_adapter";
-  return { status, adapter, checked_at: now.toISOString(), checks, heartbeat_age_minutes: heartbeatAgeMin };
+
+  // Hardware-path readiness: a stage is 'verified' only from stored evidence.
+  // 'hardware_confirmed' additionally requires a certified profile matching the
+  // device's manufacturer+model (system_hardware_profiles, migration 0044 —
+  // ops-managed, empty until real hardware is certified).
+  let certifiedProfile = false;
+  if (device.manufacturer && device.model) {
+    const { data: prof } = await db.from("system_hardware_profiles")
+      .select("id")
+      .eq("manufacturer", device.manufacturer)
+      .eq("model", device.model)
+      .eq("certification_status", "certified")
+      .limit(1);
+    certifiedProfile = Array.isArray(prof) && prof.length > 0;
+  }
+  const readiness = classifyReadiness({ adapter, heartbeat_age_minutes: heartbeatAgeMin }, { certifiedProfile });
+
+  return { status, adapter, checked_at: now.toISOString(), checks, heartbeat_age_minutes: heartbeatAgeMin, readiness };
 }
 
 /** Records a diagnostic run as a system_device_commands row (state='failed' — see header note). */

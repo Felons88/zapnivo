@@ -3,6 +3,7 @@
     { "path": "/api/cron/rentals", "schedule": "0 12 * * *" },
     { "path": "/api/cron/inbound", "schedule": "0 13 * * *" },
     { "path": "/api/cron/uptime", "schedule": "0 14 * * *" },
-    { "path": "/api/cron/analytics", "schedule": "30 14 * * *" }
+    { "path": "/api/cron/analytics", "schedule": "30 14 * * *" },
+    { "path": "/api/cron/retention", "schedule": "0 4 * * *" }
   ]
 }

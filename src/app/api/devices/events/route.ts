@@ -2,30 +2,124 @@ import { NextResponse } from "next/server";
 import { timingSafeEqual } from "node:crypto";
 import { serviceClient } from "@/lib/supabase";
 import { ingestBodySchema, ingestKioskEvents } from "@/lib/kiosk/ingest";
+import {
+  legacyIngestEnabled, recordDeviceAuthMessage, verifyDeviceAuth,
+  type DeviceAuthRow,
+} from "@/lib/system/device-auth";
 
 /**
- * Hardware event ingest — vendor-agnostic. A kiosk gateway (or vendor webhook bridge) POSTs
- * batches here with `Authorization: Bearer $KIOSK_INGEST_SECRET`. Events are appended to the
- * immutable device_events log, projected into kiosk_slots / power_banks / kiosks.last_seen_at,
- * and actionable events (docks, heartbeats) run through the rental lifecycle processor.
+ * Hardware event ingest — vendor-agnostic. Two auth paths:
+ *
+ *  1. Per-device HMAC-SHA256 (preferred): headers
+ *       X-Device-Id / X-Device-Timestamp / X-Device-Signature
+ *     verified by verifyDeviceAuth (src/lib/system/device-auth.ts) against the
+ *     system_devices credential. The device must be bound to the posted
+ *     station_id via device_uid or serial_number. Every attempt is recorded in
+ *     system_device_messages — secrets/signatures are NEVER logged.
+ *
+ *  2. Legacy shared secret: `Authorization: Bearer $KIOSK_INGEST_SECRET`,
+ *     accepted ONLY while KIOSK_LEGACY_INGEST=1 AND the station is not bound to
+ *     a system_devices row holding a live hmac_sha256 credential. Migration
+ *     path: enroll devices via /api/system/kiosks/[id]/credential, then unset
+ *     the flag. Request/response contract for legacy clients is unchanged.
+ *
+ * Events are appended to the immutable device_events log, projected into
+ * kiosk_slots / power_banks / kiosks.last_seen_at, and actionable events run
+ * through the rental lifecycle processor.
  */
 const safeEq = (a: string, b: string) => { const x = Buffer.from(a), y = Buffer.from(b); return x.length === y.length && timingSafeEqual(x, y); };
 
+/** Finds a system_devices row bound to this station_id (device_uid or serial). */
+async function findStationDevice(db: NonNullable<ReturnType<typeof serviceClient>>, stationId: string): Promise<DeviceAuthRow | null> {
+  // PostgREST .or() filter — restrict to safe chars to avoid filter injection.
+  if (!/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}$/.test(stationId)) return null;
+  const { data } = await db.from("system_devices")
+    .select("id,device_uid,serial_number,status,auth_method,device_secret_hash,credential_issued_at,credential_expires_at,credential_revoked_at,last_authed_at,last_message_ts")
+    .or(`device_uid.eq.${stationId},serial_number.eq.${stationId}`)
+    .limit(1);
+  const rows = (data ?? []) as DeviceAuthRow[];
+  return rows[0] ?? null;
+}
+
+const hasLiveHmacCredential = (d: DeviceAuthRow | null) =>
+  !!d && d.auth_method === "hmac_sha256" && !!d.device_secret_hash && !d.credential_revoked_at;
+
 export async function POST(req: Request) {
-  const secret = process.env.KIOSK_INGEST_SECRET;
-  if (!secret) return NextResponse.json({ error: "Device ingest not configured" }, { status: 503 });
-  const bearer = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
-  if (!safeEq(bearer, secret)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const db = serviceClient();
   if (!db) return NextResponse.json({ error: "Backend not configured" }, { status: 503 });
 
-  const parsed = ingestBodySchema.safeParse(await req.json().catch(() => null));
+  // Read raw body once — the HMAC covers the exact bytes sent.
+  const rawBody = await req.text();
+
+  const devId = req.headers.get("x-device-id");
+  const devTs = req.headers.get("x-device-timestamp");
+  const devSig = req.headers.get("x-device-signature");
+
+  let authedDevice: DeviceAuthRow | null = null;
+  let authMethod: string;
+
+  if (devId || devTs || devSig) {
+    // ── Path 1: per-device HMAC ──────────────────────────────────────────
+    if (!devId || !devTs || !devSig) {
+      await recordDeviceAuthMessage(db, { result: "rejected", authMethod: "hmac_sha256", detail: { reason: "missing_headers" } });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const v = await verifyDeviceAuth(db, { deviceId: devId, timestamp: devTs, signature: devSig, body: rawBody });
+    if (!v.ok) return NextResponse.json({ error: v.error }, { status: v.status });
+    authedDevice = v.device;
+    authMethod = "hmac_sha256";
+  } else {
+    // ── Path 2: legacy shared secret (flag-gated) ────────────────────────
+    if (!legacyIngestEnabled()) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const secret = process.env.KIOSK_INGEST_SECRET;
+    if (!secret) return NextResponse.json({ error: "Device ingest not configured" }, { status: 503 });
+    const bearer = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
+    if (!safeEq(bearer, secret)) {
+      await recordDeviceAuthMessage(db, { result: "rejected", authMethod: "shared_secret_legacy", detail: { reason: "bad_bearer" } });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    authMethod = "shared_secret_legacy";
+  }
+
+  let parsedJson: unknown;
+  try { parsedJson = JSON.parse(rawBody); } catch { parsedJson = null; }
+  const parsed = ingestBodySchema.safeParse(parsedJson);
   if (!parsed.success) return NextResponse.json({ error: "Invalid payload" }, { status: 422 });
   const body = parsed.data;
 
   const { data: kiosk } = await db.from("kiosks").select("id,state").eq("station_id", body.station_id).single();
   if (!kiosk) return NextResponse.json({ error: "Unknown station" }, { status: 404 });
 
+  // Station binding: an HMAC-authenticated device may only post for the station
+  // it is registered as (device_uid or serial_number). Legacy clients are bound
+  // only by the shared secret — and are refused entirely for stations whose
+  // system_devices row already holds a live hmac credential.
+  const stationDevice = authedDevice ?? (await findStationDevice(db, body.station_id));
+  if (authedDevice) {
+    const bound = authedDevice.device_uid === body.station_id || authedDevice.serial_number === body.station_id;
+    if (!bound) {
+      await recordDeviceAuthMessage(db, {
+        deviceId: authedDevice.id, authMethod: "hmac_sha256", result: "rejected",
+        detail: { reason: "station_mismatch", station_id: body.station_id },
+      });
+      return NextResponse.json({ error: "Device is not bound to this station" }, { status: 403 });
+    }
+  } else if (hasLiveHmacCredential(stationDevice)) {
+    await recordDeviceAuthMessage(db, {
+      deviceId: stationDevice!.id, authMethod: "shared_secret_legacy", result: "rejected",
+      detail: { reason: "legacy_blocked_hmac_enrolled", station_id: body.station_id },
+    });
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const result = await ingestKioskEvents(db, kiosk as { id: string; state?: string }, body);
+  await recordDeviceAuthMessage(db, {
+    deviceId: stationDevice?.id ?? null,
+    authMethod,
+    result: "ok",
+    detail: { station_id: body.station_id, events: body.events.length },
+  });
   return NextResponse.json({ ok: true, ...result });
 }

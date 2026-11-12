@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { z } from "zod";
 import { scrub } from "@/lib/observability";
 import { assertApprovedOrRequest, systemAudit, type SystemActor } from "./audit";
 
@@ -22,10 +23,29 @@ import { assertApprovedOrRequest, systemAudit, type SystemActor } from "./audit"
  * engineer/security/sysadmin/breakglass) — viewers and developers get read-only.
  */
 
-export const INCIDENT_STATUSES = ["detected", "investigating", "identified", "mitigating", "monitoring", "resolved"] as const;
+export const INCIDENT_STATUSES = ["detected", "investigating", "identified", "mitigating", "monitoring", "resolved", "reopened"] as const;
 export type IncidentStatus = (typeof INCIDENT_STATUSES)[number];
 export const isIncidentStatus = (v: unknown): v is IncidentStatus =>
   typeof v === "string" && (INCIDENT_STATUSES as readonly string[]).includes(v);
+
+/**
+ * Legal incident lifecycle edges (validated server-side in transitionIncident).
+ * 'reopened' is the explicit reopen state — reachable only from resolved or
+ * monitoring, and ALWAYS requires a reason. 'reopened' re-enters the normal
+ * forward flow (investigating → … → resolved).
+ */
+export const INCIDENT_TRANSITIONS: Record<IncidentStatus, readonly IncidentStatus[]> = {
+  detected: ["investigating", "identified", "mitigating", "monitoring", "resolved"],
+  investigating: ["identified", "mitigating", "monitoring", "resolved"],
+  identified: ["mitigating", "monitoring", "resolved"],
+  mitigating: ["monitoring", "resolved", "investigating"],
+  monitoring: ["resolved", "reopened"],
+  resolved: ["reopened"],
+  reopened: ["investigating", "identified", "mitigating", "monitoring", "resolved"],
+};
+
+/** Targets that require a non-empty reason (reopen must be justified). */
+export const REASON_REQUIRED_TARGETS: readonly IncidentStatus[] = ["reopened"];
 
 export const INCIDENT_SEVERITIES = ["sev1", "sev2", "sev3", "sev4"] as const;
 
@@ -122,4 +142,114 @@ export async function acknowledgeIncident(
     detail: { number: row.number, severity: row.severity, status: row.status, changeRequestId: approval.changeRequestId },
   });
   return { ok: true, incident: updated as IncidentRow, alreadyAcknowledged: false, changeRequestId: approval.changeRequestId };
+}
+
+/* ── Lifecycle transitions (phase 7) ──────────────────────────────────────── */
+
+export const transitionSchema = z.object({
+  to_status: z.enum(INCIDENT_STATUSES),
+  reason: z.string().trim().max(1000).optional(),
+});
+export type TransitionInput = z.infer<typeof transitionSchema>;
+
+export type IncidentEventRow = {
+  id: string;
+  incident_id: string;
+  from_status: string | null;
+  to_status: string;
+  actor_id: string | null;
+  reason: string | null;
+  created_at: string;
+};
+
+export async function getIncident(db: SupabaseClient, incidentId: string): Promise<IncidentRow | null> {
+  const { data, error } = await db.from("incidents").select(SELECT).eq("id", incidentId).maybeSingle();
+  if (error || !data) return null;
+  return data as IncidentRow;
+}
+
+/** Append-only transition history for one incident, oldest first. */
+export async function listIncidentEvents(db: SupabaseClient, incidentId: string, limit = 200): Promise<IncidentEventRow[]> {
+  const { data } = await db.from("system_incident_events")
+    .select("id,incident_id,from_status,to_status,actor_id,reason,created_at")
+    .eq("incident_id", incidentId)
+    .order("created_at", { ascending: true })
+    .limit(Math.min(Math.max(limit, 1), 500));
+  return (data ?? []) as IncidentEventRow[];
+}
+
+export type TransitionResult =
+  | { ok: true; incident: IncidentRow; event: IncidentEventRow | null; changeRequestId: string | null }
+  | { ok: false; status: number; error: string; reason?: string; allowed?: readonly string[] };
+
+/**
+ * Moves an incident along INCIDENT_TRANSITIONS. Illegal edges → 409 (with the
+ * allowed targets). 'reopened' requires a non-empty reason. Routed through
+ * assertApprovedOrRequest (risk: low) so breakglass actors still need an
+ * approved change request. Every executed transition writes a
+ * system_incident_events row + a system_audit_events row; resolved_at is set
+ * on →resolved and cleared when leaving resolved/reopened.
+ */
+export async function transitionIncident(
+  db: SupabaseClient,
+  actor: SystemActor,
+  incidentId: string,
+  toStatus: IncidentStatus,
+  reason?: string,
+): Promise<TransitionResult> {
+  const { data: inc, error } = await db.from("incidents").select(SELECT).eq("id", incidentId).maybeSingle();
+  if (error) return { ok: false, status: 500, error: error.message };
+  if (!inc) return { ok: false, status: 404, error: "Incident not found" };
+  const row = inc as IncidentRow;
+  const from = isIncidentStatus(row.status) ? row.status : null;
+  if (!from) return { ok: false, status: 409, error: `Incident has non-lifecycle status "${row.status}"` };
+  if (from === toStatus) return { ok: false, status: 409, error: `Incident is already ${toStatus}`, allowed: INCIDENT_TRANSITIONS[from] };
+  const allowed = INCIDENT_TRANSITIONS[from];
+  if (!allowed.includes(toStatus)) {
+    return { ok: false, status: 409, error: `Illegal transition ${from} → ${toStatus}`, allowed };
+  }
+  const trimmedReason = reason?.trim() ?? "";
+  if (REASON_REQUIRED_TARGETS.includes(toStatus) && trimmedReason.length < 3) {
+    return { ok: false, status: 422, error: "reason_required", reason: "Reopening an incident requires a reason (min 3 chars)." };
+  }
+
+  const action = `incident.transition:${row.number}:${from}_to_${toStatus}`;
+  const approval = await assertApprovedOrRequest(db, actor, {
+    action,
+    risk: "low",
+    justification: trimmedReason || `Transition incident ${row.number} ${from} → ${toStatus}.`,
+  });
+  if (approval.status === "pending") {
+    await systemAudit(db, { actor, action: "incident.transition_pending", resource: `incident:${row.id}`, detail: { changeRequestId: approval.changeRequestId, from, to: toStatus } });
+    return { ok: false, status: 202, error: "approval_required", reason: "Change request created — transition executes after approval." };
+  }
+  if (approval.status === "error") return { ok: false, status: 500, error: approval.error };
+
+  const patch: Record<string, unknown> = { status: toStatus };
+  if (toStatus === "resolved") patch.resolved_at = new Date().toISOString();
+  if (from === "resolved" || toStatus === "reopened") patch.resolved_at = null;
+
+  const { data: updated, error: upErr } = await db
+    .from("incidents")
+    .update(patch)
+    .eq("id", row.id)
+    .select(SELECT)
+    .single();
+  if (upErr) return { ok: false, status: 500, error: upErr.message };
+
+  let event: IncidentEventRow | null = null;
+  const { data: ev } = await db.from("system_incident_events").insert({
+    incident_id: row.id,
+    from_status: from,
+    to_status: toStatus,
+    actor_id: actor.id,
+    reason: trimmedReason || null,
+  }).select("id,incident_id,from_status,to_status,actor_id,reason,created_at").single();
+  if (ev) event = ev as IncidentEventRow;
+
+  await systemAudit(db, {
+    actor, action: "incident.transitioned", resource: `incident:${row.id}`,
+    detail: { number: row.number, from, to: toStatus, reason: trimmedReason || undefined, changeRequestId: approval.changeRequestId },
+  });
+  return { ok: true, incident: (updated as IncidentRow) ?? row, event, changeRequestId: approval.changeRequestId };
 }

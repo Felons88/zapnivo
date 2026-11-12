@@ -3,6 +3,7 @@ import { z } from "zod";
 import { systemApiGuard, readJson } from "../../_shared";
 import { validateRotationRequest } from "@/lib/system/integrations";
 import { assertApprovedOrRequest, systemAudit } from "@/lib/system/audit";
+import { requireElevation } from "@/lib/system/elevation";
 
 const rotateSchema = z.object({
   provider: z.string().max(60).optional(),
@@ -25,6 +26,11 @@ const rotateSchema = z.object({
 export async function POST(req: Request) {
   const g = await systemApiGuard("system.secrets.rotate", { limit: 10 });
   if (!g.ok) return g.res;
+  // High-risk mutation: requires a live step-up elevation (TOTP verify → 15 min).
+  const elev = await requireElevation(g.db, g.user);
+  if (!elev.ok) {
+    return NextResponse.json({ error: elev.error, code: elev.code }, { status: elev.status });
+  }
   const body = await readJson(req);
   const parsed = rotateSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: "Invalid request", issues: parsed.error.issues }, { status: 400 });

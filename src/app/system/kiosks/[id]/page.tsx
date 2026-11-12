@@ -13,8 +13,11 @@ import {
 } from "@/lib/system/kiosks";
 import { StatusButtons } from "./StatusButtons";
 import { ProvisionPanel } from "./ProvisionPanel";
+import { CredentialPanel } from "./CredentialPanel";
 import { DiagnosticsButton } from "./DiagnosticsButton";
 import { CommandForm } from "./CommandForm";
+import { deviceCredentialStatus } from "@/lib/system/device-auth";
+import type { ReadinessCheck } from "@/lib/system/hardware";
 
 export const metadata: Metadata = { title: "Kiosk Infrastructure — Device" };
 
@@ -66,7 +69,9 @@ export default async function KioskDevicePage({ params }: { params: Promise<{ id
   const diagnostics = commands.filter((c) => c.command_type === "diagnostic_ping");
   const conn = deriveConnectivity(device);
   const tokenState = provisionTokenState(device);
+  const credential = deviceCredentialStatus(device);
   const adapter = kioskAdapterName();
+  const latestDiagnostics = diagnostics[0]?.result as { readiness?: ReadinessCheck[] } | null | undefined;
   const transitionTargets = DEVICE_TRANSITIONS[device.status].map((s) => ({ status: s, risk: transitionRisk(s) }));
 
   return (
@@ -147,6 +152,11 @@ export default async function KioskDevicePage({ params }: { params: Promise<{ id
             <div className="mt-3"><ProvisionPanel deviceId={device.id} canManage={canManage} tokenState={tokenState} /></div>
           </Section>
 
+          {/* Ingest credential (per-device HMAC) */}
+          <Section title="Device credential">
+            <CredentialPanel deviceId={device.id} canManage={canManage} credential={credential} />
+          </Section>
+
           {/* Lifecycle */}
           <Section title="Lifecycle">
             <div className="flex items-center gap-3">
@@ -187,6 +197,19 @@ export default async function KioskDevicePage({ params }: { params: Promise<{ id
         {/* Diagnostics history */}
         <Section title={`Diagnostics (${diagnostics.length})`}>
           <div className="mb-3"><DiagnosticsButton deviceId={device.id} canManage={canManage} /></div>
+          {latestDiagnostics?.readiness && latestDiagnostics.readiness.length > 0 && (
+            <div className="mb-3 flex flex-wrap gap-1.5">
+              {latestDiagnostics.readiness.map((r) => (
+                <span key={r.stage} title={r.detail}
+                  className={`rounded-full px-2.5 py-0.5 font-mono text-[10px] font-bold ring-1 ${
+                    r.state === "verified" ? "bg-lime/15 text-lime ring-lime/30"
+                    : r.state === "failed" ? "bg-red-500/15 text-red-300 ring-red-400/30"
+                    : "bg-white/10 text-slate-400 ring-white/15"}`}>
+                  {r.stage}:{r.state}
+                </span>
+              ))}
+            </div>
+          )}
           {diagnostics.length === 0 ? (
             <p className="text-sm text-slate-400">No diagnostics recorded yet.</p>
           ) : (
