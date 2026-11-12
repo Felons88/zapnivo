@@ -13,6 +13,8 @@ type CredentialState =
       revokedAt: string | null;
       lastAuthedAt: string | null;
       rotationPending?: boolean;
+      rotationOverdue?: boolean;
+      rotationAgeHours?: number;
       rotationNextExpiresAt?: string | null;
     };
 
@@ -64,6 +66,8 @@ export function CredentialPanel({ deviceId, canManage, credential, kek }: { devi
 
   const active = credential.state === "active";
   const rotationPending = "rotationPending" in credential && credential.rotationPending === true;
+  const rotationOverdue = "rotationOverdue" in credential && credential.rotationOverdue === true;
+  const rotationAgeHours = "rotationAgeHours" in credential ? credential.rotationAgeHours : 0;
   const nextExpires = "rotationNextExpiresAt" in credential ? credential.rotationNextExpiresAt : null;
 
   return (
@@ -77,7 +81,13 @@ export function CredentialPanel({ deviceId, canManage, credential, kek }: { devi
         {rotationPending && (
           <div className="col-span-2 flex justify-between gap-2 border-b border-amber-400/20 bg-amber-400/5 px-2 py-1">
             <dt className="text-amber-300/80">rotation</dt>
-            <dd className="font-mono text-amber-300">pending — next expires {when(nextExpires)}</dd>
+            <dd className="font-mono text-amber-300">pending — next expires {when(nextExpires)}{rotationAgeHours ? ` · ${rotationAgeHours}h old` : ""}</dd>
+          </div>
+        )}
+        {rotationOverdue && (
+          <div className="col-span-2 flex justify-between gap-2 border-b border-red-400/30 bg-red-500/10 px-2 py-1">
+            <dt className="text-red-300/90">rotation</dt>
+            <dd className="font-mono text-red-300">OVERDUE — staged credential expired {when(nextExpires)}{rotationAgeHours ? ` · ${rotationAgeHours}h old` : ""}; awaiting sweep</dd>
           </div>
         )}
       </dl>

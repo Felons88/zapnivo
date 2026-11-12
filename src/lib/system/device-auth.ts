@@ -23,7 +23,9 @@ import { DEVICE_TRANSITIONS, deviceAuditResource, isUuid, type SystemDeviceStatu
  *    current KEK on decrypt failure, enabling staged rotation. Re-encryption
  *    is manual per device via reencryptDeviceCredential (verify-before-write).
  *  - ZERO-DOWNTIME ROTATION: startCredentialRotation stages a new secret in
- *    device_secret_enc_next (72h window). During the overlap BOTH credentials
+ *    device_secret_enc_next (overlap window = rotationWindowMs(), env
+ *    DEVICE_CREDENTIAL_ROTATION_WINDOW_HOURS, default 72h, clamp 1–168h).
+ *    During the overlap BOTH credentials
  *    verify; the first successful auth with the next secret promotes it to
  *    the primary slot. cancelCredentialRotation / revokeDeviceCredential clear
  *    the pending slot (revoke clears both).
@@ -297,6 +299,12 @@ export type CredentialStatus =
       lastAuthedAt: string | null;
       /** True while a zero-downtime rotation window is open (next slot live). */
       rotationPending: boolean;
+      /** True when a staged next slot exists but its window already lapsed
+       *  (awaiting sweepExpiredRotations cleanup). */
+      rotationOverdue: boolean;
+      /** Hours since the pending rotation was staged (derived from the
+       *  configured window; display-only estimate). 0 when none pending. */
+      rotationAgeHours: number;
       rotationNextExpiresAt: string | null;
     };
 
@@ -311,7 +319,17 @@ export function deviceCredentialStatus(device: DeviceAuthRow, now = new Date()):
       : { state: "none" };
   }
   const nextExpMs = device.credential_next_expires_at ? Date.parse(device.credential_next_expires_at) : NaN;
-  const rotationPending = !!device.device_secret_enc_next && Number.isFinite(nextExpMs) && nextExpMs > now.getTime();
+  const hasNextSlot = !!device.device_secret_enc_next;
+  const rotationPending = hasNextSlot && Number.isFinite(nextExpMs) && nextExpMs > now.getTime();
+  // A staged slot whose window already lapsed is "overdue" — it can no longer
+  // authenticate (verify path ignores it) and is cleared by the retention sweep.
+  const rotationOverdue = hasNextSlot && Number.isFinite(nextExpMs) && nextExpMs <= now.getTime();
+  // Best-effort age: staged-at is derived as expiry − the configured window.
+  // Display-only — the exact staging instant is not persisted.
+  const stagedAtMs = Number.isFinite(nextExpMs) ? nextExpMs - rotationWindowMs() : NaN;
+  const rotationAgeHours = hasNextSlot && Number.isFinite(stagedAtMs)
+    ? Math.max(0, Math.round(((now.getTime() - stagedAtMs) / 3_600_000) * 10) / 10)
+    : 0;
   const base = {
     authMethod: device.auth_method ?? "hmac_sha256",
     issuedAt: device.credential_issued_at,
@@ -319,7 +337,9 @@ export function deviceCredentialStatus(device: DeviceAuthRow, now = new Date()):
     revokedAt: device.credential_revoked_at,
     lastAuthedAt: device.last_authed_at,
     rotationPending,
-    rotationNextExpiresAt: rotationPending ? (device.credential_next_expires_at ?? null) : null,
+    rotationOverdue,
+    rotationAgeHours,
+    rotationNextExpiresAt: hasNextSlot ? (device.credential_next_expires_at ?? null) : null,
   };
   if (device.credential_revoked_at) return { state: "revoked", ...base };
   const exp = device.credential_expires_at ? new Date(device.credential_expires_at).getTime() : null;
@@ -405,8 +425,24 @@ export async function revokeDeviceCredential(
 
 /* ── Zero-downtime credential rotation (staged next slot) ────────────────── */
 
-/** How long a staged next credential stays valid before it must be re-staged. */
-export const CREDENTIAL_ROTATION_WINDOW_MS = 72 * 3600_000; // 72h
+const ROTATION_WINDOW_DEFAULT_HOURS = 72;
+const ROTATION_WINDOW_MIN_HOURS = 1;
+const ROTATION_WINDOW_MAX_HOURS = 168; // 7 days
+
+/**
+ * Overlap window (ms) during which BOTH the current and the staged-next
+ * credential verify. Configurable via DEVICE_CREDENTIAL_ROTATION_WINDOW_HOURS:
+ * default 72h, clamped to 1–168h, invalid/missing → 72h. Read at call time so
+ * env changes take effect without a redeploy of this module.
+ */
+export function rotationWindowMs(): number {
+  const raw = process.env.DEVICE_CREDENTIAL_ROTATION_WINDOW_HOURS?.trim();
+  if (!raw) return ROTATION_WINDOW_DEFAULT_HOURS * 3_600_000;
+  const hours = Number(raw);
+  if (!Number.isFinite(hours)) return ROTATION_WINDOW_DEFAULT_HOURS * 3_600_000;
+  const clamped = Math.min(Math.max(hours, ROTATION_WINDOW_MIN_HOURS), ROTATION_WINDOW_MAX_HOURS);
+  return clamped * 3_600_000;
+}
 
 /** Fetches the auth-relevant columns for one device by uuid (null when absent). */
 export async function getDeviceAuthRow(db: SupabaseClient, id: string): Promise<DeviceAuthRow | null> {
@@ -418,8 +454,8 @@ export async function getDeviceAuthRow(db: SupabaseClient, id: string): Promise<
 
 /**
  * Starts a zero-downtime credential rotation: generates a NEW secret, stores
- * its KEK-encrypted form (AAD=device.id) in device_secret_enc_next with a 72h
- * window, and leaves the CURRENT credential fully valid. The device must
+ * its KEK-encrypted form (AAD=device.id) in device_secret_enc_next with the
+ * configured overlap window (rotationWindowMs()), and leaves the CURRENT credential fully valid. The device must
  * authenticate once with the new secret for promotion to happen (see
  * verifyDeviceAuth); until then both secrets verify. The new raw secret is
  * returned ONCE so it can be provisioned to the device — same contract as
@@ -447,7 +483,8 @@ export async function startCredentialRotation(
   } catch (e) {
     return { ok: false, status: 503, error: e instanceof Error ? e.message : "Credential encryption unavailable" };
   }
-  const nextExpiresAt = new Date(Date.now() + CREDENTIAL_ROTATION_WINDOW_MS).toISOString();
+  const windowMs = rotationWindowMs();
+  const nextExpiresAt = new Date(Date.now() + windowMs).toISOString();
 
   const { data, error } = await db.from("system_devices").update({
     device_secret_enc_next: encNext,
@@ -457,7 +494,7 @@ export async function startCredentialRotation(
   if (error || !data) return { ok: false, status: 500, error: error?.message ?? "update failed" };
   await systemAudit(db, {
     actor, action: "kiosk.credential_rotation_started", resource: deviceAuditResource(device.id),
-    detail: { device_uid: device.device_uid, kek_version: kekVersion(), next_expires_at: nextExpiresAt, window_hours: 72 },
+    detail: { device_uid: device.device_uid, kek_version: kekVersion(), next_expires_at: nextExpiresAt, window_hours: windowMs / 3_600_000 },
   });
   return { ok: true, secret, nextExpiresAt, device: data as DeviceAuthRow };
 }
@@ -482,6 +519,57 @@ export async function cancelCredentialRotation(
     detail: { device_uid: device.device_uid },
   });
   return { ok: true, device: data as DeviceAuthRow };
+}
+
+/** Max devices one sweep run will clear — backlog drains over successive runs. */
+export const ROTATION_SWEEP_LIMIT = 100;
+
+/**
+ * Safety sweep for lapsed rotation windows: finds devices whose staged
+ * `device_secret_enc_next` exists but `credential_next_expires_at` is already
+ * past, clears ONLY the next-slot fields (primary credential untouched), and
+ * audits `kiosk.credential_rotation_expired` per device. This is NOT a
+ * deletion — the primary credential stays valid; it just removes dead staged
+ * material so status surfaces stop reporting it and no expired secret can ever
+ * be promoted. Bounded to `limit` (≤ ROTATION_SWEEP_LIMIT) rows per call and
+ * idempotent: cleared rows no longer match the filter. Called by the retention
+ * cron AFTER runRetention — deliberately NOT part of runRetention, which is
+ * approval-gated destructive deletion.
+ */
+export async function sweepExpiredRotations(
+  db: SupabaseClient,
+  actor: SystemActor | null = { id: "cron", role: "system" },
+  limit = ROTATION_SWEEP_LIMIT,
+): Promise<{ ok: boolean; swept: number; error?: string }> {
+  const cap = Math.min(Math.max(Math.floor(limit) || ROTATION_SWEEP_LIMIT, 1), ROTATION_SWEEP_LIMIT);
+  const nowIso = new Date().toISOString();
+  const { data, error } = await db
+    .from("system_devices")
+    .select("id,device_uid,device_secret_enc_next,credential_next_expires_at")
+    .not("device_secret_enc_next", "is", null)
+    .lt("credential_next_expires_at", nowIso)
+    .limit(cap);
+  if (error) return { ok: false, swept: 0, error: error.message };
+
+  const rows = (data ?? []) as { id: string; device_uid: string | null; device_secret_enc_next: string | null; credential_next_expires_at: string | null }[];
+  let swept = 0;
+  for (const row of rows) {
+    // Clear ONLY the pending slot — never touch primary credential fields.
+    const { error: uerr } = await db.from("system_devices").update({
+      device_secret_enc_next: null,
+      credential_next_expires_at: null,
+      updated_at: new Date().toISOString(),
+    }).eq("id", row.id);
+    if (uerr) continue; // best-effort per row; the next run retries it
+    swept += 1;
+    await systemAudit(db, {
+      actor,
+      action: "kiosk.credential_rotation_expired",
+      resource: deviceAuditResource(row.id),
+      detail: { device_uid: row.device_uid, next_expires_at: row.credential_next_expires_at },
+    });
+  }
+  return { ok: true, swept };
 }
 
 /**

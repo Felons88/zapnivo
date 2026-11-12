@@ -131,6 +131,16 @@ export async function POST(req: Request) {
   }
 
   const result = await ingestKioskEvents(db, kiosk as { id: string; state?: string }, body);
+
+  // Connectivity telemetry: a verified heartbeat proves the bound system_devices
+  // row is alive — deriveConnectivity reads last_heartbeat_at, which ingest
+  // previously never wrote (always reported no_data).
+  if (stationDevice && body.events.some((e) => e.type === "heartbeat")) {
+    await db.from("system_devices")
+      .update({ last_heartbeat_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+      .eq("id", stationDevice.id);
+  }
+
   await recordDeviceAuthMessage(db, {
     deviceId: stationDevice?.id ?? null,
     authMethod,

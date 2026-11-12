@@ -3,11 +3,47 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { SystemGate } from "@/components/SystemGate";
 import { serviceClient } from "@/lib/supabase";
-import { securityReadiness, type ReadinessCount, type SecurityReadiness } from "@/lib/system/readiness";
+import { securityReadiness, type ReadinessCount, type ReadinessStatus, type SecurityReadiness } from "@/lib/system/readiness";
 
 export const metadata: Metadata = { title: "Security — Readiness" };
 
 const num = (v: ReadinessCount) => (v == null ? "—" : v.toLocaleString("en-US"));
+
+/** Badge colors per lifecycle status — blocked/unverified read as warnings, never green. */
+const STATUS_STYLE: Record<ReadinessStatus, { label: string; cls: string }> = {
+  implemented: { label: "implemented", cls: "bg-slate-400/10 text-slate-300 ring-slate-400/25" },
+  configured: { label: "configured", cls: "bg-sky-400/10 text-sky-300 ring-sky-400/25" },
+  test_verified: { label: "test-verified", cls: "bg-teal-400/10 text-teal-300 ring-teal-400/25" },
+  production_verified: { label: "production-verified", cls: "bg-lime/15 text-lime ring-lime/30" },
+  hardware_verified: { label: "hardware-verified", cls: "bg-lime/15 text-lime ring-lime/30" },
+  blocked: { label: "blocked", cls: "bg-red-400/10 text-red-300 ring-red-400/25" },
+  unverified: { label: "unverified", cls: "bg-amber-400/10 text-amber-300 ring-amber-400/25" },
+};
+
+function StatusBadge({ status }: { status: ReadinessStatus }) {
+  const s = STATUS_STYLE[status];
+  return (
+    <span className={`inline-block rounded-full px-2 py-0.5 font-mono text-[10px] font-bold ring-1 ${s.cls}`}>
+      {s.label}
+    </span>
+  );
+}
+
+/**
+ * Live-validation checklist an authorized administrator must perform against
+ * the real Supabase Auth project. STATIC and honest — every item stays
+ * 'pending' until a human performs and records it; nothing here is auto-checked.
+ */
+const MFA_VALIDATION_STEPS: readonly { step: string; detail: string }[] = [
+  { step: "Enroll TOTP factor", detail: "Sign in, open /system/security/mfa, enroll a TOTP factor and confirm the secret/URI is shown exactly once." },
+  { step: "Verify factor", detail: "Complete challenge + verify; confirm a 15-minute system_elevations row (method='totp') is granted." },
+  { step: "Trigger step-up on a sensitive action", detail: "Attempt a privileged action (e.g. credential rotate) and confirm it demands step-up." },
+  { step: "Confirm 403 step_up_required without elevation", detail: "Repeat the sensitive action with no active elevation — must return 403 step_up_required." },
+  { step: "Confirm elevation expiry (~15 min)", detail: "Wait past the TTL (or check expires_at) and re-attempt — must require step-up again." },
+  { step: "Role-change restrictions", detail: "Confirm elevation authorizes the action but does NOT grant or alter system roles." },
+  { step: "Session revoke", detail: "Revoke the session (auth_sessions) and confirm access ends; elevation must not resurrect it." },
+  { step: "Suspend", detail: "Suspend the account and confirm sign-in + step-up both fail until reinstated." },
+];
 
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -99,9 +135,26 @@ export default async function SecurityReadinessPage() {
             ["active elevations", r.active_elevations],
             ["bootstrap grants (max 1)", r.bootstrap_grants],
             ["recovery tests", r.recovery_tests],
+            ["pending retention approvals", r.pending_retention_approvals],
           ]} />
-          <Card title="Retention & KEK">
+          <Card title="Recovery, hardware & KEK">
             <dl className="space-y-2 text-xs">
+              <div className="flex justify-between gap-3 border-b border-white/5 py-1.5">
+                <dt className="text-slate-500">latest recovery test</dt>
+                <dd className="font-mono text-slate-200">
+                  {r.recovery_last_test
+                    ? `${r.recovery_last_test.result ?? "?"} · ${r.recovery_last_test.environment ?? "?"} · ${r.recovery_last_test.tested_at ?? "?"}`
+                    : "none recorded — recovery NOT verified"}
+                </dd>
+              </div>
+              <div className="flex justify-between gap-3 border-b border-white/5 py-1.5">
+                <dt className="text-slate-500">KIOSK_ADAPTER</dt>
+                <dd className="font-mono text-slate-200">{r.hardware.adapter}</dd>
+              </div>
+              <div className="flex justify-between gap-3 border-b border-white/5 py-1.5">
+                <dt className="text-slate-500">hardware profiles</dt>
+                <dd className="font-mono text-slate-200">{num(r.hardware.profiles)}</dd>
+              </div>
               <div className="flex justify-between gap-3 border-b border-white/5 py-1.5">
                 <dt className="text-slate-500">retention last run</dt>
                 <dd className="font-mono text-slate-200">
@@ -127,6 +180,56 @@ export default async function SecurityReadinessPage() {
             </dl>
           </Card>
         </div>
+
+        {/* Lifecycle status per section — honest vocabulary, no hardware claims */}
+        <Card title="Lifecycle status">
+          <p className="mb-3 text-[11px] text-slate-500">
+            Statuses follow the readiness vocabulary: <code className="font-mono">implemented</code> →{" "}
+            <code className="font-mono">configured</code> → <code className="font-mono">test_verified</code> →{" "}
+            <code className="font-mono">production_verified</code>/<code className="font-mono">hardware_verified</code>,
+            plus <code className="font-mono">blocked</code>/<code className="font-mono">unverified</code>. Nothing here is
+            production- or hardware-verified — zero physical devices exist.
+          </p>
+          {r.sections.length === 0 ? (
+            <p className="text-xs text-slate-500">No section statuses — backend not configured.</p>
+          ) : (
+            <ul className="grid gap-2 sm:grid-cols-2">
+              {r.sections.map((s) => (
+                <li key={s.id} className="rounded-xl border border-white/5 bg-black/20 px-3 py-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-bold text-slate-200">{s.label}</p>
+                    <StatusBadge status={s.status} />
+                  </div>
+                  <p className="mt-1 text-[11px] leading-snug text-slate-500">{s.detail}</p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+
+        {/* MFA live-validation checklist — static, awaiting authorized admin */}
+        <Card title="MFA live-validation checklist">
+          <p className="mb-3 rounded-lg border border-amber-400/20 bg-amber-400/[0.05] px-3 py-2 text-[11px] text-amber-200">
+            Awaiting authorized administrator. Every item is <strong>pending</strong> — TOTP enrollment,
+            step-up and session controls are unit-tested but have NOT been exercised against the live
+            Supabase Auth project. Do not mark anything verified without performing it.
+          </p>
+          <ol className="space-y-2">
+            {MFA_VALIDATION_STEPS.map((s, i) => (
+              <li key={s.step} className="flex gap-3 rounded-xl border border-white/5 bg-black/20 px-3 py-2.5">
+                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white/5 font-mono text-[10px] text-slate-400">{i + 1}</span>
+                <div>
+                  <p className="text-xs font-bold text-slate-200">{s.step}</p>
+                  <p className="mt-0.5 text-[11px] text-slate-500">{s.detail}</p>
+                </div>
+                <span className="ml-auto shrink-0 self-start rounded-full bg-amber-400/10 px-2 py-0.5 font-mono text-[10px] font-bold text-amber-300 ring-1 ring-amber-400/25">pending</span>
+              </li>
+            ))}
+          </ol>
+          <p className="mt-3 text-[11px] text-slate-500">
+            Manage your own factor under <Link href="/system/security/mfa" className="text-lime underline">MFA &amp; step-up</Link>.
+          </p>
+        </Card>
 
         <Card title="KEK rotation runbook (manual — never automatic)">
           <ol className="list-decimal space-y-1.5 pl-5 text-xs leading-relaxed text-slate-300">

@@ -13,9 +13,9 @@ vi.mock("@/lib/auth", () => ({
 vi.mock("@/lib/supabase", () => ({ serviceClient: service }));
 
 import {
-  cancelCredentialRotation, decryptSecret, deviceSecretHash, encryptSecret,
-  reencryptDeviceCredential, revokeDeviceCredential,
-  signDeviceRequest, startCredentialRotation, verifyDeviceAuth,
+  cancelCredentialRotation, decryptSecret, deviceCredentialStatus, deviceSecretHash, encryptSecret,
+  reencryptDeviceCredential, revokeDeviceCredential, rotationWindowMs,
+  signDeviceRequest, startCredentialRotation, sweepExpiredRotations, verifyDeviceAuth,
   type DeviceAuthRow,
 } from "@/lib/system/device-auth";
 import { securityReadiness } from "@/lib/system/readiness";
@@ -30,10 +30,11 @@ import { POST as reencryptPOST } from "@/app/api/system/kiosks/[id]/credential/r
 type Result = { data?: unknown; error?: { message: string; code?: string } | null; count?: number | null };
 function fakeTable(opts: { list?: Result; singles?: Result[] } = {}) {
   const singles = [...(opts.singles ?? [])];
-  const b: Record<string, unknown> & { _insert?: unknown; _update?: unknown; _updates?: unknown[]; _inserts?: unknown[] } = { _updates: [], _inserts: [] };
+  const b: Record<string, unknown> & { _insert?: unknown; _update?: unknown; _updates?: unknown[]; _inserts?: unknown[]; _calls?: unknown[][] } = { _updates: [], _inserts: [], _calls: [] };
   const next = (): Result => singles.length ? singles.shift()! : { data: null, error: null };
-  for (const m of ["select", "eq", "neq", "in", "is", "not", "or", "order", "limit", "insert", "update", "upsert", "delete", "filter", "gt", "lt", "gte", "lte"]) {
+  for (const m of ["select", "eq", "neq", "in", "is", "not", "or", "order", "limit", "insert", "update", "upsert", "delete", "filter", "gt", "lt", "gte", "lte", "ilike", "like"]) {
     b[m] = (...a: unknown[]) => {
+      (b._calls as unknown[][]).push([m, ...a]);
       if (m === "insert") { b._insert = a[0]; (b._inserts as unknown[]).push(a[0]); }
       if (m === "update") { b._update = a[0]; (b._updates as unknown[]).push(a[0]); }
       return b;
@@ -113,18 +114,23 @@ function dbFor(device: DeviceAuthRow | null, extraSingles: Result[] = [], tables
 
 let prevKek: string | undefined;
 let prevKekPrev: string | undefined;
+let prevWinHours: string | undefined;
 beforeEach(() => {
   resetRateLimits();
   prevKek = process.env.DEVICE_CREDENTIAL_KEK;
   prevKekPrev = process.env.DEVICE_CREDENTIAL_KEK_PREVIOUS;
+  prevWinHours = process.env.DEVICE_CREDENTIAL_ROTATION_WINDOW_HOURS;
   process.env.DEVICE_CREDENTIAL_KEK = KEK_A;
   delete process.env.DEVICE_CREDENTIAL_KEK_PREVIOUS;
+  delete process.env.DEVICE_CREDENTIAL_ROTATION_WINDOW_HOURS;
 });
 afterEach(() => {
   if (prevKek === undefined) delete process.env.DEVICE_CREDENTIAL_KEK;
   else process.env.DEVICE_CREDENTIAL_KEK = prevKek;
   if (prevKekPrev === undefined) delete process.env.DEVICE_CREDENTIAL_KEK_PREVIOUS;
   else process.env.DEVICE_CREDENTIAL_KEK_PREVIOUS = prevKekPrev;
+  if (prevWinHours === undefined) delete process.env.DEVICE_CREDENTIAL_ROTATION_WINDOW_HOURS;
+  else process.env.DEVICE_CREDENTIAL_ROTATION_WINDOW_HOURS = prevWinHours;
 });
 
 /* ── v2 AAD binding ─────────────────────────────────────────────────────── */
@@ -450,3 +456,272 @@ describe("securityReadiness", () => {
     expect(r.devices.total).toBeNull();
   });
 });
+
+/* ── Configurable overlap window ────────────────────────────────────────── */
+
+describe("rotationWindowMs — DEVICE_CREDENTIAL_ROTATION_WINDOW_HOURS", () => {
+  it("defaults to 72h when unset", () => {
+    expect(rotationWindowMs()).toBe(72 * 3_600_000);
+  });
+
+  it("parses a valid hour value", () => {
+    process.env.DEVICE_CREDENTIAL_ROTATION_WINDOW_HOURS = "24";
+    expect(rotationWindowMs()).toBe(24 * 3_600_000);
+  });
+
+  it("clamps to 1–168h", () => {
+    process.env.DEVICE_CREDENTIAL_ROTATION_WINDOW_HOURS = "0";
+    expect(rotationWindowMs()).toBe(1 * 3_600_000);
+    process.env.DEVICE_CREDENTIAL_ROTATION_WINDOW_HOURS = "999";
+    expect(rotationWindowMs()).toBe(168 * 3_600_000);
+    process.env.DEVICE_CREDENTIAL_ROTATION_WINDOW_HOURS = "168";
+    expect(rotationWindowMs()).toBe(168 * 3_600_000);
+  });
+
+  it("invalid values fall back to 72h", () => {
+    for (const bad of ["abc", "NaN", "1.5x", " "]) {
+      process.env.DEVICE_CREDENTIAL_ROTATION_WINDOW_HOURS = bad;
+      expect(rotationWindowMs(), bad).toBe(72 * 3_600_000);
+    }
+  });
+
+  it("startCredentialRotation honors the configured window + audits it", async () => {
+    process.env.DEVICE_CREDENTIAL_ROTATION_WINDOW_HOURS = "24";
+    const device = deviceRow();
+    const devices = fakeTable({ singles: [{ data: device, error: null }, { data: { ...device, device_secret_enc_next: "x" }, error: null }] });
+    const audit = fakeTable();
+    const db = fakeDb({ system_devices: devices, system_audit_events: audit });
+    const res = await startCredentialRotation(db, device, { id: "op", role: "sysadmin" });
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    const ttl = Date.parse(String((devices._update as Record<string, unknown>).credential_next_expires_at)) - Date.now();
+    expect(ttl).toBeGreaterThan(23 * 3_600_000);
+    expect(ttl).toBeLessThanOrEqual(24 * 3_600_000);
+    const evt = ((audit._inserts ?? []) as Record<string, unknown>[]).find((r) => r.action === "kiosk.credential_rotation_started");
+    expect((evt?.detail as Record<string, unknown>)?.window_hours).toBe(24);
+  });
+});
+
+/* ── Rotation status flags ──────────────────────────────────────────────── */
+
+describe("deviceCredentialStatus — rotationOverdue / rotationAgeHours", () => {
+  it("live pending rotation: pending=true, overdue=false, age is a number", () => {
+    const s = deviceCredentialStatus(rotatingRow(), NOW);
+    expect(s.state).toBe("active");
+    if (s.state !== "active") return;
+    expect(s.rotationPending).toBe(true);
+    expect(s.rotationOverdue).toBe(false);
+    expect(typeof s.rotationAgeHours).toBe("number");
+    expect(s.rotationAgeHours).toBeGreaterThanOrEqual(0);
+    expect(s.rotationNextExpiresAt).toBeTruthy();
+  });
+
+  it("lapsed staged slot: pending=false, overdue=true, expiry still surfaced", () => {
+    const row = rotatingRow({ credential_next_expires_at: "2026-01-20T00:00:00Z" }); // before NOW
+    const s = deviceCredentialStatus(row, NOW);
+    expect(s.state).toBe("active");
+    if (s.state !== "active") return;
+    expect(s.rotationPending).toBe(false);
+    expect(s.rotationOverdue).toBe(true);
+    expect(s.rotationAgeHours).toBeGreaterThan(0);
+    expect(s.rotationNextExpiresAt).toBe("2026-01-20T00:00:00Z");
+  });
+
+  it("no staged slot: both flags false, age 0", () => {
+    const s = deviceCredentialStatus(deviceRow(), NOW);
+    expect(s.state).toBe("active");
+    if (s.state !== "active") return;
+    expect(s.rotationPending).toBe(false);
+    expect(s.rotationOverdue).toBe(false);
+    expect(s.rotationAgeHours).toBe(0);
+    expect(s.rotationNextExpiresAt).toBeNull();
+  });
+});
+
+/* ── Expired next slot: fail-closed, never promoted ─────────────────────── */
+
+describe("expired next slot — verify path", () => {
+  it("expired next → bad_signature AND no promotion/credential write", async () => {
+    const expired = rotatingRow({ credential_next_expires_at: "2026-01-20T00:00:00Z" });
+    const { db, devices } = dbFor(expired, [{ data: { id: DEVICE_UUID }, error: null }]);
+    const res = await verifyDeviceAuth(db, signedReq(NEXT_SECRET), NOW);
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.reason).toBe("bad_signature");
+    const updates = (devices._updates ?? []) as Record<string, unknown>[];
+    expect(updates.every((u) => u.credential_rotated_at === undefined && u.device_secret_enc === undefined && u.device_secret_enc_next === undefined)).toBe(true);
+  });
+});
+
+/* ── Revocation during pending rotation ─────────────────────────────────── */
+
+describe("revokeDeviceCredential mid-rotation", () => {
+  it("kills BOTH slots — neither old nor pending-new secret can authenticate", async () => {
+    const device = rotatingRow();
+    const revokedRow = deviceRow({
+      auth_method: "none",
+      device_secret_enc: null,
+      device_secret_enc_next: null,
+      device_secret_hash: null,
+      credential_next_expires_at: null,
+      credential_revoked_at: NOW.toISOString(),
+    });
+    const devices = fakeTable({ singles: [{ data: revokedRow, error: null }] });
+    const dbRev = fakeDb({ system_devices: devices });
+    const res = await revokeDeviceCredential(dbRev, device, { id: "op", role: "sysadmin" });
+    expect(res.ok).toBe(true);
+    const patch = devices._update as Record<string, unknown>;
+    expect(patch.device_secret_enc).toBeNull();
+    expect(patch.device_secret_enc_next).toBeNull();
+    expect(patch.credential_next_expires_at).toBeNull();
+
+    for (const secret of [SECRET, NEXT_SECRET]) {
+      const { db } = dbFor(revokedRow);
+      const r = await verifyDeviceAuth(db, signedReq(secret), NOW);
+      expect(r.ok).toBe(false);
+    }
+  });
+});
+
+/* ── Concurrency ────────────────────────────────────────────────────────── */
+
+describe("concurrent credential-rotation transitions", () => {
+  it("two concurrent promotions: exactly one guarded update wins; loser no-ops safely", async () => {
+    const row = rotatingRow();
+    const nextEnc = row.device_secret_enc_next as string;
+    // maybeSingle consumption order: findDevice ×2, then promote ×2.
+    // The winner's guarded update (.eq device_secret_enc_next=nextEnc) returns
+    // the row; the loser's matches nothing → promoteCredentialRotation=false.
+    const devices = fakeTable({ singles: [
+      { data: row, error: null },
+      { data: row, error: null },
+      { data: { id: DEVICE_UUID }, error: null },
+      { data: null, error: null },
+    ] });
+    const messages = fakeTable();
+    const audit = fakeTable();
+    const db = fakeDb({ system_devices: devices, system_device_messages: messages, system_audit_events: audit });
+
+    const [r1, r2] = await Promise.all([
+      verifyDeviceAuth(db, signedReq(NEXT_SECRET), NOW),
+      verifyDeviceAuth(db, signedReq(NEXT_SECRET), NOW),
+    ]);
+    // Both authentications succeed — the credential itself is valid; only the
+    // promotion write is single-winner.
+    expect(r1.ok).toBe(true);
+    expect(r2.ok).toBe(true);
+
+    // Both calls issue the guarded update; the DB-side eq(device_secret_enc_next)
+    // lets exactly one land — proven by exactly one promotion audit + one
+    // telemetry claim flagged rotation:"promoted".
+    const promotions = ((devices._updates ?? []) as Record<string, unknown>[]).filter((u) => u.device_secret_enc === nextEnc);
+    expect(promotions.length).toBeGreaterThanOrEqual(1);
+    const completed = ((audit._inserts ?? []) as Record<string, unknown>[]).filter((r) => r.action === "kiosk.credential_rotation_completed");
+    expect(completed).toHaveLength(1);
+    const promotedClaims = ((messages._inserts ?? []) as Record<string, unknown>[]).filter(
+      (r) => r.message_type === "claim" && (r.detail as Record<string, unknown>)?.rotation === "promoted",
+    );
+    expect(promotedClaims).toHaveLength(1);
+  });
+
+  it("start then cancel: staged slot is cleared and both transitions audited", async () => {
+    const device = deviceRow();
+    // singles feed the .single() of each update in call order: start's update
+    // returns the staged row, cancel's update returns the cleared row.
+    const devices = fakeTable({ singles: [
+      { data: rotatingRow(), error: null },
+      { data: rotatingRow({ device_secret_enc_next: null, credential_next_expires_at: null }), error: null },
+    ] });
+    const audit = fakeTable();
+    const db = fakeDb({ system_devices: devices, system_audit_events: audit });
+    const actor = { id: "op", role: "sysadmin" };
+
+    const start = await startCredentialRotation(db, device, actor);
+    expect(start.ok).toBe(true);
+    if (!start.ok) return;
+    expect(start.device.device_secret_enc_next).toBeTruthy();
+
+    const cancel = await cancelCredentialRotation(db, start.device, actor);
+    expect(cancel.ok).toBe(true);
+
+    const updates = devices._updates as Record<string, unknown>[];
+    expect(updates[0].device_secret_enc_next).toMatch(/^v2\./);
+    expect(updates[1].device_secret_enc_next).toBeNull();
+    expect(updates[1].credential_next_expires_at).toBeNull();
+    const actions = ((audit._inserts ?? []) as Record<string, unknown>[]).map((r) => r.action);
+    expect(actions).toContain("kiosk.credential_rotation_started");
+    expect(actions).toContain("kiosk.credential_rotation_cancelled");
+  });
+});
+
+/* ── sweepExpiredRotations ──────────────────────────────────────────────── */
+
+describe("sweepExpiredRotations — expired pending-slot cleanup", () => {
+  const EXPIRED_PENDING = {
+    id: DEVICE_UUID,
+    device_uid: UID,
+    device_secret_enc_next: "v2.k1.deadbeef",
+    credential_next_expires_at: "2026-01-20T00:00:00Z",
+  };
+
+  it("clears ONLY next-slot fields on expired pendings and audits per device as cron", async () => {
+    const devices = fakeTable({ list: { data: [EXPIRED_PENDING], error: null } });
+    const audit = fakeTable();
+    const db = fakeDb({ system_devices: devices, system_audit_events: audit });
+    const res = await sweepExpiredRotations(db);
+    expect(res).toMatchObject({ ok: true, swept: 1 });
+
+    const patch = devices._update as Record<string, unknown>;
+    expect(patch.device_secret_enc_next).toBeNull();
+    expect(patch.credential_next_expires_at).toBeNull();
+    // Primary credential material is never touched by the sweep.
+    expect(patch.device_secret_enc).toBeUndefined();
+    expect(patch.device_secret_hash).toBeUndefined();
+    expect(patch.credential_expires_at).toBeUndefined();
+
+    const evt = ((audit._inserts ?? []) as Record<string, unknown>[]).find((r) => r.action === "kiosk.credential_rotation_expired");
+    expect(evt).toBeTruthy();
+    expect(evt?.actor_id).toBe("cron");
+    // systemAudit scrubs UUID-shaped fragments out of resource strings.
+    expect(String(evt?.resource)).toContain("system_device");
+    // No secret/enc material in the audit detail.
+    expect(JSON.stringify(evt?.detail)).not.toContain("v2.k1.deadbeef");
+  });
+
+  it("queries only expired, still-staged rows and is bounded to 100/run", async () => {
+    const devices = fakeTable({ list: { data: [], error: null } });
+    const db = fakeDb({ system_devices: devices });
+    await sweepExpiredRotations(db, null, 500);
+    const calls = (devices._calls ?? []) as unknown[][];
+    const lt = calls.find((c) => c[0] === "lt" && c[1] === "credential_next_expires_at");
+    expect(lt).toBeTruthy();
+    expect(Date.parse(String(lt?.[2]))).toBeLessThanOrEqual(Date.now());
+    expect(calls.some((c) => c[0] === "not" && c[1] === "device_secret_enc_next")).toBe(true);
+    const lim = calls.find((c) => c[0] === "limit");
+    expect(lim?.[1]).toBe(100); // capped at ROTATION_SWEEP_LIMIT
+  });
+
+  it("idempotent: a second run over cleared rows sweeps nothing", async () => {
+    // After the first sweep the DB-side filter (enc_next not null AND expiry <
+    // now) no longer matches — model the post-sweep state directly.
+    const devices = fakeTable({ list: { data: [], error: null } });
+    const audit = fakeTable();
+    const db = fakeDb({ system_devices: devices, system_audit_events: audit });
+    const res = await sweepExpiredRotations(db);
+    expect(res).toMatchObject({ ok: true, swept: 0 });
+    expect(devices._updates ?? []).toHaveLength(0);
+    expect((audit._inserts ?? [])).toHaveLength(0);
+  });
+
+  it("unexpired pendings are excluded by the expiry cutoff", async () => {
+    const devices = fakeTable({ list: { data: [], error: null } });
+    const db = fakeDb({ system_devices: devices });
+    await sweepExpiredRotations(db);
+    const calls = (devices._calls ?? []) as unknown[][];
+    const lt = calls.find((c) => c[0] === "lt" && c[1] === "credential_next_expires_at");
+    // The cutoff is ~now — any unexpired pending (expiry > now) is excluded by
+    // the query itself, so the sweep cannot touch live rotations.
+    expect(Date.parse(String(lt?.[2]))).toBeGreaterThan(Date.parse("2026-01-20T00:00:00Z"));
+    expect(Date.parse(String(lt?.[2]))).toBeLessThanOrEqual(Date.now());
+  });
+});
+

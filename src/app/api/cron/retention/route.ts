@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { serviceClient } from "@/lib/supabase";
 import { runRetention } from "@/lib/system/retention";
+import { sweepExpiredRotations } from "@/lib/system/device-auth";
 import { recordLog, traced } from "@/lib/observability";
 
 /**
@@ -39,6 +40,13 @@ export async function GET(req: Request) {
     runRetention(db, { dryRun, table, limit, actor: null }),
   { dryRun, table: table ?? "all" });
 
+  // Credential-rotation safety sweep — NOT part of runRetention (that sweep is
+  // approval-gated destructive deletion; this only clears dead staged next-slot
+  // fields on system_devices and audits each clear). Skipped on dry runs.
+  const rotationSweep = dryRun
+    ? { ok: true, swept: 0, skipped: "dry_run" as const }
+    : await sweepExpiredRotations(db);
+
   // Record the outcome in cron_runs so Jobs & workers / status surfaces see it.
   await db.from("cron_runs").insert({
     job: "retention",
@@ -49,6 +57,7 @@ export async function GET(req: Request) {
       matched: report.results.reduce((a, r) => a + r.matched, 0),
       tables: report.results.length,
       run_id: report.runId,
+      credential_rotation_sweep: rotationSweep,
       error: report.error ?? undefined,
     },
   }).then(() => undefined, () => undefined);
@@ -58,5 +67,5 @@ export async function GET(req: Request) {
     attrs: { deleted: report.results.reduce((a, r) => a + r.deleted, 0), ok: report.ok },
   });
 
-  return NextResponse.json({ ok: report.ok, report }, { status: report.ok ? 200 : 207 });
+  return NextResponse.json({ ok: report.ok && rotationSweep.ok !== false, report, credential_rotation_sweep: rotationSweep }, { status: report.ok ? 200 : 207 });
 }
