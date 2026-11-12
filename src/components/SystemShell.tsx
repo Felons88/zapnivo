@@ -31,6 +31,7 @@ const NAV: NavGroup[] = [
       { href: "/system/kiosks/register", label: "Register kiosk" },
       { href: "/system/kiosks/firmware", label: "Firmware" },
       { href: "/system/kiosks/hardware", label: "Hardware readiness" },
+      { href: "/system/kiosks/certification", label: "Certification" },
     ],
   },
   {

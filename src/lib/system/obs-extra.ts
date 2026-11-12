@@ -152,20 +152,119 @@ export type AlertsOverview = {
     externalMonitor: string;
     workflowPath: string;
     workflowUrl: string;
+    rules: readonly AlertRule[];
     notes: readonly string[];
   };
 };
 
 const OPEN_INCIDENT_STATUSES = new Set(["detected", "investigating", "identified", "mitigating", "monitoring"]);
 
+/**
+ * One declarative alerting rule (Phase 2.4). These are POLICY — they describe
+ * what should page a human and how to dedup; they are NOT an implemented
+ * matcher. Enforcement is the external uptime workflow plus staff review of
+ * the tables/events named in `source`. `emitter` records whether the signal
+ * is actually emitted today:
+ *   "live"     — a code path writes this signal now (table/event exists).
+ *   "pending"  — the emitter lands with another workstream; until then the
+ *                rule matches zero rows and must not be treated as coverage.
+ */
+export type AlertRule = {
+  id: string;
+  source: string;
+  match: string;
+  severity: "sev1" | "sev2" | "sev3" | "sev4";
+  windowMinutes: number;
+  dedup: string;
+  emitter: "live" | "pending";
+};
+
 export const ALERT_POLICY = {
   externalMonitor: "GitHub Actions workflow .github/workflows/uptime.yml — runs OUTSIDE Vercel every ~15 min, probes all public properties, opens/updates a deduplicated GitHub issue on failure and comments/closes on recovery.",
   workflowPath: ".github/workflows/uptime.yml",
   workflowUrl: "https://github.com/Felons88/zapnivo/blob/main/.github/workflows/uptime.yml",
+  rules: [
+    {
+      id: "kiosk.provisioning_failed_burst",
+      source: "system_audit_events (action kiosk.provisioning_failed / kiosk.provisioning_denied)",
+      match: ">= 5 provisioning failure/denial events for one device_uid within the window",
+      severity: "sev3",
+      windowMinutes: 15,
+      dedup: "one alert per device_uid per hour (fingerprint = device_uid)",
+      emitter: "pending",
+    },
+    {
+      id: "device.revoked_credential_attempts",
+      source: "system_device_messages WHERE result='rejected' AND detail->>reason='credential_revoked'",
+      match: ">= 3 rejected auth attempts using a revoked credential within the window",
+      severity: "sev2",
+      windowMinutes: 15,
+      dedup: "one alert per device_id per hour",
+      emitter: "live",
+    },
+    {
+      id: "device.duplicate_message_burst",
+      source: "system_device_messages WHERE result='rejected' AND detail->>reason='duplicate_message'",
+      match: ">= 10 duplicate/replay rejections within the window (possible replay attack or clock-skewed fleet)",
+      severity: "sev3",
+      windowMinutes: 15,
+      dedup: "one alert per station/device per hour",
+      emitter: "live",
+    },
+    {
+      id: "device.offline_stale_heartbeat",
+      source: "system_devices.last_heartbeat_at vs HEARTBEAT_STALE_MIN (=15 min, src/lib/kiosk/heartbeat.ts)",
+      match: "any enrolled device whose last_heartbeat_at is older than 15 minutes (or null on an 'active' device)",
+      severity: "sev2",
+      windowMinutes: 15,
+      dedup: "one alert per device_uid per 24h while stale",
+      emitter: "live",
+    },
+    {
+      id: "device.missing_dispense_ack",
+      source: "device_commands WHERE status IN ('queued','sent') past the adapter ack timeout",
+      match: "command unresolved > 10 minutes after issue (hardware never confirmed)",
+      severity: "sev3",
+      windowMinutes: 10,
+      dedup: "one alert per command id; commands expire via the existing expiry sweep",
+      emitter: "live",
+    },
+    {
+      id: "rental.return_ack_mismatch",
+      source: "device_events / kiosk lifecycle — return verification vs docked power_bank_id mismatch",
+      match: "any return event whose verified docked bank does not match the rental's assigned power_bank_id",
+      severity: "sev2",
+      windowMinutes: 60,
+      dedup: "one alert per rental_id",
+      emitter: "live",
+    },
+    {
+      id: "rental.exceptions_unresolved",
+      source: "rental_exceptions (table created by the rental-exceptions workstream)",
+      match: "unresolved exception rows older than 24h; count >= 1",
+      severity: "sev2",
+      windowMinutes: 1440,
+      dedup: "one alert per exception id; re-alert daily while unresolved",
+      // Probe MUST tolerate the table being absent (pre-migration) — treat
+      // 'relation does not exist' as zero rows, never as an alert.
+      emitter: "pending",
+    },
+    {
+      id: "finance.unresolved_settlement",
+      source: "settlement/ledger records awaiting resolution (finance tables)",
+      match: "unresolved settlement older than 24h; count >= 1",
+      severity: "sev2",
+      windowMinutes: 1440,
+      dedup: "one alert per settlement reference; re-alert daily while unresolved",
+      emitter: "pending",
+    },
+  ] as const satisfies readonly AlertRule[],
   notes: [
     "In-app signals (uptime_checks, cron_runs, error_events) are recorded here but do not page anyone — alerting is the external workflow + issue tracker.",
     "Incidents rows are operational records; severity sev1–sev4 maps to business impact, not paging urgency.",
     "This console is read-only — incident lifecycle changes happen in the incident workflow, not here.",
+    "Phase 2.4 rules above are declarative policy, not a live matcher: 'emitter: live' means the underlying signal exists in the DB today; 'pending' means the emitting code/table lands with another workstream — a pending rule matching zero rows is NOT coverage.",
+    "error_events/error_issues already group by fingerprint (observability.ts); critical-severity issues alert via alertStaff + ALERT_WEBHOOK_URL external fallback.",
   ],
 } as const;
 

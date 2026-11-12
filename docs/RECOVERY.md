@@ -1,31 +1,79 @@
 # Disaster recovery — Zapnivo
 
-Status as of Phase 2.3: **recovery is NOT verified.** No restore test has succeeded yet.
-This document records what is actually known, the restore procedure, and the checklist a
-human must complete before DR can be called ready.
+Status as of Phase 2.4: **recovery is NOT verified.** No restore test has succeeded yet,
+and the last-known provider snapshot shows **no restorable backups and PITR disabled**
+(backup state: `no_verified_backup`). This document records what is actually known, the
+restore procedure, and the checklist a human must complete before DR can be called ready.
 
-## Known provider facts (verified via Supabase CLI, Phase 2.3)
+## Known provider facts (verified via Supabase CLI)
 
-`supabase backups list` against the production project reports:
+`supabase backups list --project-ref qidbieuvxeqtbqobjkns` (re-run Phase 2.4, 2026-11-12 —
+identical to the Phase 2.3 finding) reports:
 
 | Field | Value |
 |---|---|
-| Region | `us-east-1` |
+| Region | `us-east-1` (East US — North Virginia) |
 | WAL-G archiving | `walg_enabled: true` |
 | Point-in-time recovery | `pitr_enabled: false` |
-| Listed backups | `backups: []` |
+| Listed backups | none (earliest/latest timestamps `0`) |
+
+`supabase projects list` confirms the linked project: **Zapnivo**, ref
+`qidbieuvxeqtbqobjkns`, org `svbhafhmfauksmhwrrqn`, region East US (North Virginia).
 
 Interpretation, kept honest:
 
 - `walg_enabled: true` means WAL archiving is configured — the prerequisite for PITR —
   but `pitr_enabled: false` means PITR is **not** active. Do not assume point-in-time
   restore is available.
-- `backups: []` means **no restorable backups are currently listed** by the CLI.
+- An empty backups list means **no restorable backups are currently listed** by the CLI.
   Physical backups may still exist provider-side (Supabase manages them outside this
   app's visibility), but nothing here confirms one. Confirm in
   **Dashboard → Database → Backups** before relying on any restore path.
-- The app holds no Supabase management API token; backup health cannot be probed from
-  `/system` — the readiness page reports this section as `unverified`.
+- **What the CLI cannot see (verified Phase 2.4):** `supabase projects list`,
+  `supabase orgs list`, `supabase backups list`, and `supabase inspect` (only `db` and
+  `report` subcommands exist) expose **no plan tier / subscription field** and no
+  per-backup schedule details. There is no CLI command that enables PITR or creates a
+  backup. Plan tier and backup configuration are dashboard-only.
+
+## Plan tier & PITR — required admin action
+
+The app cannot determine the Supabase plan or change backup settings. An authorized
+admin must:
+
+1. Open **Supabase Dashboard → select project `qidbieuvxeqtbqobjkns` → Project
+   Settings → Add-ons** (older dashboards: **Database → Backups**).
+2. Check the plan tier — daily physical backups are included on Pro and above; **PITR
+   (point-in-time recovery) is a paid add-on on some plans — check plan/pricing before
+   enabling.** Do not assume it is included.
+3. Either enable **PITR** (recommended — restores to any timestamp) or confirm
+   **scheduled daily backups** are running and listed under **Database → Backups**.
+4. Re-run `npx supabase backups list --project-ref qidbieuvxeqtbqobjkns` afterwards and
+   update `LAST_KNOWN_PROVIDER_SNAPSHOT` in `src/lib/system/readiness.ts` (the
+   `as_of` date must reflect the actual probe time). Until then the readiness page
+   keeps reporting `no_verified_backup`.
+
+## Backup/recovery readiness state machine (Phase 2.4)
+
+`src/lib/system/readiness.ts` derives `backup.state` from recorded facts only —
+`deriveBackupState()` is pure and unit-tested. Provider input is the last-known CLI
+snapshot (`as_of`-stamped, injectable for tests), never a live query.
+
+| State | Meaning | Derivation |
+|---|---|---|
+| `no_verified_backup` | No evidence of any restorable backup | Default — no PITR, no listed backups, or no snapshot |
+| `backup_configured` | PITR enabled, but no individual backup entry confirmed | `pitr_enabled === true` in snapshot |
+| `backup_available` | Provider listed ≥1 backup entry at snapshot time | `backup_count > 0` in snapshot |
+| `restore_pending` | Restore attempted/recorded, none passed | ≥1 `system_recovery_tests` row AND zero `result='passed'` |
+| `restore_tested` | A restore test passed | ≥1 `system_recovery_tests` row with `result='passed'` |
+| `recovery_verified` | **Reserved — never auto-emitted.** Requires a recovery test row that explicitly records a verified marker; no such column exists in the 0045 schema, so the live probe always passes `false`. Even if added later, the value is **self-reported** by the operator — it is not independent verification. | explicit verified marker only |
+
+States are ranked: `recovery_verified` > `restore_tested` > `restore_pending` >
+`backup_available` > `backup_configured` > `no_verified_backup`.
+
+The readiness page (`/system/security/readiness`) shows `backup.state` plus the
+snapshot `as_of` date, and maps states onto the lifecycle vocabulary —
+`restore_tested`/`recovery_verified` surface as `test_verified` at most; nothing here
+can claim `production_verified` or `hardware_verified`.
 
 ## Restore procedure
 
@@ -109,5 +157,9 @@ Fields (migration `0045_system_ops.sql`):
 
 Honesty rule: a row is only as trustworthy as the operator entering it. The readiness
 page shows the latest test but labels it manually-recorded. **Recovery stays
-`unverified` until a real restore test is recorded with `result='passed'` against an
-isolated environment — and even then it is `test_verified`, not production-verified.**
+`no_verified_backup`/`restore_pending` until a real restore test is recorded with
+`result='passed'` against an isolated environment — which advances the state machine
+to `restore_tested` (still self-reported). `recovery_verified` is reserved for an
+explicit verified marker that does not exist in the schema today and is never
+auto-emitted; reaching it requires a schema change plus an honest operator
+attestation, documented here as self-reported — not independent verification.**

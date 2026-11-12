@@ -264,6 +264,9 @@ export const PROVISION_TOKEN_TTL_MS = 72 * 3600_000; // 72h
 
 const sha256hex = (s: string) => createHash("sha256").update(s, "utf8").digest("hex");
 
+/** SHA-256 hex of a raw provisioning token (`znk_…`) — the only form ever persisted. */
+export const provisionTokenHash = (token: string) => sha256hex(token);
+
 /**
  * Issues a single-use provisioning token. Returns the RAW token exactly once —
  * only its SHA-256 hash + 72h expiry are persisted. The token value is NEVER
@@ -283,7 +286,7 @@ export async function issueProvisionToken(
   const token = `znk_${randomBytes(24).toString("base64url")}`;
   const expiresAt = new Date(Date.now() + PROVISION_TOKEN_TTL_MS).toISOString();
   const { data, error } = await db.from("system_devices").update({
-    provision_token_hash: sha256hex(token),
+    provision_token_hash: provisionTokenHash(token),
     provision_token_expires_at: expiresAt,
     provision_token_used_at: null, // new issuance resets single-use state
     updated_at: new Date().toISOString(),

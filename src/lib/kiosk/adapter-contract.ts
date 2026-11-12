@@ -143,6 +143,47 @@ export type OfflineReconciliationReport = {
   failedCommandIds: { commandId: string; reason: string }[];
 };
 
+/* ── Device acknowledgement events (Phase 2.4 ingest contract) ──────────────── */
+
+/**
+ * Normalized ack/failure event types a device may push through the events ingest
+ * (validated shape lives in ingest.ts `eventSchema`; KNOWN_EVENT_TYPES lists them).
+ * These are inbound telemetry — recording them never implies settlement.
+ */
+export type DeviceAckEventType =
+  | "dispense_requested" | "dispense_acknowledged" | "dispense_failed"
+  | "bank_released" | "return_rejected" | "hardware_fault";
+
+/** Return-side ack types handled by the verified return path, not the ack handler. */
+export type DeviceReturnEventType = "return_detected" | "return_acknowledged";
+
+/** Device-reported ack classification carried on the optional `outcome` field. */
+export type DeviceAckOutcome = "acknowledged" | "failed" | "rejected" | "detected" | "released";
+
+/**
+ * Correlation contract for ack events (all optional on the wire; an event with no
+ * command_id AND no resolvable bank/rental is logged with outcome 'unmatched'):
+ *  - command_id → device_commands.id (uuid) or .idempotency_key (text), kiosk-scoped.
+ *  - rental_ref → rentals.id (uuid) or rentals.reference (public ref, e.g. "ZR-…").
+ *  - power_bank_serial → power_banks.serial → latest rental holding that bank.
+ *  - hw_timestamp → per-event device hardware clock; `at` stays batch device time.
+ *  - simulated → marks synthetic/test-originated events; stored in payloads/audit.
+ *
+ * Server outcomes (kiosk_events.result): heartbeat | ignored | out_of_order |
+ * duplicate | already_returned | returned | return_disputed | ack_recorded |
+ * already_recorded | unmatched | exception_raised | rejected:*. Ambiguous acks
+ * write rental_exceptions rows (migration 0050) — never auto-settle.
+ */
+export type DeviceAckCorrelation = {
+  commandId?: string;
+  rentalRef?: string;
+  powerBankSerial?: string;
+  outcome?: DeviceAckOutcome;
+  errorCode?: string;
+  hwTimestamp?: string;
+  simulated?: boolean;
+};
+
 /* ── Error taxonomy ─────────────────────────────────────────────────────────── */
 
 /**

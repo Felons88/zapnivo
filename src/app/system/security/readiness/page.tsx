@@ -148,6 +148,13 @@ export default async function SecurityReadinessPage() {
                 </dd>
               </div>
               <div className="flex justify-between gap-3 border-b border-white/5 py-1.5">
+                <dt className="text-slate-500">backup / recovery state</dt>
+                <dd className="font-mono text-slate-200">
+                  {r.backup.state}
+                  {r.backup.provider_snapshot ? ` · snapshot ${r.backup.provider_snapshot.as_of}` : ""}
+                </dd>
+              </div>
+              <div className="flex justify-between gap-3 border-b border-white/5 py-1.5">
                 <dt className="text-slate-500">KIOSK_ADAPTER</dt>
                 <dd className="font-mono text-slate-200">{r.hardware.adapter}</dd>
               </div>
