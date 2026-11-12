@@ -79,9 +79,10 @@ export default async function SystemSessionsPage() {
         </section>
 
         <p className="text-xs text-slate-500">
-          Remote revocation exists via <code className="font-mono">revokeCurrentSession()</code> on logout; there is no
-          admin-side "kill session" endpoint yet — <span className="text-amber-300">requires implementation</span> if
-          immediate session termination for arbitrary users is needed.
+          Remote revocation exists via <code className="font-mono">revokeCurrentSession()</code> on logout, and admins
+          can revoke a technical user&apos;s sessions from{" "}
+          <Link href="/system/security/users" className="text-lime underline">Technical users</Link> (requires step-up
+          elevation; self-revocation of all sessions is blocked).
         </p>
       </div>
     </SystemGate>

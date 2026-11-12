@@ -1,7 +1,7 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
-  deviceCredentialStatus, deviceSecretHash, issueDeviceCredential, legacyIngestEnabled,
+  decryptSecret, deviceCredentialStatus, deviceSecretHash, issueDeviceCredential, legacyIngestEnabled,
   newDeviceSecret, parseDeviceTimestamp, revokeDeviceCredential, signDeviceRequest,
   verifyDeviceAuth, type DeviceAuthRow,
 } from "@/lib/system/device-auth";
@@ -43,6 +43,7 @@ function deviceRow(over: Partial<DeviceAuthRow> = {}): DeviceAuthRow {
     status: "active",
     auth_method: "hmac_sha256",
     device_secret_hash: deviceSecretHash(SECRET),
+    device_secret_enc: null, // legacy-hash credential (pre-v2)
     credential_issued_at: "2026-01-01T00:00:00Z",
     credential_expires_at: "2027-01-01T00:00:00Z",
     credential_revoked_at: null,
@@ -52,15 +53,31 @@ function deviceRow(over: Partial<DeviceAuthRow> = {}): DeviceAuthRow {
   };
 }
 
-function signedReq(body: string, tsSec = Math.floor(NOW.getTime() / 1000), secret = SECRET) {
+let msgCounter = 0;
+function signedReq(body: string, tsSec = Math.floor(NOW.getTime() / 1000), secret = SECRET, messageId?: string) {
   const timestamp = String(tsSec);
-  return { deviceId: UID, timestamp, signature: signDeviceRequest(secret, timestamp, body), body };
+  return {
+    deviceId: UID, timestamp,
+    signature: signDeviceRequest(secret, timestamp, body),
+    body,
+    messageId: messageId ?? `testmsg-${++msgCounter}-abcdefgh`,
+  };
 }
 
-beforeEach(() => resetRateLimits());
+const TEST_KEK = "ab".repeat(32); // 64 hex chars = 32-byte AES-256 key
+let prevKek: string | undefined;
+beforeEach(() => {
+  resetRateLimits();
+  prevKek = process.env.DEVICE_CREDENTIAL_KEK;
+  process.env.DEVICE_CREDENTIAL_KEK = TEST_KEK;
+});
+afterEach(() => {
+  if (prevKek === undefined) delete process.env.DEVICE_CREDENTIAL_KEK;
+  else process.env.DEVICE_CREDENTIAL_KEK = prevKek;
+});
 
 describe("device credential issuance", () => {
-  it("issues a secret once and stores only its sha256 hash", async () => {
+  it("issues a secret once and stores enc ciphertext + sha256 fingerprint", async () => {
     const issued = deviceRow({ status: "registered", auth_method: "pending", device_secret_hash: null });
     const devices = fakeTable({ singles: [{ data: issued, error: null }] });
     const db = fakeDb({ system_devices: devices });
@@ -71,6 +88,10 @@ describe("device credential issuance", () => {
     const patch = devices._update as Record<string, unknown>;
     expect(patch.device_secret_hash).toBe(deviceSecretHash(res.secret));
     expect(patch.device_secret_hash).not.toBe(res.secret);
+    // v2: the recoverable secret is stored only as KEK-wrapped AES-256-GCM.
+    expect(patch.device_secret_enc).toMatch(/^v1\.[0-9a-f]+\.[0-9a-f]+\.[0-9a-f]+$/);
+    expect(decryptSecret(patch.device_secret_enc as string)).toBe(res.secret);
+    expect(JSON.stringify(patch)).not.toContain(res.secret);
     expect(patch.auth_method).toBe("hmac_sha256");
     expect(patch.status).toBe("provisioning"); // registered → provisioning is a legal edge
     expect(patch.last_message_ts).toBeNull();
@@ -92,6 +113,7 @@ describe("device credential issuance", () => {
     expect(res.ok).toBe(true);
     const patch = devices._update as Record<string, unknown>;
     expect(patch.device_secret_hash).toBeNull();
+    expect(patch.device_secret_enc).toBeNull();
     expect(patch.credential_revoked_at).toBeTruthy();
     expect(patch.auth_method).toBe("none");
   });
@@ -164,12 +186,15 @@ describe("verifyDeviceAuth", () => {
     expect(res.ok).toBe(true);
   });
 
-  it("rejects replays (timestamp not strictly newer than last_message_ts)", async () => {
+  it("accepts out-of-order timestamps within the window (v2: nonce dedup, not ts ordering)", async () => {
     const tsMs = NOW.getTime();
-    const { db } = dbFor(deviceRow({ last_message_ts: tsMs }));
-    const res = await verifyDeviceAuth(db, signedReq(body, Math.floor(tsMs / 1000)), NOW);
-    expect(res.ok).toBe(false);
-    if (!res.ok) expect(res.reason).toBe("replay");
+    const { db, devices } = dbFor(deviceRow({ last_message_ts: tsMs }));
+    // 30s older than last_message_ts but still inside ±5min — must be accepted,
+    // and last_message_ts must NOT regress.
+    const res = await verifyDeviceAuth(db, signedReq(body, Math.floor(tsMs / 1000) - 30), NOW);
+    expect(res.ok).toBe(true);
+    const patch = devices._update as Record<string, unknown>;
+    expect(patch.last_message_ts).toBe(tsMs);
   });
 
   it("rejects unknown devices and non-hmac auth methods", async () => {

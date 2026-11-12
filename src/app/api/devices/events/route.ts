@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { timingSafeEqual } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { serviceClient } from "@/lib/supabase";
 import { ingestBodySchema, ingestKioskEvents } from "@/lib/kiosk/ingest";
 import {
@@ -10,12 +10,16 @@ import {
 /**
  * Hardware event ingest — vendor-agnostic. Two auth paths:
  *
- *  1. Per-device HMAC-SHA256 (preferred): headers
- *       X-Device-Id / X-Device-Timestamp / X-Device-Signature
+ *  1. Per-device HMAC-SHA256 (preferred), protocol v2: headers
+ *       X-Device-Id / X-Device-Timestamp / X-Device-Signature /
+ *       X-Device-Message-Id (required nonce) / X-Device-Protocol (optional)
  *     verified by verifyDeviceAuth (src/lib/system/device-auth.ts) against the
  *     system_devices credential. The device must be bound to the posted
- *     station_id via device_uid or serial_number. Every attempt is recorded in
- *     system_device_messages — secrets/signatures are NEVER logged.
+ *     station_id via device_uid or serial_number. Message ids are deduplicated
+ *     atomically via a unique index on system_device_messages(device_id,
+ *     message_id); timestamps may arrive out of order inside the ±5min window.
+ *     Every attempt is recorded in system_device_messages — secrets,
+ *     signatures, enc payloads and hashes are NEVER logged.
  *
  *  2. Legacy shared secret: `Authorization: Bearer $KIOSK_INGEST_SECRET`,
  *     accepted ONLY while KIOSK_LEGACY_INGEST=1 AND the station is not bound to
@@ -34,7 +38,7 @@ async function findStationDevice(db: NonNullable<ReturnType<typeof serviceClient
   // PostgREST .or() filter — restrict to safe chars to avoid filter injection.
   if (!/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}$/.test(stationId)) return null;
   const { data } = await db.from("system_devices")
-    .select("id,device_uid,serial_number,status,auth_method,device_secret_hash,credential_issued_at,credential_expires_at,credential_revoked_at,last_authed_at,last_message_ts")
+    .select("id,device_uid,serial_number,status,auth_method,device_secret_hash,device_secret_enc,credential_issued_at,credential_expires_at,credential_revoked_at,last_authed_at,last_message_ts")
     .or(`device_uid.eq.${stationId},serial_number.eq.${stationId}`)
     .limit(1);
   const rows = (data ?? []) as DeviceAuthRow[];
@@ -42,7 +46,7 @@ async function findStationDevice(db: NonNullable<ReturnType<typeof serviceClient
 }
 
 const hasLiveHmacCredential = (d: DeviceAuthRow | null) =>
-  !!d && d.auth_method === "hmac_sha256" && !!d.device_secret_hash && !d.credential_revoked_at;
+  !!d && d.auth_method === "hmac_sha256" && !!(d.device_secret_enc || d.device_secret_hash) && !d.credential_revoked_at;
 
 export async function POST(req: Request) {
   const db = serviceClient();
@@ -54,17 +58,29 @@ export async function POST(req: Request) {
   const devId = req.headers.get("x-device-id");
   const devTs = req.headers.get("x-device-timestamp");
   const devSig = req.headers.get("x-device-signature");
+  const devMsgId = req.headers.get("x-device-message-id");
+  const devProto = req.headers.get("x-device-protocol");
 
   let authedDevice: DeviceAuthRow | null = null;
   let authMethod: string;
+  // v2 dedup/protocol context — only populated on the HMAC path.
+  let msgId: string | null = null;
+  let protoVersion: number | null = null;
+  let bodyHash: string | null = null;
 
   if (devId || devTs || devSig) {
-    // ── Path 1: per-device HMAC ──────────────────────────────────────────
+    // ── Path 1: per-device HMAC (protocol v2) ─────────────────────────────
     if (!devId || !devTs || !devSig) {
       await recordDeviceAuthMessage(db, { result: "rejected", authMethod: "hmac_sha256", detail: { reason: "missing_headers" } });
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    const v = await verifyDeviceAuth(db, { deviceId: devId, timestamp: devTs, signature: devSig, body: rawBody });
+    msgId = devMsgId;
+    protoVersion = devProto == null ? null : Number(devProto);
+    bodyHash = createHash("sha256").update(rawBody, "utf8").digest("hex");
+    const v = await verifyDeviceAuth(db, {
+      deviceId: devId, timestamp: devTs, signature: devSig, body: rawBody,
+      messageId: devMsgId, protocolVersion: protoVersion, bodyHash,
+    });
     if (!v.ok) return NextResponse.json({ error: v.error }, { status: v.status });
     authedDevice = v.device;
     authMethod = "hmac_sha256";
@@ -119,7 +135,14 @@ export async function POST(req: Request) {
     deviceId: stationDevice?.id ?? null,
     authMethod,
     result: "ok",
-    detail: { station_id: body.station_id, events: body.events.length },
+    // message_id/protocol_version/payload_sha256 are carried in detail rather
+    // than the dedup columns: the 'claim' row written during verification
+    // already owns (device_id, message_id) on the unique index — setting them
+    // here would make this row a guaranteed (and silent) unique violation.
+    detail: {
+      station_id: body.station_id, events: body.events.length,
+      ...(msgId != null ? { message_id: msgId, protocol_version: protoVersion, payload_sha256: bodyHash } : {}),
+    },
   });
   return NextResponse.json({ ok: true, ...result });
 }

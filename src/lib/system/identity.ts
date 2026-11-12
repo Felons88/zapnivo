@@ -139,6 +139,14 @@ export async function attemptBootstrap(
     consumed_at: nowIso, // spent immediately — replay impossible
   });
   if (grantErr) {
+    // Unique-violation on system_bootstrap_grants_single means a concurrent
+    // bootstrap already consumed the single global grant — revert the role we
+    // just set so no second administrator survives the race.
+    const isUnique = (grantErr as { code?: string }).code === "23505";
+    if (isUnique) {
+      await db.from("profiles").update({ system_role: null }).eq("id", user.id).eq("system_role", "sysadmin");
+      return { ok: false, status: 409, error: "Bootstrap already consumed — only one privileged grant is permitted" };
+    }
     // Role was granted but the audit row failed — still audit the grant itself.
     await systemAudit(db, {
       actor: { id: user.id, role: "sysadmin" },
