@@ -16,7 +16,7 @@ import { ProvisionPanel } from "./ProvisionPanel";
 import { CredentialPanel } from "./CredentialPanel";
 import { DiagnosticsButton } from "./DiagnosticsButton";
 import { CommandForm } from "./CommandForm";
-import { deviceCredentialStatus } from "@/lib/system/device-auth";
+import { deviceCredentialStatus, kekStatus, type DeviceAuthRow } from "@/lib/system/device-auth";
 import type { ReadinessCheck } from "@/lib/system/hardware";
 
 export const metadata: Metadata = { title: "Kiosk Infrastructure — Device" };
@@ -69,7 +69,17 @@ export default async function KioskDevicePage({ params }: { params: Promise<{ id
   const diagnostics = commands.filter((c) => c.command_type === "diagnostic_ping");
   const conn = deriveConnectivity(device);
   const tokenState = provisionTokenState(device);
-  const credential = deviceCredentialStatus(device);
+  // Rotation-slot columns arrive with migration 0048 — fetch tolerantly so the
+  // page still renders before the migration lands (rotation simply shows none).
+  const { data: credCols } = await db.from("system_devices")
+    .select("device_secret_enc_next,credential_next_expires_at")
+    .eq("id", device.id).maybeSingle();
+  const credential = deviceCredentialStatus({
+    ...(device as unknown as DeviceAuthRow),
+    device_secret_enc_next: (credCols as { device_secret_enc_next?: string | null } | null)?.device_secret_enc_next ?? null,
+    credential_next_expires_at: (credCols as { credential_next_expires_at?: string | null } | null)?.credential_next_expires_at ?? null,
+  });
+  const kek = kekStatus();
   const adapter = kioskAdapterName();
   const latestDiagnostics = diagnostics[0]?.result as { readiness?: ReadinessCheck[] } | null | undefined;
   const transitionTargets = DEVICE_TRANSITIONS[device.status].map((s) => ({ status: s, risk: transitionRisk(s) }));
@@ -154,7 +164,7 @@ export default async function KioskDevicePage({ params }: { params: Promise<{ id
 
           {/* Ingest credential (per-device HMAC) */}
           <Section title="Device credential">
-            <CredentialPanel deviceId={device.id} canManage={canManage} credential={credential} />
+            <CredentialPanel deviceId={device.id} canManage={canManage} credential={credential} kek={kek} />
           </Section>
 
           {/* Lifecycle */}

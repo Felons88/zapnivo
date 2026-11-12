@@ -5,7 +5,18 @@ import { useRouter } from "next/navigation";
 type CredentialState =
   | { state: "none" }
   | { state: "pending"; authMethod: string }
-  | { state: "active" | "expired" | "revoked"; authMethod: string; issuedAt: string | null; expiresAt: string | null; revokedAt: string | null; lastAuthedAt: string | null };
+  | {
+      state: "active" | "expired" | "revoked";
+      authMethod: string;
+      issuedAt: string | null;
+      expiresAt: string | null;
+      revokedAt: string | null;
+      lastAuthedAt: string | null;
+      rotationPending?: boolean;
+      rotationNextExpiresAt?: string | null;
+    };
+
+type KekInfo = { configured: boolean; current_version: string; previous_configured: boolean };
 
 const when = (iso: string | null | undefined) =>
   iso ? new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "UTC" }) + "Z" : "—";
@@ -15,23 +26,32 @@ const when = (iso: string | null | undefined) =>
  * lives only in component state and is cleared on refresh. The device uses
  * hex(sha256(secret)) as the HMAC-SHA256 signing key over
  * `${X-Device-Timestamp}.${rawBody}` (see src/lib/system/device-auth.ts).
+ *
+ * "Rotate (zero-downtime)" stages a new secret alongside the live one — the
+ * device keeps working on the old secret until it authenticates once with the
+ * new one (72h window), then promotion is automatic. Requires a step-up MFA
+ * elevation; a 403 step_up_required surfaces its message here.
  */
-export function CredentialPanel({ deviceId, canManage, credential }: { deviceId: string; canManage: boolean; credential: CredentialState }) {
+export function CredentialPanel({ deviceId, canManage, credential, kek }: { deviceId: string; canManage: boolean; credential: CredentialState; kek?: KekInfo }) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [issued, setIssued] = useState<{ secret: string; expiresAt: string } | null>(null);
+  const [issued, setIssued] = useState<{ secret: string; expiresAt: string; rotation?: boolean } | null>(null);
   const [copied, setCopied] = useState(false);
 
-  const call = async (path: string, key: string) => {
+  const call = async (path: string, key: string, opts: { rotation?: boolean } = {}) => {
     setBusy(key); setError(null);
     try {
       const res = await fetch(path, { method: "POST" });
       const j = await res.json().catch(() => ({}));
-      if (!res.ok) { setError((j as { error?: string }).error ?? `HTTP ${res.status}`); return; }
-      if (key === "issue") {
-        const d = j as { secret?: string; expires_at?: string };
-        if (d.secret) setIssued({ secret: d.secret, expiresAt: d.expires_at ?? "" });
+      if (!res.ok) {
+        const e = j as { error?: string; code?: string };
+        setError(e.code === "step_up_required" ? `Step-up required: ${e.error ?? "verify MFA first"}` : (e.error ?? `HTTP ${res.status}`));
+        return;
+      }
+      if (key === "issue" || key === "rotate") {
+        const d = j as { secret?: string; expires_at?: string; next_expires_at?: string };
+        if (d.secret) setIssued({ secret: d.secret, expiresAt: d.expires_at ?? d.next_expires_at ?? "", rotation: key === "rotate" });
       }
       router.refresh();
     } finally { setBusy(null); }
@@ -43,6 +63,8 @@ export function CredentialPanel({ deviceId, canManage, credential }: { deviceId:
   };
 
   const active = credential.state === "active";
+  const rotationPending = "rotationPending" in credential && credential.rotationPending === true;
+  const nextExpires = "rotationNextExpiresAt" in credential ? credential.rotationNextExpiresAt : null;
 
   return (
     <div className="space-y-3">
@@ -52,14 +74,32 @@ export function CredentialPanel({ deviceId, canManage, credential }: { deviceId:
         {"issuedAt" in credential && <div className="flex justify-between gap-2 border-b border-white/5 py-1"><dt className="text-slate-500">issued</dt><dd className="font-mono text-slate-200">{when(credential.issuedAt)}</dd></div>}
         {"expiresAt" in credential && <div className="flex justify-between gap-2 border-b border-white/5 py-1"><dt className="text-slate-500">expires</dt><dd className="font-mono text-slate-200">{when(credential.expiresAt)}</dd></div>}
         {"lastAuthedAt" in credential && <div className="flex justify-between gap-2 border-b border-white/5 py-1"><dt className="text-slate-500">last authed</dt><dd className="font-mono text-slate-200">{when(credential.lastAuthedAt)}</dd></div>}
+        {rotationPending && (
+          <div className="col-span-2 flex justify-between gap-2 border-b border-amber-400/20 bg-amber-400/5 px-2 py-1">
+            <dt className="text-amber-300/80">rotation</dt>
+            <dd className="font-mono text-amber-300">pending — next expires {when(nextExpires)}</dd>
+          </div>
+        )}
       </dl>
 
       {canManage ? (
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" disabled={busy !== null} onClick={() => call(`/api/system/kiosks/${deviceId}/credential`, "issue")}
             className="rounded-full bg-lime px-3 py-1.5 font-mono text-[11px] font-extrabold text-ink hover:bg-[#e6ffa8] disabled:opacity-50">
-            {busy === "issue" ? "Issuing…" : credential.state === "none" || credential.state === "pending" ? "Issue credential" : "Rotate credential"}
+            {busy === "issue" ? "Issuing…" : credential.state === "none" || credential.state === "pending" ? "Issue credential" : "Reissue (breaks old secret)"}
           </button>
+          {active && !rotationPending && (
+            <button type="button" disabled={busy !== null} onClick={() => call(`/api/system/kiosks/${deviceId}/credential/rotate`, "rotate")}
+              className="rounded-full bg-sky-400/15 px-3 py-1.5 font-mono text-[11px] font-extrabold text-sky-300 ring-1 ring-sky-400/30 hover:bg-sky-400/25 disabled:opacity-50">
+              {busy === "rotate" ? "Starting…" : "Rotate (zero-downtime)"}
+            </button>
+          )}
+          {rotationPending && (
+            <button type="button" disabled={busy !== null} onClick={() => call(`/api/system/kiosks/${deviceId}/credential/rotate/cancel`, "cancel")}
+              className="rounded-full bg-white/10 px-3 py-1.5 font-mono text-[11px] font-extrabold text-slate-200 ring-1 ring-white/15 hover:bg-white/15 disabled:opacity-50">
+              {busy === "cancel" ? "Cancelling…" : "Cancel rotation"}
+            </button>
+          )}
           {(active || credential.state === "expired") && (
             <button type="button" disabled={busy !== null} onClick={() => call(`/api/system/kiosks/${deviceId}/credential/revoke`, "revoke")}
               className="rounded-full bg-red-500/15 px-3 py-1.5 font-mono text-[11px] font-extrabold text-red-300 ring-1 ring-red-400/30 hover:bg-red-500/25 disabled:opacity-50">
@@ -74,7 +114,9 @@ export function CredentialPanel({ deviceId, canManage, credential }: { deviceId:
 
       {issued && (
         <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 p-4">
-          <p className="text-xs font-bold text-amber-300">⚠ Secret shown once — copy it now. Only its SHA-256 hash is stored.</p>
+          <p className="text-xs font-bold text-amber-300">
+            ⚠ Secret shown once — copy it now. Only its encrypted form is stored.{issued.rotation ? " Zero-downtime: the old secret keeps working until the device authenticates with this one." : ""}
+          </p>
           <div className="mt-2 flex items-center gap-2">
             <code className="min-w-0 flex-1 overflow-x-auto rounded-lg bg-black/40 px-3 py-2 font-mono text-xs text-lime">{issued.secret}</code>
             <button type="button" onClick={copy} className="shrink-0 rounded-full bg-white/10 px-3 py-1.5 font-mono text-[11px] font-bold text-slate-200 ring-1 ring-white/15 hover:bg-white/15">
@@ -85,6 +127,14 @@ export function CredentialPanel({ deviceId, canManage, credential }: { deviceId:
             expires: {issued.expiresAt || "1y from issue"} · signing key = hex(sha256(secret)) · headers: X-Device-Id / X-Device-Timestamp / X-Device-Signature
           </p>
         </div>
+      )}
+
+      {kek && (
+        <p className="font-mono text-[10px] text-slate-500">
+          KEK {kek.configured ? `v${kek.current_version}` : "NOT CONFIGURED"}
+          {kek.previous_configured ? " · previous KEK staged (reencrypt pending)" : ""}
+          {" — rotation: set DEVICE_CREDENTIAL_KEK_PREVIOUS=<old>, DEVICE_CREDENTIAL_KEK=<new>, run credential/reencrypt per device, then unset previous."}
+        </p>
       )}
 
       <p className="text-[10px] text-slate-500">

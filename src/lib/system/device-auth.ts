@@ -14,6 +14,19 @@ import { DEVICE_TRANSITIONS, deviceAuditResource, isUuid, type SystemDeviceStatu
  *    sha256(secret) as a non-reversible fingerprint ONLY. The raw secret is
  *    never stored, logged, or audited. Issuance REFUSES (503) when the KEK is
  *    unset or malformed — there is no hash-as-key fallback for new credentials.
+ *  - Ciphertext format v2: `v2.<keyver>.<iv_hex>.<tag_hex>.<ct_hex>` where
+ *    keyver comes from DEVICE_CREDENTIAL_KEK_VERSION (default 'k1') and the
+ *    AES-GCM AAD is the device uuid — ciphertext is bound to its row and
+ *    cannot be swapped between devices. Legacy `v1.<iv>.<tag>.<ct>` payloads
+ *    (no AAD, no keyver) still decrypt for pre-existing rows.
+ *  - KEK rotation: DEVICE_CREDENTIAL_KEK_PREVIOUS (64-hex) is tried after the
+ *    current KEK on decrypt failure, enabling staged rotation. Re-encryption
+ *    is manual per device via reencryptDeviceCredential (verify-before-write).
+ *  - ZERO-DOWNTIME ROTATION: startCredentialRotation stages a new secret in
+ *    device_secret_enc_next (72h window). During the overlap BOTH credentials
+ *    verify; the first successful auth with the next secret promotes it to
+ *    the primary slot. cancelCredentialRotation / revokeDeviceCredential clear
+ *    the pending slot (revoke clears both).
  *  - The device uses `signingKey = hex(sha256(secret))` as the HMAC-SHA256 key
  *    over `${timestamp}.${rawBody}`. On verify, enc-mode rows decrypt the
  *    secret transiently in memory and derive the same key; the stored hash is
@@ -73,9 +86,14 @@ export type DeviceAuthRow = {
   status: SystemDeviceStatus | string;
   auth_method: DeviceAuthMethod | string | null;
   device_secret_hash: string | null;
-  /** AES-256-GCM ciphertext 'v1.<iv>.<tag>.<ct>' (hex) — optional because some
-   *  selects (SYSTEM_DEVICE_SELECT) predate the column; treat undefined as null. */
+  /** AES-256-GCM ciphertext — 'v2.<keyver>.<iv>.<tag>.<ct>' (AAD=device.id) or
+   *  legacy 'v1.<iv>.<tag>.<ct>' (no AAD). Optional because some selects
+   *  predate the column; treat undefined as null. */
   device_secret_enc?: string | null;
+  /** Staged next credential during a zero-downtime rotation window (0048). */
+  device_secret_enc_next?: string | null;
+  credential_next_expires_at?: string | null;
+  credential_rotated_at?: string | null;
   credential_issued_at: string | null;
   credential_expires_at: string | null;
   credential_revoked_at: string | null;
@@ -84,7 +102,7 @@ export type DeviceAuthRow = {
 };
 
 const AUTH_SELECT =
-  "id,device_uid,serial_number,status,auth_method,device_secret_hash,device_secret_enc,credential_issued_at,credential_expires_at,credential_revoked_at,last_authed_at,last_message_ts";
+  "id,device_uid,serial_number,status,auth_method,device_secret_hash,device_secret_enc,device_secret_enc_next,credential_next_expires_at,credential_rotated_at,credential_issued_at,credential_expires_at,credential_revoked_at,last_authed_at,last_message_ts";
 
 const sha256hex = (s: string) => createHash("sha256").update(s, "utf8").digest("hex");
 const hmacHex = (key: string, msg: string) => createHmac("sha256", key).update(msg, "utf8").digest("hex");
@@ -113,6 +131,7 @@ const KEK_HEX_RE = /^[0-9a-fA-F]{64}$/;
  * Reads + validates DEVICE_CREDENTIAL_KEK: exactly 64 hex chars (32 bytes).
  * Throws when unset or malformed — every caller fails closed; there is no
  * silent fallback to storing/verifying key material in recoverable form.
+ * Used for ENCRYPTION (current KEK only — never the previous one).
  */
 function kek(): Buffer {
   const raw = process.env.DEVICE_CREDENTIAL_KEK?.trim();
@@ -121,25 +140,144 @@ function kek(): Buffer {
   return Buffer.from(raw, "hex");
 }
 
+const KEYVER_RE = /^[A-Za-z0-9_-]{1,24}$/;
+
 /**
- * Encrypts a device secret: AES-256-GCM, random 12-byte IV, output
- * `v1.<iv_hex>.<tag_hex>.<ct_hex>`. Throws when the KEK is unavailable.
+ * Version tag embedded in v2 ciphertexts (DEVICE_CREDENTIAL_KEK_VERSION,
+ * default 'k1'). Bump it when the KEK changes so telemetry/audit can tell
+ * which key generation a credential belongs to — it is a label, not a secret.
  */
-export function encryptSecret(secret: string): string {
-  const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", kek(), iv);
-  const ct = Buffer.concat([cipher.update(secret, "utf8"), cipher.final()]);
-  return `v1.${iv.toString("hex")}.${cipher.getAuthTag().toString("hex")}.${ct.toString("hex")}`;
+export function kekVersion(): string {
+  const v = process.env.DEVICE_CREDENTIAL_KEK_VERSION?.trim();
+  return v && KEYVER_RE.test(v) ? v : "k1";
 }
 
-/** Reverses encryptSecret. Throws on malformed input, wrong KEK, or tampering. */
-export function decryptSecret(enc: string): string {
+/** Env-presence-only KEK status for ops surfaces — NEVER returns key material. */
+export function kekStatus(): { configured: boolean; current_version: string; previous_configured: boolean } {
+  const cur = process.env.DEVICE_CREDENTIAL_KEK?.trim();
+  const prev = process.env.DEVICE_CREDENTIAL_KEK_PREVIOUS?.trim();
+  return {
+    configured: !!cur && KEK_HEX_RE.test(cur),
+    current_version: kekVersion(),
+    previous_configured: !!prev && KEK_HEX_RE.test(prev),
+  };
+}
+
+function kekFromEnv(name: "DEVICE_CREDENTIAL_KEK" | "DEVICE_CREDENTIAL_KEK_PREVIOUS"): Buffer | null {
+  const raw = process.env[name]?.trim();
+  if (!raw || !KEK_HEX_RE.test(raw)) return null; // malformed → skipped, never thrown mid-decrypt
+  return Buffer.from(raw, "hex");
+}
+
+/**
+ * Ordered candidate KEKs for DECRYPTION: current first, then the optional
+ * DEVICE_CREDENTIAL_KEK_PREVIOUS. Trying previous on failure is what makes a
+ * staged KEK rotation possible without re-encrypting every row up front.
+ */
+function kekCandidates(): Buffer[] {
+  const out: Buffer[] = [];
+  const cur = kekFromEnv("DEVICE_CREDENTIAL_KEK");
+  const prev = kekFromEnv("DEVICE_CREDENTIAL_KEK_PREVIOUS");
+  if (cur) out.push(cur);
+  if (prev && (!cur || !prev.equals(cur))) out.push(prev);
+  return out;
+}
+
+type ParsedCredential = {
+  keyVersion: string; // 'v1' for legacy payloads, else the v2 keyver tag
+  aadBound: boolean;
+  iv: Buffer;
+  tag: Buffer;
+  ct: Buffer;
+};
+
+const HEX_RE = /^[0-9a-fA-F]+$/;
+
+function parseCredentialEnc(enc: string): ParsedCredential {
   const parts = enc.split(".");
-  if (parts.length !== 4 || parts[0] !== "v1") throw new Error("unsupported credential encoding");
-  const [, ivHex, tagHex, ctHex] = parts;
-  const decipher = createDecipheriv("aes-256-gcm", kek(), Buffer.from(ivHex, "hex"));
-  decipher.setAuthTag(Buffer.from(tagHex, "hex"));
-  return Buffer.concat([decipher.update(Buffer.from(ctHex, "hex")), decipher.final()]).toString("utf8");
+  if (parts[0] === "v1" && parts.length === 4) {
+    const [, ivHex, tagHex, ctHex] = parts;
+    if (!HEX_RE.test(ivHex) || ivHex.length !== 24 || !HEX_RE.test(tagHex) || tagHex.length !== 32 || !HEX_RE.test(ctHex) || ctHex.length === 0) {
+      throw new Error("malformed credential encoding");
+    }
+    return { keyVersion: "v1", aadBound: false, iv: Buffer.from(ivHex, "hex"), tag: Buffer.from(tagHex, "hex"), ct: Buffer.from(ctHex, "hex") };
+  }
+  if (parts[0] === "v2" && parts.length === 5) {
+    const [, keyver, ivHex, tagHex, ctHex] = parts;
+    if (!KEYVER_RE.test(keyver) || !HEX_RE.test(ivHex) || ivHex.length !== 24 || !HEX_RE.test(tagHex) || tagHex.length !== 32 || !HEX_RE.test(ctHex) || ctHex.length === 0) {
+      throw new Error("malformed credential encoding");
+    }
+    return { keyVersion: keyver, aadBound: true, iv: Buffer.from(ivHex, "hex"), tag: Buffer.from(tagHex, "hex"), ct: Buffer.from(ctHex, "hex") };
+  }
+  throw new Error("unsupported credential encoding");
+}
+
+/** Single-key decrypt attempt — returns null on ANY failure (wrong key, bad AAD, tamper). */
+function tryDecrypt(parsed: ParsedCredential, key: Buffer, aad: string | undefined): string | null {
+  try {
+    const decipher = createDecipheriv("aes-256-gcm", key, parsed.iv);
+    decipher.setAuthTag(parsed.tag);
+    if (parsed.aadBound) {
+      if (!aad) return null; // v2 without the device AAD can never verify
+      decipher.setAAD(Buffer.from(aad, "utf8"));
+    }
+    return Buffer.concat([decipher.update(parsed.ct), decipher.final()]).toString("utf8");
+  } catch {
+    return null;
+  }
+}
+
+type DecryptedCredential = { secret: string; keyVersion: string };
+
+/**
+ * Decrypts a credential payload trying each candidate KEK in order
+ * (current → previous). `aad` MUST be the owning device.id for v2 payloads —
+ * a ciphertext copied to another device row fails the GCM tag check.
+ * Throws when no candidate succeeds or none is configured.
+ */
+function decryptSecretAny(enc: string, aad?: string): DecryptedCredential {
+  const parsed = parseCredentialEnc(enc);
+  const candidates = kekCandidates();
+  if (candidates.length === 0) throw new Error("DEVICE_CREDENTIAL_KEK not configured");
+  for (const key of candidates) {
+    const secret = tryDecrypt(parsed, key, aad);
+    if (secret != null) return { secret, keyVersion: parsed.keyVersion };
+  }
+  throw new Error("credential decrypt failed");
+}
+
+/**
+ * Encrypts a device secret under the CURRENT KEK: AES-256-GCM, random 12-byte
+ * IV, output `v2.<keyver>.<iv_hex>.<tag_hex>.<ct_hex>` with `aad` (the device
+ * uuid) bound via setAAD. Throws when the KEK is unavailable.
+ */
+export function encryptSecret(secret: string, aad?: string, keyver?: string): string {
+  const kv = keyver ?? kekVersion();
+  if (!KEYVER_RE.test(kv)) throw new Error("invalid credential key version");
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", kek(), iv);
+  if (aad) cipher.setAAD(Buffer.from(aad, "utf8"));
+  const ct = Buffer.concat([cipher.update(secret, "utf8"), cipher.final()]);
+  return `v2.${kv}.${iv.toString("hex")}.${cipher.getAuthTag().toString("hex")}.${ct.toString("hex")}`;
+}
+
+/**
+ * Reverses encryptSecret — v2 (AAD-bound) and legacy v1 (no AAD) payloads,
+ * trying current then previous KEK. Throws on malformed input, wrong KEKs,
+ * AAD mismatch, or tampering.
+ */
+export function decryptSecret(enc: string, aad?: string): string {
+  return decryptSecretAny(enc, aad).secret;
+}
+
+/** Non-secret key-generation label for telemetry ('v1', 'k1', …). Never key material. */
+export function credentialKeyVersion(enc: string | null | undefined): string {
+  if (!enc) return "none";
+  try {
+    return parseCredentialEnc(enc).keyVersion;
+  } catch {
+    return "unknown";
+  }
 }
 
 /** Generates a new raw credential secret (shown once; never persisted). */
@@ -150,7 +288,17 @@ export const newDeviceSecret = () => `znd_${randomBytes(32).toString("base64url"
 export type CredentialStatus =
   | { state: "none" }
   | { state: "pending"; authMethod: string }
-  | { state: "active" | "expired" | "revoked"; authMethod: string; issuedAt: string | null; expiresAt: string | null; revokedAt: string | null; lastAuthedAt: string | null };
+  | {
+      state: "active" | "expired" | "revoked";
+      authMethod: string;
+      issuedAt: string | null;
+      expiresAt: string | null;
+      revokedAt: string | null;
+      lastAuthedAt: string | null;
+      /** True while a zero-downtime rotation window is open (next slot live). */
+      rotationPending: boolean;
+      rotationNextExpiresAt: string | null;
+    };
 
 /** True when the device holds a usable credential (enc or legacy hash). */
 const hasCredential = (d: DeviceAuthRow) => !!(d.device_secret_enc || d.device_secret_hash);
@@ -162,12 +310,16 @@ export function deviceCredentialStatus(device: DeviceAuthRow, now = new Date()):
       ? { state: "pending", authMethod: device.auth_method }
       : { state: "none" };
   }
+  const nextExpMs = device.credential_next_expires_at ? Date.parse(device.credential_next_expires_at) : NaN;
+  const rotationPending = !!device.device_secret_enc_next && Number.isFinite(nextExpMs) && nextExpMs > now.getTime();
   const base = {
     authMethod: device.auth_method ?? "hmac_sha256",
     issuedAt: device.credential_issued_at,
     expiresAt: device.credential_expires_at,
     revokedAt: device.credential_revoked_at,
     lastAuthedAt: device.last_authed_at,
+    rotationPending,
+    rotationNextExpiresAt: rotationPending ? (device.credential_next_expires_at ?? null) : null,
   };
   if (device.credential_revoked_at) return { state: "revoked", ...base };
   const exp = device.credential_expires_at ? new Date(device.credential_expires_at).getTime() : null;
@@ -192,7 +344,7 @@ export async function issueDeviceCredential(
   const secret = newDeviceSecret();
   let enc: string;
   try {
-    enc = encryptSecret(secret);
+    enc = encryptSecret(secret, device.id); // v2 — AAD-bound to this device row
   } catch (e) {
     // Fail closed: no KEK → no new credentials (existing legacy creds unaffected).
     return { ok: false, status: 503, error: e instanceof Error ? e.message : "Credential encryption unavailable" };
@@ -219,7 +371,7 @@ export async function issueDeviceCredential(
   if (error || !data) return { ok: false, status: 500, error: error?.message ?? "update failed" };
   await systemAudit(db, {
     actor, action: "kiosk.credential_issued", resource: deviceAuditResource(device.id),
-    detail: { device_uid: device.device_uid, auth_method: "hmac_sha256", credential_format: "aes256gcm_v1", expires_at: expiresAt, ttl_days: 365 },
+    detail: { device_uid: device.device_uid, auth_method: "hmac_sha256", credential_format: "aes256gcm_v2", kek_version: kekVersion(), expires_at: expiresAt, ttl_days: 365 },
   });
   return { ok: true, secret, expiresAt, device: data as DeviceAuthRow };
 }
@@ -235,6 +387,8 @@ export async function revokeDeviceCredential(
   }
   const { data, error } = await db.from("system_devices").update({
     device_secret_enc: null,
+    device_secret_enc_next: null, // revoke clears BOTH credential slots
+    credential_next_expires_at: null,
     device_secret_hash: null,
     credential_revoked_at: new Date().toISOString(),
     auth_method: "none",
@@ -244,9 +398,171 @@ export async function revokeDeviceCredential(
   if (error || !data) return { ok: false, status: 500, error: error?.message ?? "update failed" };
   await systemAudit(db, {
     actor, action: "kiosk.credential_revoked", resource: deviceAuditResource(device.id),
-    detail: { device_uid: device.device_uid, auth_method: "none" },
+    detail: { device_uid: device.device_uid, auth_method: "none", rotation_pending_cleared: !!device.device_secret_enc_next },
   });
   return { ok: true, device: data as DeviceAuthRow };
+}
+
+/* ── Zero-downtime credential rotation (staged next slot) ────────────────── */
+
+/** How long a staged next credential stays valid before it must be re-staged. */
+export const CREDENTIAL_ROTATION_WINDOW_MS = 72 * 3600_000; // 72h
+
+/** Fetches the auth-relevant columns for one device by uuid (null when absent). */
+export async function getDeviceAuthRow(db: SupabaseClient, id: string): Promise<DeviceAuthRow | null> {
+  if (!isUuid(id)) return null;
+  const { data, error } = await db.from("system_devices").select(AUTH_SELECT).eq("id", id).maybeSingle();
+  if (error || !data) return null;
+  return data as DeviceAuthRow;
+}
+
+/**
+ * Starts a zero-downtime credential rotation: generates a NEW secret, stores
+ * its KEK-encrypted form (AAD=device.id) in device_secret_enc_next with a 72h
+ * window, and leaves the CURRENT credential fully valid. The device must
+ * authenticate once with the new secret for promotion to happen (see
+ * verifyDeviceAuth); until then both secrets verify. The new raw secret is
+ * returned ONCE so it can be provisioned to the device — same contract as
+ * issueDeviceCredential.
+ */
+export async function startCredentialRotation(
+  db: SupabaseClient,
+  device: DeviceAuthRow & { id: string },
+  actor: SystemActor,
+): Promise<{ ok: true; secret: string; nextExpiresAt: string; device: DeviceAuthRow } | { ok: false; status: number; error: string }> {
+  if (device.status === "decommissioned") return { ok: false, status: 409, error: "Cannot rotate a credential for a decommissioned device" };
+  if (device.status === "quarantined") return { ok: false, status: 409, error: "Device is quarantined — resolve the quarantine before rotating credentials" };
+  if (!hasCredential(device)) return { ok: false, status: 409, error: "No credential to rotate — issue one first" };
+  if (device.device_secret_enc_next) {
+    const exp = device.credential_next_expires_at ? Date.parse(device.credential_next_expires_at) : NaN;
+    if (!Number.isFinite(exp) || exp > Date.now()) {
+      return { ok: false, status: 409, error: "A credential rotation is already pending — cancel it or wait for promotion/expiry" };
+    }
+  }
+
+  const secret = newDeviceSecret();
+  let encNext: string;
+  try {
+    encNext = encryptSecret(secret, device.id);
+  } catch (e) {
+    return { ok: false, status: 503, error: e instanceof Error ? e.message : "Credential encryption unavailable" };
+  }
+  const nextExpiresAt = new Date(Date.now() + CREDENTIAL_ROTATION_WINDOW_MS).toISOString();
+
+  const { data, error } = await db.from("system_devices").update({
+    device_secret_enc_next: encNext,
+    credential_next_expires_at: nextExpiresAt,
+    updated_at: new Date().toISOString(),
+  }).eq("id", device.id).select(AUTH_SELECT).single();
+  if (error || !data) return { ok: false, status: 500, error: error?.message ?? "update failed" };
+  await systemAudit(db, {
+    actor, action: "kiosk.credential_rotation_started", resource: deviceAuditResource(device.id),
+    detail: { device_uid: device.device_uid, kek_version: kekVersion(), next_expires_at: nextExpiresAt, window_hours: 72 },
+  });
+  return { ok: true, secret, nextExpiresAt, device: data as DeviceAuthRow };
+}
+
+/** Cancels a pending rotation: clears the staged next slot. Primary untouched. */
+export async function cancelCredentialRotation(
+  db: SupabaseClient,
+  device: DeviceAuthRow & { id: string },
+  actor: SystemActor,
+): Promise<{ ok: true; device: DeviceAuthRow } | { ok: false; status: number; error: string }> {
+  const exp = device.credential_next_expires_at ? Date.parse(device.credential_next_expires_at) : NaN;
+  const pending = !!device.device_secret_enc_next && (!Number.isFinite(exp) || exp > Date.now());
+  if (!pending) return { ok: false, status: 409, error: "No pending credential rotation to cancel" };
+  const { data, error } = await db.from("system_devices").update({
+    device_secret_enc_next: null,
+    credential_next_expires_at: null,
+    updated_at: new Date().toISOString(),
+  }).eq("id", device.id).select(AUTH_SELECT).single();
+  if (error || !data) return { ok: false, status: 500, error: error?.message ?? "update failed" };
+  await systemAudit(db, {
+    actor, action: "kiosk.credential_rotation_cancelled", resource: deviceAuditResource(device.id),
+    detail: { device_uid: device.device_uid },
+  });
+  return { ok: true, device: data as DeviceAuthRow };
+}
+
+/**
+ * Promotes a verified next-slot credential to primary. Called from
+ * verifyDeviceAuth on the first successful auth with the new secret. Returns
+ * true when the guarded update actually landed (guards against a concurrent
+ * cancel/second promotion racing this request).
+ */
+async function promoteCredentialRotation(
+  db: SupabaseClient,
+  device: DeviceAuthRow & { id: string },
+  nextEnc: string,
+  nextSecret: string,
+  nextKeyVersion: string,
+  now: Date,
+): Promise<boolean> {
+  const nowIso = now.toISOString();
+  const { data, error } = await db.from("system_devices").update({
+    device_secret_enc: nextEnc,
+    device_secret_enc_next: null,
+    credential_next_expires_at: null,
+    device_secret_hash: deviceSecretHash(nextSecret), // fresh fingerprint for the promoted secret
+    credential_issued_at: nowIso,
+    credential_expires_at: new Date(now.getTime() + DEVICE_CREDENTIAL_TTL_MS).toISOString(),
+    credential_revoked_at: null,
+    credential_rotated_at: nowIso,
+    last_message_ts: null, // new credential → fresh replay window
+    updated_at: nowIso,
+  }).eq("id", device.id).eq("device_secret_enc_next", nextEnc).select("id").maybeSingle();
+  if (error || !data) return false;
+  await systemAudit(db, {
+    actor: null, // system-initiated promotion on first successful next-auth
+    action: "kiosk.credential_rotation_completed", resource: deviceAuditResource(device.id),
+    detail: { device_uid: device.device_uid, kek_version: nextKeyVersion, trigger: "first_next_auth" },
+  });
+  return true;
+}
+
+/**
+ * KEK-rotation helper: decrypts the device's stored credential(s) with ANY
+ * candidate KEK (current → previous), re-encrypts under the CURRENT KEK, and
+ * — only after a successful decrypt→encrypt→decrypt roundtrip — writes the row.
+ * Audited as kiosk.credential_reencrypted. Manual per-device step; there is NO
+ * automatic KEK rotation.
+ */
+export async function reencryptDeviceCredential(
+  db: SupabaseClient,
+  deviceId: string,
+  actor: SystemActor,
+): Promise<{ ok: true; device: DeviceAuthRow; slots: string[] } | { ok: false; status: number; error: string }> {
+  const device = await getDeviceAuthRow(db, deviceId);
+  if (!device) return { ok: false, status: 404, error: "Device not found" };
+
+  const patch: Record<string, unknown> = {};
+  const slots: string[] = [];
+  const reencryptSlot = (enc: string, aad: string, column: "device_secret_enc" | "device_secret_enc_next"): string => {
+    const { secret } = decryptSecretAny(enc, aad); // throws when no candidate KEK works
+    const fresh = encryptSecret(secret, aad); // current KEK + current keyver
+    // Verify-before-write: the new ciphertext MUST roundtrip to the same secret.
+    if (decryptSecret(fresh, aad) !== secret) throw new Error("reencrypt roundtrip verification failed");
+    patch[column] = fresh;
+    slots.push(column);
+    return fresh;
+  };
+
+  try {
+    if (device.device_secret_enc) reencryptSlot(device.device_secret_enc, device.id, "device_secret_enc");
+    if (device.device_secret_enc_next) reencryptSlot(device.device_secret_enc_next, device.id, "device_secret_enc_next");
+  } catch (e) {
+    return { ok: false, status: 503, error: e instanceof Error ? e.message : "Credential re-encryption failed" };
+  }
+  if (slots.length === 0) return { ok: false, status: 409, error: "No encrypted credential to re-encrypt (legacy hash-only or empty)" };
+
+  patch.updated_at = new Date().toISOString();
+  const { data, error } = await db.from("system_devices").update(patch).eq("id", device.id).select(AUTH_SELECT).single();
+  if (error || !data) return { ok: false, status: 500, error: error?.message ?? "update failed" };
+  await systemAudit(db, {
+    actor, action: "kiosk.credential_reencrypted", resource: deviceAuditResource(device.id),
+    detail: { device_uid: device.device_uid, slots, kek_version: kekVersion() },
+  });
+  return { ok: true, device: data as DeviceAuthRow, slots };
 }
 
 /* ── Ingest verification ──────────────────────────────────────────────────── */
@@ -396,30 +712,76 @@ export async function verifyDeviceAuth(
   const lastTs = device.last_message_ts == null ? null : Number(device.last_message_ts);
   const lastTsMs = lastTs != null && Number.isFinite(lastTs) ? lastTs : null;
 
-  // ── Resolve the HMAC key ────────────────────────────────────────────────
-  // enc mode: decrypt the stored ciphertext (KEK-wrapped) and derive
-  // sha256(secret) transiently — the hash column is NOT used as the key.
-  // legacy mode: pre-v2 rows have no enc; hash-as-key until the device rotates.
-  let signingKey: string;
-  let keyMode: "enc" | "legacy_hash";
+  // ── Resolve signing keys ────────────────────────────────────────────────
+  // enc mode: decrypt the stored ciphertext (KEK-wrapped, AAD=device.id) and
+  // derive sha256(secret) transiently — the hash column is NOT used as the
+  // key. legacy mode: pre-v2 rows have no enc; hash-as-key until rotation.
+  // A pending rotation slot (device_secret_enc_next, unexpired) is ALSO
+  // resolved up front so both credentials are always evaluated — no timing
+  // oracle on which slot matched.
+  const provided = req.signature.trim().toLowerCase();
+  const sigShapeOk = /^[0-9a-f]{64}$/.test(provided);
+  const signedMessage = `${req.timestamp}.${req.body}`;
+  const sigMatches = (key: string | null) =>
+    !!key && sigShapeOk && safeEqHex(hmacHex(key, signedMessage), provided);
+
+  let primaryKey: string | null = null;
+  let primaryKeyVersion = "none";
   if (device.device_secret_enc) {
-    let secret: string;
     try {
-      secret = decryptSecret(device.device_secret_enc);
+      const d = decryptSecretAny(device.device_secret_enc, device.id);
+      primaryKey = deviceSecretHash(d.secret);
+      primaryKeyVersion = d.keyVersion;
     } catch {
-      return reject(503, "Device credential cannot be decrypted (KEK missing or ciphertext corrupt)", "key_decrypt_failed");
+      primaryKey = null; // undecryptable primary — handled below (503 unless next saves it)
     }
-    signingKey = deviceSecretHash(secret);
-    keyMode = "enc";
-  } else {
-    signingKey = device.device_secret_hash as string;
-    keyMode = "legacy_hash";
+  } else if (device.device_secret_hash) {
+    primaryKey = device.device_secret_hash;
+    primaryKeyVersion = "legacy_hash";
   }
 
-  const expected = hmacHex(signingKey, `${req.timestamp}.${req.body}`);
-  const provided = req.signature.trim().toLowerCase();
-  if (!/^[0-9a-f]{64}$/.test(provided) || !safeEqHex(expected, provided)) {
+  const nextEnc = device.device_secret_enc_next ?? null;
+  const nextExpMs = device.credential_next_expires_at ? Date.parse(device.credential_next_expires_at) : NaN;
+  const nextActive = !!nextEnc && Number.isFinite(nextExpMs) && nextExpMs > now.getTime();
+  let nextKey: string | null = null;
+  let nextSecret: string | null = null;
+  let nextKeyVersion = "none";
+  if (nextActive && nextEnc) {
+    try {
+      const d = decryptSecretAny(nextEnc, device.id);
+      nextSecret = d.secret;
+      nextKey = deviceSecretHash(d.secret);
+      nextKeyVersion = d.keyVersion;
+    } catch {
+      nextKey = null; // corrupt/undecryptable next slot never widens access
+    }
+  }
+
+  let matched: "primary" | "next" | null = null;
+  let keyMode: "enc" | "legacy_hash" = device.device_secret_enc ? "enc" : "legacy_hash";
+  let keyVersion = primaryKeyVersion;
+  if (sigMatches(primaryKey)) {
+    matched = "primary";
+  } else if (sigMatches(nextKey)) {
+    matched = "next";
+    keyMode = "enc"; // the staged credential is always enc-mode
+    keyVersion = nextKeyVersion;
+  }
+
+  if (!matched) {
+    // An undecryptable PRIMARY is an integrity/server fault → 503, even when a
+    // next slot exists but also failed to match.
+    if (device.device_secret_enc && primaryKey == null) {
+      return reject(503, "Device credential cannot be decrypted (KEK missing or ciphertext corrupt)", "key_decrypt_failed");
+    }
     return reject(401, "Invalid signature", "bad_signature");
+  }
+
+  // First successful auth with the staged credential promotes it to primary —
+  // the zero-downtime rotation completes here, audited.
+  let rotationPromoted = false;
+  if (matched === "next" && nextEnc && nextSecret) {
+    rotationPromoted = await promoteCredentialRotation(db, device, nextEnc, nextSecret, nextKeyVersion, now);
   }
 
   // ── Atomic dedup claim (unique index on device_id+message_id is the
@@ -433,7 +795,7 @@ export async function verifyDeviceAuth(
     result: "ok",
     protocol_version: protocolVersion,
     payload_sha256: payloadSha256,
-    detail: { device_uid: device.device_uid, key_mode: keyMode, dedup: "claim" },
+    detail: { device_uid: device.device_uid, key_mode: keyMode, key_version: keyVersion, dedup: "claim", ...(rotationPromoted ? { rotation: "promoted" } : {}) },
   });
   if (claimError) {
     if (claimError.code === "23505") {
@@ -465,7 +827,7 @@ export async function verifyDeviceAuth(
     messageId,
     protocolVersion,
     payloadSha256,
-    detail: { device_uid: device.device_uid, message_type: "ingest", key_mode: keyMode },
+    detail: { device_uid: device.device_uid, message_type: "ingest", key_mode: keyMode, key_version: keyVersion, ...(rotationPromoted ? { rotation: "promoted" } : {}) },
   });
   // Never hand credential material to callers — blank enc/hash on the way out.
   return { ok: true, device: { ...device, device_secret_hash: null, device_secret_enc: null }, keyMode };

@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { createCipheriv } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
-  decryptSecret, deviceSecretHash, encryptSecret, issueDeviceCredential,
-  signDeviceRequest, verifyDeviceAuth,
+  credentialKeyVersion, decryptSecret, deviceSecretHash, encryptSecret, issueDeviceCredential,
+  kekStatus, signDeviceRequest, verifyDeviceAuth,
   type DeviceAuthRow,
 } from "@/lib/system/device-auth";
 import { resetRateLimits } from "@/lib/rate-limit";
@@ -55,9 +56,11 @@ function deviceRow(over: Partial<DeviceAuthRow> = {}): DeviceAuthRow {
   };
 }
 
+const DEVICE_UUID = "22222222-2222-4222-8222-222222222222";
+
 /** A v2 (enc-mode) device row: enc ciphertext made under KEK_A + fingerprint. */
 function encDeviceRow(over: Partial<DeviceAuthRow> = {}): DeviceAuthRow {
-  return deviceRow({ device_secret_enc: encryptSecret(SECRET), ...over });
+  return deviceRow({ device_secret_enc: encryptSecret(SECRET, DEVICE_UUID), ...over });
 }
 
 let msgCounter = 0;
@@ -80,36 +83,74 @@ function dbFor(device: DeviceAuthRow | null, messages?: ReturnType<typeof fakeTa
 const BODY = JSON.stringify({ station_id: "SN-HARD-1", events: [{ type: "heartbeat" }] });
 
 let prevKek: string | undefined;
+let prevKekPrev: string | undefined;
 beforeEach(() => {
   resetRateLimits();
   prevKek = process.env.DEVICE_CREDENTIAL_KEK;
+  prevKekPrev = process.env.DEVICE_CREDENTIAL_KEK_PREVIOUS;
   process.env.DEVICE_CREDENTIAL_KEK = KEK_A;
+  delete process.env.DEVICE_CREDENTIAL_KEK_PREVIOUS;
 });
 afterEach(() => {
   if (prevKek === undefined) delete process.env.DEVICE_CREDENTIAL_KEK;
   else process.env.DEVICE_CREDENTIAL_KEK = prevKek;
+  if (prevKekPrev === undefined) delete process.env.DEVICE_CREDENTIAL_KEK_PREVIOUS;
+  else process.env.DEVICE_CREDENTIAL_KEK_PREVIOUS = prevKekPrev;
 });
 
-describe("secret encryption (AES-256-GCM, KEK-wrapped)", () => {
-  it("encrypt/decrypt roundtrips", () => {
-    const enc = encryptSecret(SECRET);
-    expect(enc).toMatch(/^v1\.[0-9a-f]{24}\.[0-9a-f]{32}\.[0-9a-f]+$/);
+describe("secret encryption (AES-256-GCM, KEK-wrapped, AAD-bound v2)", () => {
+  it("encrypt/decrypt roundtrips (v2, keyver + AAD)", () => {
+    const enc = encryptSecret(SECRET, "dev-uuid-1");
+    expect(enc).toMatch(/^v2\.k1\.[0-9a-f]{24}\.[0-9a-f]{32}\.[0-9a-f]+$/);
     expect(enc).not.toContain(SECRET);
-    expect(decryptSecret(enc)).toBe(SECRET);
+    expect(decryptSecret(enc, "dev-uuid-1")).toBe(SECRET);
     // Two encryptions of the same secret differ (random IV).
-    expect(encryptSecret(SECRET)).not.toBe(enc);
+    expect(encryptSecret(SECRET, "dev-uuid-1")).not.toBe(enc);
+    // Custom keyver tag is honored.
+    expect(encryptSecret(SECRET, "dev-uuid-1", "k9")).toMatch(/^v2\.k9\./);
+  });
+
+  it("AAD binds ciphertext to the device — wrong/missing AAD fails", () => {
+    const enc = encryptSecret(SECRET, "device-A");
+    expect(decryptSecret(enc, "device-A")).toBe(SECRET);
+    expect(() => decryptSecret(enc, "device-B")).toThrow(); // swapped-row attack
+    expect(() => decryptSecret(enc)).toThrow(); // v2 without AAD never verifies
   });
 
   it("fails closed on wrong KEK / tampering / malformed payload", () => {
-    const enc = encryptSecret(SECRET);
+    const enc = encryptSecret(SECRET, "dev-uuid-1");
     process.env.DEVICE_CREDENTIAL_KEK = KEK_B;
-    expect(() => decryptSecret(enc)).toThrow();
+    expect(() => decryptSecret(enc, "dev-uuid-1")).toThrow();
     process.env.DEVICE_CREDENTIAL_KEK = KEK_A;
-    const [v, iv, tag, ct] = enc.split(".");
-    const tampered = `${v}.${iv}.${tag}.${ct.slice(0, -2)}00`;
-    expect(() => decryptSecret(tampered)).toThrow();
-    expect(() => decryptSecret("not-a-payload")).toThrow();
-    expect(() => decryptSecret("v2.aa.bb.cc")).toThrow();
+    const parts = enc.split(".");
+    const tampered = `${parts[0]}.${parts[1]}.${parts[2]}.${parts[3]}.${parts[4].slice(0, -2)}00`;
+    expect(() => decryptSecret(tampered, "dev-uuid-1")).toThrow();
+    expect(() => decryptSecret("not-a-payload", "dev-uuid-1")).toThrow();
+    expect(() => decryptSecret("v2.aa.bb.cc", "dev-uuid-1")).toThrow();
+    expect(() => decryptSecret("v9.aa.bb.cc.dd", "dev-uuid-1")).toThrow();
+  });
+
+  it("decrypts legacy v1 payloads (no AAD) for pre-existing rows", () => {
+    // Hand-build a v1 ciphertext under KEK_A — the pre-0048 format.
+    const iv = Buffer.alloc(12, 7);
+    const cipher = createCipheriv("aes-256-gcm", Buffer.from(KEK_A, "hex"), iv);
+    const ct = Buffer.concat([cipher.update(SECRET, "utf8"), cipher.final()]);
+    const v1 = `v1.${iv.toString("hex")}.${cipher.getAuthTag().toString("hex")}.${ct.toString("hex")}`;
+    expect(decryptSecret(v1)).toBe(SECRET);
+    expect(decryptSecret(v1, "any-aad-ignored")).toBe(SECRET); // v1 ignores AAD
+    expect(credentialKeyVersion(v1)).toBe("v1");
+    expect(credentialKeyVersion(encryptSecret(SECRET, "d"))).toBe("k1");
+  });
+
+  it("previous KEK is tried on decrypt failure (staged rotation)", () => {
+    const enc = encryptSecret(SECRET, "dev-uuid-1"); // under KEK_A
+    process.env.DEVICE_CREDENTIAL_KEK = KEK_B; // current rotated
+    process.env.DEVICE_CREDENTIAL_KEK_PREVIOUS = KEK_A;
+    expect(kekStatus()).toEqual({ configured: true, current_version: "k1", previous_configured: true });
+    expect(decryptSecret(enc, "dev-uuid-1")).toBe(SECRET); // falls back to previous
+    delete process.env.DEVICE_CREDENTIAL_KEK_PREVIOUS;
+    expect(kekStatus().previous_configured).toBe(false);
+    expect(() => decryptSecret(enc, "dev-uuid-1")).toThrow(); // previous unset → fail closed
   });
 
   it("refuses to issue when DEVICE_CREDENTIAL_KEK is unset", async () => {

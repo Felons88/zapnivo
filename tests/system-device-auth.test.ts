@@ -88,9 +88,11 @@ describe("device credential issuance", () => {
     const patch = devices._update as Record<string, unknown>;
     expect(patch.device_secret_hash).toBe(deviceSecretHash(res.secret));
     expect(patch.device_secret_hash).not.toBe(res.secret);
-    // v2: the recoverable secret is stored only as KEK-wrapped AES-256-GCM.
-    expect(patch.device_secret_enc).toMatch(/^v1\.[0-9a-f]+\.[0-9a-f]+\.[0-9a-f]+$/);
-    expect(decryptSecret(patch.device_secret_enc as string)).toBe(res.secret);
+    // v2: the recoverable secret is stored only as KEK-wrapped AES-256-GCM,
+    // AAD-bound to the device uuid.
+    expect(patch.device_secret_enc).toMatch(/^v2\.[A-Za-z0-9_-]+\.[0-9a-f]{24}\.[0-9a-f]{32}\.[0-9a-f]+$/);
+    expect(decryptSecret(patch.device_secret_enc as string, issued.id)).toBe(res.secret);
+    expect(() => decryptSecret(patch.device_secret_enc as string)).toThrow(); // v2 requires AAD
     expect(JSON.stringify(patch)).not.toContain(res.secret);
     expect(patch.auth_method).toBe("hmac_sha256");
     expect(patch.status).toBe("provisioning"); // registered → provisioning is a legal edge

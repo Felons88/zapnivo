@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { systemApiGuard } from "../../../_shared";
+import { deviceCredentialStatus, getDeviceAuthRow, issueDeviceCredential, type DeviceAuthRow } from "@/lib/system/device-auth";
 import { getSystemDevice } from "@/lib/system/kiosks";
-import { deviceCredentialStatus, issueDeviceCredential, type DeviceAuthRow } from "@/lib/system/device-auth";
 
 /**
  * GET /api/system/kiosks/[id]/credential — credential metadata only.
@@ -12,9 +12,9 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   const g = await systemApiGuard("system.kiosks.view", { limit: 120 });
   if (!g.ok) return g.res;
   const { id } = await ctx.params;
-  const device = await getSystemDevice(g.db, id);
+  const device = await getDeviceAuthRow(g.db, id);
   if (!device) return NextResponse.json({ error: "Device not found" }, { status: 404 });
-  return NextResponse.json({ credential: deviceCredentialStatus(device as DeviceAuthRow) });
+  return NextResponse.json({ credential: deviceCredentialStatus(device) });
 }
 
 /**

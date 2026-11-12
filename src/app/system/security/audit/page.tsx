@@ -39,7 +39,7 @@ export default async function SystemAuditPage({ searchParams }: { searchParams: 
         <div>
           <p className="eyebrow text-lime">Security</p>
           <h1 className="mt-2 font-display text-3xl font-bold tracking-tight">System audit log</h1>
-          <p className="mt-1 text-sm text-slate-400">Append-only. Writes happen via the service role; this view is select-only.</p>
+          <p className="mt-1 text-sm text-slate-400">Append-only. Writes happen via the service role; this view is select-only. <Link href="/system/security/readiness" className="text-lime underline">Security readiness →</Link></p>
         </div>
 
         <div className="flex flex-wrap gap-2">
