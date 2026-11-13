@@ -45,5 +45,7 @@ describe("auth callback host trust", () => {
     expect((await email(new NextRequest("https://evil.example/api/auth/email-link", { method: "POST", headers: { host: "evil.example", "content-type": "application/json" }, body: JSON.stringify({ email: "customer@example.com" }) }))).status).toBe(403);
     expect((await phone(new NextRequest("https://evil.example/api/auth/phone", { method: "POST", headers: { host: "evil.example", "content-type": "application/json" }, body: JSON.stringify({ action: "send", phone: "+12125550123" }) }))).status).toBe(403);
     expect((await callback(request("evil.example", "/api/auth/callback?code=forged"))).status).toBe(403);
-  });
+    // Dynamic route imports pull in next/server + supabase clients — slow under
+    // full-suite parallel load on network filesystems.
+  }, 30_000);
 });

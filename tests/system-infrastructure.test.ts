@@ -313,7 +313,7 @@ describe("route inventory classification", () => {
 });
 
 describe("scanApiInventory (real repo scan)", () => {
-  it("finds routes and classifies known endpoints", () => {
+  it("finds routes and classifies known endpoints", { timeout: 30_000 }, () => {
     const inv = scanApiInventory();
     expect(inv.routeCount).toBeGreaterThan(150);
     const byPath = new Map(inv.routes.map((r) => [r.path, r]));

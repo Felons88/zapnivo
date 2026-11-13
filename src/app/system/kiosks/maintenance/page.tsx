@@ -72,6 +72,16 @@ export default async function KioskMaintenancePage({ searchParams }: {
           <Link href="/system/kiosks" className="text-xs text-slate-400 underline hover:text-white">← Fleet registry</Link>
         </div>
 
+        <div className="rounded-xl border border-sky-400/25 bg-sky-400/[0.07] px-4 py-3 text-xs text-sky-200">
+          <strong>Server-side block is immediate; device-side is not.</strong> Setting a device to{" "}
+          <code className="font-mono">maintenance</code>, scheduling a visit, or approving a{" "}
+          <code className="font-mono">maintenance_mode</code> config intent blocks <em>new rentals</em> at checkout
+          immediately (see <code className="font-mono">src/lib/kiosk/availability.ts</code>). Getting the device itself
+          to refuse dispensing additionally requires a live adapter —{" "}
+          <code className="font-mono">KIOSK_ADAPTER=none</code> today, so the kiosk will not self-enforce until a
+          certified gateway adapter lands.
+        </div>
+
         <div className="grid gap-4 lg:grid-cols-3">
           <section className="rounded-2xl border border-white/[0.08] bg-white/[0.05] p-5 lg:col-span-1">
             <h2 className="eyebrow text-slate-400">Schedule a visit</h2>

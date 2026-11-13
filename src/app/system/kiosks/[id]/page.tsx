@@ -21,6 +21,13 @@ import { getDeviceOpsDashboard } from "@/lib/system/command-ops";
 import { listConfigRevisions, type ConfigRevisionRow } from "@/lib/system/device-config";
 import { ConfigPanel } from "./ConfigPanel";
 import type { ReadinessCheck } from "@/lib/system/hardware";
+import { capabilitiesFromDeviceRecord, resolveDeviceCapabilities } from "@/lib/kiosk/capabilities";
+import {
+  buildSlotInventory, buildVerificationStrip, configStateDiff, findDeviceIncidents,
+  getHardwareProfileForDevice, listDeviceMessages, listInventoryForKiosks,
+  listSystemMaintenanceVisits, summarizeEventPayload,
+  type SysMaintenanceRow,
+} from "@/lib/system/kiosk-detail";
 
 export const metadata: Metadata = { title: "Kiosk Infrastructure — Device" };
 
@@ -90,6 +97,44 @@ export default async function KioskDevicePage({ params }: { params: Promise<{ id
   const latestDiagnostics = diagnostics[0]?.result as { readiness?: ReadinessCheck[] } | null | undefined;
   const transitionTargets = DEVICE_TRANSITIONS[device.status].map((s) => ({ status: s, risk: transitionRisk(s) }));
 
+  // ── Phase 4.2 detail data — all read-only, all tolerant of missing tables ──
+  const boundKioskIds = ops.bound_kiosks.map((k) => k.id);
+  const [resolvedCaps, storedCaps, hwProfile, inventory, deviceMessages, sysMaintenance, incidents, eventPayloads] = await Promise.all([
+    resolveDeviceCapabilities(db, device),
+    Promise.resolve(capabilitiesFromDeviceRecord(device.capabilities)),
+    getHardwareProfileForDevice(db, device).catch(() => null),
+    boundKioskIds.length > 0
+      ? listInventoryForKiosks(db, boundKioskIds).catch(() => ({ slots: [], banks: [] }))
+      : Promise.resolve({ slots: [], banks: [] }),
+    listDeviceMessages(db, device.id, 25).catch(() => []),
+    listSystemMaintenanceVisits(db, device.id, 25).catch(() => [] as SysMaintenanceRow[]),
+    findDeviceIncidents(db, device, 20),
+    boundKioskIds.length > 0
+      ? (async () => {
+          try {
+            const r = await db.from("device_events").select("id,event_type,payload,occurred_at")
+              .in("kiosk_id", boundKioskIds).order("occurred_at", { ascending: false }).limit(20);
+            return (r.data ?? []) as { id: string | number; event_type: string; payload: unknown; occurred_at: string | null }[];
+          } catch {
+            return [] as { id: string | number; event_type: string; payload: unknown; occurred_at: string | null }[];
+          }
+        })()
+      : Promise.resolve([] as { id: string | number; event_type: string; payload: unknown; occurred_at: string | null }[]),
+  ]);
+  const slotViews = buildSlotInventory(inventory.slots, inventory.banks, ops.bound_kiosks);
+  const eventPayloadById = new Map(eventPayloads.map((e) => [String(e.id), e.payload]));
+  const profileGrantedCaps = [...resolvedCaps].filter((c) => !storedCaps.has(c)).sort();
+  const verificationStrip = buildVerificationStrip({
+    adapter,
+    lastHeartbeatAt: device.last_heartbeat_at,
+    lastAckAt: ops.verification.ack_received.last_at,
+    physicalCert: ops.certification.physical_latest
+      ? (ops.certification.physical_latest.status === "pass" ? "pass" : "fail")
+      : "none",
+  });
+  const latestConfigRevision = configRevisions[0] ?? null;
+  const configDiff = latestConfigRevision ? configStateDiff(latestConfigRevision.desired, latestConfigRevision.reported) : null;
+
   return (
     <SystemGate perm="system.kiosks.view">
       <div className="space-y-4">
@@ -126,10 +171,35 @@ export default async function KioskDevicePage({ params }: { params: Promise<{ id
               <Row k="gateway" v={device.gateway ?? "—"} mono />
               <Row k="adapter_type" v={device.adapter_type ?? "—"} mono />
               <Row k="slot_count" v={device.slot_count ?? "—"} mono />
-              <Row k="firmware_version" v={device.firmware_version ?? "—"} mono />
+              <Row k="firmware_version" v={
+                <>{device.firmware_version ?? "—"}{" "}
+                  <Link href="/system/kiosks/firmware" className="text-[10px] text-lime underline decoration-lime/40">inventory →</Link>
+                </>
+              } mono />
               <Row k="venue" v={venue ? `${venue.name ?? "venue"}${venue.city ? `, ${venue.city}` : ""}` : device.venue_id ? device.venue_id : "—"} />
               <Row k="region" v={device.region ?? "—"} />
-              <Row k="capabilities" v={Object.keys(device.capabilities ?? {}).length ? <code className="break-all text-[10px]">{JSON.stringify(device.capabilities)}</code> : "—"} />
+              <Row k="capabilities (stored)" v={
+                storedCaps.size === 0 ? "none on record" : (
+                  <span className="flex flex-wrap justify-end gap-1">
+                    {[...storedCaps].sort().map((c) => (
+                      <span key={c} className="rounded-full bg-sky-400/15 px-2 py-0.5 font-mono text-[10px] font-bold text-sky-300 ring-1 ring-sky-400/30">{c}</span>
+                    ))}
+                  </span>
+                )
+              } />
+              <Row k="capabilities (effective)" v={
+                resolvedCaps.size === 0 ? "— (empty set; gated event types denied)" : (
+                  <span className="flex flex-wrap justify-end gap-1">
+                    {[...resolvedCaps].sort().map((c) => (
+                      <span key={c} className={`rounded-full px-2 py-0.5 font-mono text-[10px] font-bold ring-1 ${
+                        storedCaps.has(c) ? "bg-lime/15 text-lime ring-lime/30" : "bg-violet-400/15 text-violet-300 ring-violet-400/30"}`}>
+                        {c}{storedCaps.has(c) ? "" : " ·profile"}
+                      </span>
+                    ))}
+                  </span>
+                )
+              } />
+              <Row k="raw capabilities jsonb" v={Object.keys(device.capabilities ?? {}).length ? <code className="break-all text-[10px]">{JSON.stringify(device.capabilities)}</code> : "—"} />
               <Row k="created" v={when(device.created_at)} mono />
               <Row k="created_by" v={device.created_by ? device.created_by.slice(0, 8) : "—"} mono />
             </dl>
@@ -192,20 +262,14 @@ export default async function KioskDevicePage({ params }: { params: Promise<{ id
             Bound kiosk(s): {ops.bound_kiosks.length === 0 ? "none" : ops.bound_kiosks.map((k) => k.station_id ?? k.id.slice(0, 8)).join(", ")}.
           </p>
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-            {([
-              ["gateway_reachable", ops.verification.gateway_reachable],
-              ["heartbeat_received", ops.verification.heartbeat_received],
-              ["ack_received", ops.verification.ack_received],
-              ["simulated_evidence", ops.verification.simulated_evidence],
-              ["physically_verified", ops.verification.physically_verified],
-            ] as const).map(([name, v]) => (
-              <div key={name} className="rounded-xl border border-white/[0.08] bg-black/20 p-3">
-                <p className="font-mono text-[10px] font-extrabold uppercase tracking-wider text-slate-500">{name}</p>
+            {verificationStrip.map((b) => (
+              <div key={b.key} className="rounded-xl border border-white/[0.08] bg-black/20 p-3">
+                <p className="font-mono text-[10px] font-extrabold uppercase tracking-wider text-slate-500">{b.label}</p>
                 <p className={`mt-1 font-mono text-[11px] font-bold ${
-                  v.state === "yes" ? "text-lime" : v.state === "no" ? "text-slate-400" : "text-amber-300"}`}>
-                  {v.state === "unverifiable" ? "unverifiable" : v.state}
+                  b.state === "verified" ? "text-lime" : b.state === "unverified" ? "text-amber-300" : "text-slate-400"}`}>
+                  {b.state}
                 </p>
-                <p className="mt-1 text-[10px] leading-snug text-slate-500">{v.detail}</p>
+                <p className="mt-1 text-[10px] leading-snug text-slate-500">{b.detail}</p>
               </div>
             ))}
           </div>
@@ -264,7 +328,7 @@ export default async function KioskDevicePage({ params }: { params: Promise<{ id
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[560px] text-left text-xs">
-                  <thead className="text-[10px] uppercase tracking-wider text-slate-500"><tr>{["When", "Event", "Outcome", "Error", "Sim"].map((h) => <th key={h} className="pb-2 pr-4 font-extrabold">{h}</th>)}</tr></thead>
+                  <thead className="text-[10px] uppercase tracking-wider text-slate-500"><tr>{["When", "Event", "Outcome", "Error", "Payload", "Sim"].map((h) => <th key={h} className="pb-2 pr-4 font-extrabold">{h}</th>)}</tr></thead>
                   <tbody className="font-mono">
                     {ops.hardware_events.map((e) => (
                       <tr key={e.id} className="border-t border-white/5">
@@ -272,6 +336,7 @@ export default async function KioskDevicePage({ params }: { params: Promise<{ id
                         <td className="py-2 pr-4 font-bold text-slate-200">{e.event_type}</td>
                         <td className="py-2 pr-4 text-slate-300">{e.outcome ?? "—"}</td>
                         <td className="py-2 pr-4 text-slate-400">{e.error_code ?? "—"}</td>
+                        <td className="max-w-[200px] truncate py-2 pr-4 text-[10px] text-slate-500" title={eventPayloadById.has(e.id) ? summarizeEventPayload(eventPayloadById.get(e.id)) : ""}>{eventPayloadById.has(e.id) ? summarizeEventPayload(eventPayloadById.get(e.id)) : "—"}</td>
                         <td className="py-2 text-slate-400">{e.simulated ? "sim" : ""}</td>
                       </tr>
                     ))}
@@ -322,7 +387,8 @@ export default async function KioskDevicePage({ params }: { params: Promise<{ id
                   : "no runs recorded"
               } />
               <Row k="runs by tier" v={Object.keys(ops.certification.runs_by_tier).length ? Object.entries(ops.certification.runs_by_tier).map(([t, n]) => `${t}:${n}`).join(", ") : "—"} />
-              <Row k="maintenance visits" v={String(ops.maintenance.length)} />
+              <Row k="kiosk maintenance visits" v={String(ops.maintenance.length)} />
+              <Row k="device maintenance visits" v={String(sysMaintenance.length)} />
             </dl>
             {ops.maintenance.length > 0 && (
               <ul className="mt-3 space-y-1.5">
@@ -334,20 +400,222 @@ export default async function KioskDevicePage({ params }: { params: Promise<{ id
                 ))}
               </ul>
             )}
+            {sysMaintenance.length > 0 && (
+              <div className="mt-3">
+                <p className="mb-1.5 font-mono text-[10px] font-extrabold uppercase tracking-wider text-slate-500">system_maintenance_visits (device-level)</p>
+                <ul className="space-y-1.5">
+                  {sysMaintenance.slice(0, 6).map((m) => (
+                    <li key={m.id} className="flex items-baseline justify-between gap-3 border-b border-white/5 pb-1.5 text-xs last:border-0">
+                      <span className="min-w-0 text-slate-300">
+                        <span className="font-mono font-bold text-sky-300">{m.visit_type}</span>{" "}
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ${
+                          m.status === "completed" ? "bg-lime/15 text-lime ring-lime/30"
+                          : m.status === "open" || m.status === "in_progress" ? "bg-amber-400/15 text-amber-300 ring-amber-400/30"
+                          : "bg-white/10 text-slate-400 ring-white/15"}`}>{m.status}</span>
+                        {m.notes ? ` — ${m.notes.slice(0, 60)}` : ""}
+                        {m.technician ? ` · ${m.technician.slice(0, 8)}` : ""}
+                      </span>
+                      <span className="shrink-0 font-mono text-[10px] text-slate-500">
+                        {when(m.scheduled_at ?? m.completed_at ?? m.started_at ?? m.created_at)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             <p className="mt-2 text-[10px] text-slate-500">
               Certification runs are the append-only system_certification_runs ledger — a physical-tier pass is
               the only hardware-verified signal; simulated/gateway results are labeled separately.
+              Device-level visits are scheduled at <Link href="/system/kiosks/maintenance" className="text-lime underline">/system/kiosks/maintenance</Link>.
             </p>
           </Section>
         </div>
 
+        {/* ── Hardware profile (system_hardware_profiles, manufacturer+model) ── */}
+        <Section title="Hardware profile">
+          {!hwProfile ? (
+            <p className="text-sm text-slate-400">
+              No <code className="font-mono text-[11px]">system_hardware_profiles</code> row matches
+              manufacturer/model {device.manufacturer ?? "?"}/{device.model ?? "?"} — capability claims
+              are unverified and gated ingest events are denied (fail-closed). Profiles are ops-managed
+              via migrations only; see <Link href="/system/kiosks/hardware" className="text-lime underline">hardware registry</Link>.
+            </p>
+          ) : (
+            <>
+              <dl>
+                <Row k="profile" v={`${hwProfile.manufacturer} ${hwProfile.model}`} mono />
+                <Row k="certification" v={
+                  <span className={hwProfile.certification_status === "certified" ? "text-lime" : hwProfile.certification_status === "deprecated" ? "text-red-300" : "text-amber-300"}>
+                    {hwProfile.certification_status}
+                  </span>
+                } />
+                <Row k="profile capabilities" v={[
+                  hwProfile.dispense_supported && "dispense",
+                  hwProfile.return_detection && "return_detect",
+                  hwProfile.inventory_reporting && "inventory_report",
+                  hwProfile.heartbeat_supported && "heartbeat",
+                  hwProfile.firmware_update && "firmware_update",
+                  hwProfile.ad_screen && "ad_screen",
+                ].filter(Boolean).join(", ") || "none"} />
+                <Row k="protocol_doc_url" v={hwProfile.protocol_doc_url ? <a href={hwProfile.protocol_doc_url} target="_blank" rel="noreferrer" className="break-all text-lime underline decoration-lime/40">{hwProfile.protocol_doc_url}</a> : "—"} />
+              </dl>
+              <p className="mt-2 text-[10px] text-slate-500">
+                Only <span className="text-lime">certified</span> profiles contribute capabilities to the
+                effective set above; uncertified/in_review rows are shown for provenance only.
+              </p>
+            </>
+          )}
+        </Section>
+
+        {/* ── Slot & battery inventory (bound kiosks, projection labeled) ── */}
+        <Section title="Slot & battery inventory (bound kiosks)">
+          {ops.unbound ? (
+            <p className="text-sm text-slate-400">
+              No rental-facing kiosk is bound (kiosks.station_id ↔ device_uid/serial_number) — slot/bank
+              projection is not applicable.
+            </p>
+          ) : slotViews.every((k) => k.slots.length === 0) ? (
+            <p className="text-sm text-slate-400">
+              Bound kiosk(s) exist but no kiosk_slots rows are recorded — inventory has never been reported.
+            </p>
+          ) : (
+            <div className="space-y-4">
+              {slotViews.map((k) => (
+                <div key={k.kiosk_id}>
+                  <p className="mb-2 font-mono text-[11px] font-bold text-slate-300">
+                    {k.station_id ?? k.kiosk_id.slice(0, 8)}
+                    <span className="ml-2 font-normal text-slate-500">
+                      last_seen {k.last_seen_at ? new Date(k.last_seen_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "UTC" }) + "Z" : "never"}
+                      {k.stale && <span className="ml-2 rounded-full bg-amber-400/15 px-2 py-0.5 text-[10px] font-bold text-amber-300 ring-1 ring-amber-400/30">stale inventory</span>}
+                    </span>
+                  </p>
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[560px] text-left text-xs">
+                      <thead className="text-[10px] uppercase tracking-wider text-slate-500"><tr>{["Slot", "State", "Bank serial", "Battery", "Retired", "Note"].map((h) => <th key={h} className="pb-2 pr-4 font-extrabold">{h}</th>)}</tr></thead>
+                      <tbody className="font-mono">
+                        {k.slots.map((s) => (
+                          <tr key={s.slot_number} className="border-t border-white/5">
+                            <td className="py-2 pr-4 font-bold text-slate-200">{s.slot_number}</td>
+                            <td className="py-2 pr-4 text-slate-300">{s.state}</td>
+                            <td className="py-2 pr-4 text-slate-300">{s.bank?.serial ?? "—"}</td>
+                            <td className="py-2 pr-4 text-slate-300">{s.bank ? (s.bank.battery_pct == null ? "unknown" : `${s.bank.battery_pct}%`) : "—"}</td>
+                            <td className="py-2 pr-4 text-slate-300">{s.bank ? (s.bank.retired ? "yes" : "no") : "—"}</td>
+                            <td className="py-2 text-[10px] text-slate-500">{s.bank_elsewhere ? "bank current_kiosk points elsewhere" : ""}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ))}
+              <p className="text-[10px] text-slate-500">
+                Projected from kiosk_slots / power_banks via the station binding — last ingest state, not a
+                live read. &quot;stale inventory&quot; = kiosk last_seen outside the {`15`}‑minute heartbeat
+                window (or never seen); battery_pct null renders &quot;unknown&quot;.
+              </p>
+            </div>
+          )}
+        </Section>
+
+        {/* ── Auth/message telemetry (system_device_messages) ── */}
+        <Section title={`Auth & message telemetry (${deviceMessages.length})`}>
+          <p className="mb-3 text-[10px] text-slate-500">
+            Append-only ingest auth attempts from <code className="font-mono text-[11px]">system_device_messages</code> —
+            never contains secrets or signatures.
+          </p>
+          {deviceMessages.length === 0 ? (
+            <p className="text-sm text-slate-400">No device messages recorded — device has never attempted ingest auth.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[640px] text-left text-xs">
+                <thead className="text-[10px] uppercase tracking-wider text-slate-500"><tr>{["When", "Type", "Result", "Auth method", "Detail"].map((h) => <th key={h} className="pb-2 pr-4 font-extrabold">{h}</th>)}</tr></thead>
+                <tbody className="font-mono">
+                  {deviceMessages.map((m) => (
+                    <tr key={m.id} className="border-t border-white/5">
+                      <td className="py-2 pr-4 whitespace-nowrap text-slate-400">{when(m.received_at)}</td>
+                      <td className="py-2 pr-4 text-slate-300">{m.message_type}</td>
+                      <td className="py-2 pr-4"><span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ${m.result === "ok" ? "bg-lime/15 text-lime ring-lime/30" : "bg-red-500/15 text-red-300 ring-red-400/30"}`}>{m.result}</span></td>
+                      <td className="py-2 pr-4 text-slate-400">{m.auth_method ?? "—"}</td>
+                      <td className="max-w-[220px] truncate py-2 text-[10px] text-slate-500" title={m.detail ? JSON.stringify(m.detail) : ""}>{m.detail ? JSON.stringify(m.detail).slice(0, 120) : "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Section>
+
+        {/* ── Related incidents (services-tag match — no device FK) ── */}
+        <Section title={`Related incidents (${incidents.length})`}>
+          <p className="mb-3 text-[10px] text-slate-500">
+            <code className="font-mono text-[11px]">incidents</code> has no device FK — matches are by
+            <code className="font-mono text-[11px]"> services</code> containing this device&apos;s uid/serial/id.
+            An empty list means &quot;no incident tagged with these identifiers&quot;, not &quot;healthy&quot;.
+          </p>
+          {incidents.length === 0 ? (
+            <p className="text-sm text-slate-400">No incidents reference this device&apos;s identifiers.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[640px] text-left text-xs">
+                <thead className="text-[10px] uppercase tracking-wider text-slate-500"><tr>{["Number", "Title", "Severity", "Status", "Detected", "Resolved"].map((h) => <th key={h} className="pb-2 pr-4 font-extrabold">{h}</th>)}</tr></thead>
+                <tbody className="font-mono">
+                  {incidents.map((i) => (
+                    <tr key={i.id} className="border-t border-white/5">
+                      <td className="py-2 pr-4 font-bold text-slate-200"><Link href="/system/incidents" className="text-lime underline decoration-lime/40 hover:text-white">{i.number ?? i.id.slice(0, 8)}</Link></td>
+                      <td className="max-w-[240px] truncate py-2 pr-4 text-slate-300" title={i.title}>{i.title}</td>
+                      <td className="py-2 pr-4 text-slate-400">{i.severity}</td>
+                      <td className="py-2 pr-4 text-slate-300">{i.status}</td>
+                      <td className="py-2 pr-4 whitespace-nowrap text-slate-400">{when(i.detected_at)}</td>
+                      <td className="py-2 whitespace-nowrap text-slate-400">{when(i.resolved_at)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Section>
+
         {/* ── Desired-state device configuration (migration 0059) ── */}
         <Section title={`Device configuration — desired state (${configRevisions.length} revisions)`}>
+          {latestConfigRevision && configDiff && (
+            <div className="mb-4 rounded-xl border border-white/[0.08] bg-black/20 p-3">
+              <p className="mb-2 font-mono text-[10px] font-extrabold uppercase tracking-wider text-slate-500">
+                Latest revision r{latestConfigRevision.revision} — {latestConfigRevision.status}
+                {" · "}
+                <span className={
+                  configDiff.summary === "match" ? "text-lime"
+                  : configDiff.summary === "mismatch" ? "text-amber-300"
+                  : "text-slate-400"}>
+                  {configDiff.summary === "no_reported" ? "no reported state" : configDiff.summary}
+                </span>
+              </p>
+              {configDiff.rows.length > 0 && (
+                <table className="w-full text-left text-[11px]">
+                  <thead className="text-[10px] uppercase tracking-wider text-slate-500"><tr>{["Key", "Desired", "Reported"].map((h) => <th key={h} className="pb-1 pr-3 font-extrabold">{h}</th>)}</tr></thead>
+                  <tbody className="font-mono">
+                    {configDiff.rows.map((r) => (
+                      <tr key={r.key} className="border-t border-white/5">
+                        <td className="py-1 pr-3 font-bold text-slate-200">{r.key}</td>
+                        <td className="py-1 pr-3 text-slate-300">{JSON.stringify(r.desired)}</td>
+                        <td className={`py-1 ${r.state === "match" ? "text-lime" : r.state === "mismatch" ? "text-amber-300" : "text-slate-500"}`}>
+                          {r.state === "no_reported" ? "— (no reported state)" : JSON.stringify(r.reported)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          )}
           <ConfigPanel deviceId={device.id} canManage={canManage} revisions={configRevisions} />
         </Section>
 
-        {/* Commands */}
-        <Section title={`Commands (${commands.filter((c) => c.command_type !== "diagnostic_ping").length})`}>
+        {/* Diagnostics console — read-only command types only (status_request |
+            inventory_request | firmware_version_request). These ARE the allowed
+            diagnostic commands; gateway_health-style types do not exist in the
+            allowlist and are never invented. Each POST is audited and requires
+            system.kiosks.manage; adapter=none records failed/adapter_disabled. */}
+        <Section title={`Diagnostics console & commands (${commands.filter((c) => c.command_type !== "diagnostic_ping").length})`}>
           <div className="mb-4"><CommandForm deviceId={device.id} canManage={canManage} /></div>
           {commands.filter((c) => c.command_type !== "diagnostic_ping").length === 0 ? (
             <p className="text-sm text-slate-400">No commands recorded.</p>

@@ -5,6 +5,7 @@ import {
   deriveConnectivity, isSystemDeviceStatus, SYSTEM_DEVICE_SELECT,
   type FleetDevice, type SystemDeviceRow, type SystemDeviceStatus,
 } from "./kiosks";
+import { configStateDiff } from "./kiosk-detail";
 
 /**
  * Fleet-wide aggregates + filtered listing for the System Control kiosk
@@ -70,6 +71,52 @@ export type FleetStats = {
   regions: Record<string, number> | null;
   /** venue name (or id fallback) → device count ("unassigned" for null). */
   venues: Record<string, number> | null;
+  /**
+   * Maintenance (0059): `devices` = system_devices.status='maintenance' (from
+   * the authoritative scan — never null); `open_visits` = system_maintenance_visits
+   * in a non-terminal state (open|scheduled|in_progress), null on query failure.
+   */
+  maintenance: { devices: number; open_visits: number | null } | null;
+  /** Devices still in the onboarding pipeline: pending|registered|provisioning. */
+  provisioning_pending: number;
+  /**
+   * Certification has NO running/pending run state (0051 statuses are
+   * pass|fail|blocked|skipped), so there is nothing "active" to count.
+   * Instead: `without_pass` = devices with ≥1 run whose LATEST status in at
+   * least one tier is not 'pass'; `never_tested` = devices with zero runs.
+   */
+  certification_active: { without_pass: number; never_tested: number } | null;
+  /** Rejected device ingest auth attempts in the last 24h (system_device_messages). */
+  auth_failures: number | null;
+  /**
+   * system_device_commands that reached 'failed'/'timeout' with created_at in
+   * the last 24h. (The table has no resolved-at column, so the window is on
+   * created_at — a command created earlier but failed recently is NOT counted;
+   * documented limitation, not a hidden approximation.)
+   */
+  command_outcomes_24h: { failed: number; timeout: number } | null;
+  /**
+   * Latest device_config_revisions row per device (0059):
+   * `mismatched` = a reported snapshot exists and differs from desired on ≥1
+   * whitelisted key; `awaiting_report` = latest revision still awaiting device
+   * confirmation. reported==null is "unreported", NOT drift — never counted.
+   */
+  config_drift: { mismatched: number; awaiting_report: number } | null;
+  /**
+   * LEGACY rental-fleet battery/inventory snapshot (kiosks/kiosk_slots/
+   * power_banks, migration 0001) — NOT system_devices. The two fleets bind only
+   * via kiosks.station_id ↔ system_devices.device_uid/serial_number, so this
+   * section describes the rental-facing hardware estate on its own terms.
+   * `kiosks_stale` uses the same HEARTBEAT_STALE_MIN window as device
+   * connectivity (null last_seen_at counts as stale — never seen).
+   */
+  battery_inventory: {
+    kiosks_total: number; kiosks_stale: number;
+    slots_by_state: Record<string, number>;
+    banks_total: number; banks_retired: number; banks_unknown_pct: number;
+  } | null;
+  /** rental_exceptions not in a terminal state (resolved|dismissed excluded). */
+  open_exceptions: number | null;
   /** Sections that could not be computed — honest partial-failure signal. */
   errors: string[];
 };
@@ -245,6 +292,7 @@ export async function getFleetStats(db: SupabaseClient, now = new Date()): Promi
 
   // ── Certification breakdown (latest per device+tier) ──
   let certification: FleetStats["certification"] = null;
+  let certificationActive: FleetStats["certification_active"] = null;
   try {
     const { data, error } = await db
       .from("system_certification_runs")
@@ -255,14 +303,32 @@ export async function getFleetStats(db: SupabaseClient, now = new Date()): Promi
     const runs = (data ?? []) as { device_id: string | null; tier: string; status: string; created_at: string }[];
     const tiers: Record<string, Record<string, number>> = {};
     const seen = new Set<string>();
+    // device_id → tier → latest status (first-seen wins; rows are created_at desc).
+    const latestByDeviceTier = new Map<string, Map<string, string>>();
     for (const r of runs) {
       if (!r.device_id) continue;
       const key = `${r.device_id}${r.tier}`;
       if (seen.has(key)) continue;
       seen.add(key);
       bump((tiers[r.tier] ??= {}), r.status);
+      let m = latestByDeviceTier.get(r.device_id);
+      if (!m) latestByDeviceTier.set(r.device_id, (m = new Map()));
+      m.set(r.tier, r.status);
     }
     certification = { tiers };
+    // No 'running'/'pending' run state exists (0051) — report certification
+    // coverage honestly instead: devices not passing on every tested tier,
+    // and devices that have never been tested at all.
+    let withoutPass = 0;
+    let neverTested = 0;
+    for (const d of devices) {
+      const perTier = latestByDeviceTier.get(d.id);
+      if (!perTier) { neverTested += 1; continue; }
+      for (const st of perTier.values()) {
+        if (st !== "pass") { withoutPass += 1; break; }
+      }
+    }
+    certificationActive = { without_pass: withoutPass, never_tested: neverTested };
     if (runs.length >= FLEET_STATS_RUN_LIMIT) errors.push("certification scan truncated");
   } catch (e) { errors.push(`certification: ${e instanceof Error ? e.message : "failed"}`); }
 
@@ -306,6 +372,142 @@ export async function getFleetStats(db: SupabaseClient, now = new Date()): Promi
     faulted = faultedDevices.size;
   } catch (e) { errors.push(`faulted: ${e instanceof Error ? e.message : "failed"}`); }
 
+  // ── Phase 4.2 ops sections (each independently guarded) ──
+  const since24h = new Date(now.getTime() - 24 * 3_600_000).toISOString();
+
+  // Maintenance: device count comes from the authoritative scan; the visits
+  // count is a separate guarded query (null on failure, never a fake zero).
+  let maintenance: FleetStats["maintenance"] = null;
+  try {
+    const { data, error } = await db
+      .from("system_maintenance_visits")
+      .select("id")
+      .in("status", ["open", "scheduled", "in_progress"])
+      .limit(FLEET_STATS_EVENT_LIMIT);
+    if (error) throw new Error(error.message);
+    const n = (data ?? []).length;
+    if (n >= FLEET_STATS_EVENT_LIMIT) errors.push("open maintenance visits truncated");
+    maintenance = { devices: by_status.maintenance ?? 0, open_visits: n };
+  } catch (e) {
+    errors.push(`maintenance: ${e instanceof Error ? e.message : "failed"}`);
+    maintenance = { devices: by_status.maintenance ?? 0, open_visits: null };
+  }
+
+  // Devices still in the onboarding pipeline (derived from the device scan —
+  // cannot fail independently).
+  const provisioningPending =
+    (by_status.pending ?? 0) + (by_status.registered ?? 0) + (by_status.provisioning ?? 0);
+
+  // Rejected device ingest auth attempts in the last 24h.
+  let authFailures: number | null = null;
+  try {
+    const { data, error } = await db
+      .from("system_device_messages")
+      .select("id")
+      .eq("result", "rejected")
+      .gte("received_at", since24h)
+      .limit(FLEET_STATS_EVENT_LIMIT);
+    if (error) throw new Error(error.message);
+    authFailures = (data ?? []).length;
+    if ((data ?? []).length >= FLEET_STATS_EVENT_LIMIT) errors.push("auth failure count truncated");
+  } catch (e) { errors.push(`auth_failures: ${e instanceof Error ? e.message : "failed"}`); }
+
+  // Commands that ended failed/timeout in the last 24h (window on created_at —
+  // see FleetStats.command_outcomes_24h doc for the limitation).
+  let commandOutcomes: FleetStats["command_outcomes_24h"] = null;
+  try {
+    const { data, error } = await db
+      .from("system_device_commands")
+      .select("state")
+      .in("state", ["failed", "timeout"])
+      .gte("created_at", since24h)
+      .limit(FLEET_STATS_EVENT_LIMIT);
+    if (error) throw new Error(error.message);
+    const rows = (data ?? []) as { state: string }[];
+    commandOutcomes = {
+      failed: rows.filter((r) => r.state === "failed").length,
+      timeout: rows.filter((r) => r.state === "timeout").length,
+    };
+    if (rows.length >= FLEET_STATS_EVENT_LIMIT) errors.push("command outcome count truncated");
+  } catch (e) { errors.push(`command_outcomes_24h: ${e instanceof Error ? e.message : "failed"}`); }
+
+  // Config drift: latest device_config_revisions row per device. Rows arrive
+  // ordered by revision desc, so the first row seen per device is its latest.
+  let configDrift: FleetStats["config_drift"] = null;
+  try {
+    const { data, error } = await db
+      .from("device_config_revisions")
+      .select("device_id,revision,desired,status,reported")
+      .order("revision", { ascending: false })
+      .limit(FLEET_STATS_RUN_LIMIT);
+    if (error) throw new Error(error.message);
+    const rows = (data ?? []) as { device_id: string; revision: number; desired: Record<string, unknown>; status: string; reported: Record<string, unknown> | null }[];
+    const latestSeen = new Set<string>();
+    let mismatched = 0;
+    let awaitingReport = 0;
+    for (const r of rows) {
+      if (latestSeen.has(r.device_id)) continue;
+      latestSeen.add(r.device_id);
+      if (r.status === "awaiting_report") awaitingReport += 1;
+      // reported === null → "unreported", not drift (no reported-config
+      // channel exists in ingest today — see 0059/device-config.ts).
+      if (r.reported != null && configStateDiff(r.desired, r.reported).summary === "mismatch") mismatched += 1;
+    }
+    configDrift = { mismatched, awaiting_report: awaitingReport };
+    if (rows.length >= FLEET_STATS_RUN_LIMIT) errors.push("config revision scan truncated");
+  } catch (e) { errors.push(`config_drift: ${e instanceof Error ? e.message : "failed"}`); }
+
+  // Battery/inventory snapshot of the LEGACY rental fleet (kiosks +
+  // kiosk_slots + power_banks). system_devices is a separate registry — the
+  // only link is kiosks.station_id ↔ device_uid/serial_number, so these
+  // counts describe rental-facing hardware independently (see type doc).
+  let batteryInventory: FleetStats["battery_inventory"] = null;
+  try {
+    const [kRes, sRes, bRes] = await Promise.all([
+      db.from("kiosks").select("id,last_seen_at").limit(FLEET_STATS_EVENT_LIMIT),
+      db.from("kiosk_slots").select("kiosk_id,state").limit(FLEET_STATS_EVENT_LIMIT),
+      db.from("power_banks").select("id,battery_pct,retired").limit(FLEET_STATS_EVENT_LIMIT),
+    ]);
+    if (kRes.error) throw new Error(kRes.error.message);
+    if (sRes.error) throw new Error(sRes.error.message);
+    if (bRes.error) throw new Error(bRes.error.message);
+    const kiosks = (kRes.data ?? []) as { id: string; last_seen_at: string | null }[];
+    const slots = (sRes.data ?? []) as { kiosk_id: string; state: string }[];
+    const banks = (bRes.data ?? []) as { id: string; battery_pct: number | null; retired: boolean }[];
+    const staleBefore = now.getTime() - HEARTBEAT_STALE_MIN * 60_000;
+    let kiosksStale = 0;
+    for (const k of kiosks) {
+      const t = k.last_seen_at ? new Date(k.last_seen_at).getTime() : NaN;
+      if (!Number.isFinite(t) || t < staleBefore) kiosksStale += 1;
+    }
+    const slotsByState: Record<string, number> = {};
+    for (const s of slots) bump(slotsByState, s.state ?? "unknown");
+    batteryInventory = {
+      kiosks_total: kiosks.length,
+      kiosks_stale: kiosksStale,
+      slots_by_state: slotsByState,
+      banks_total: banks.length,
+      banks_retired: banks.filter((b) => b.retired === true).length,
+      banks_unknown_pct: banks.filter((b) => b.battery_pct == null).length,
+    };
+    for (const [label, n] of [["kiosks", kiosks.length], ["kiosk_slots", slots.length], ["power_banks", banks.length]] as const) {
+      if (n >= FLEET_STATS_EVENT_LIMIT) errors.push(`battery_inventory ${label} truncated`);
+    }
+  } catch (e) { errors.push(`battery_inventory: ${e instanceof Error ? e.message : "failed"}`); }
+
+  // Open rental exceptions (0054: terminal = resolved|dismissed).
+  let openExceptions: number | null = null;
+  try {
+    const { data, error } = await db
+      .from("rental_exceptions")
+      .select("status")
+      .limit(FLEET_STATS_EVENT_LIMIT);
+    if (error) throw new Error(error.message);
+    const rows = (data ?? []) as { status: string }[];
+    openExceptions = rows.filter((r) => r.status !== "resolved" && r.status !== "dismissed").length;
+    if (rows.length >= FLEET_STATS_EVENT_LIMIT) errors.push("rental_exceptions scan truncated");
+  } catch (e) { errors.push(`open_exceptions: ${e instanceof Error ? e.message : "failed"}`); }
+
   return {
     computed_at: now.toISOString(),
     total: devices.length,
@@ -318,6 +520,14 @@ export async function getFleetStats(db: SupabaseClient, now = new Date()): Promi
     firmware,
     regions,
     venues,
+    maintenance,
+    provisioning_pending: provisioningPending,
+    certification_active: certificationActive,
+    auth_failures: authFailures,
+    command_outcomes_24h: commandOutcomes,
+    config_drift: configDrift,
+    battery_inventory: batteryInventory,
+    open_exceptions: openExceptions,
     errors,
   };
 }

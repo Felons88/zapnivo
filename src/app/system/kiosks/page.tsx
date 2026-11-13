@@ -1,12 +1,14 @@
 export const dynamic = "force-dynamic";
 import type { Metadata } from "next";
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { SystemGate } from "@/components/SystemGate";
 import { serviceClient } from "@/lib/supabase";
-import { getSessionUser } from "@/lib/auth";
+import { getSessionUser, SESSION_COOKIE } from "@/lib/auth";
 import { roleCan, systemRole } from "@/lib/system/rbac";
 import { listFleetDevices, SYSTEM_DEVICE_STATUSES, deriveConnectivity, DEVICE_STATUS_TONE as STATUS_TONE } from "@/lib/system/kiosks";
 import { getFleetStats, listFleetDevicesFiltered } from "@/lib/system/fleet-stats";
+import { FleetLive } from "./FleetLive";
 
 export const metadata: Metadata = { title: "Kiosk Infrastructure — Fleet registry" };
 
@@ -36,6 +38,7 @@ export default async function KiosksFleetPage({ searchParams }: {
     : [{ devices: [], error: undefined as string | undefined }, null];
   const { devices, error } = fleet;
   const s = stats && !("error" in stats) ? stats : null;
+  const accessToken = (await cookies()).get(SESSION_COOKIE)?.value ?? null;
   // Venue filter options come straight from the venues table (ids, not names).
   const { data: venueRows } = db
     ? await db.from("venues").select("id,name,city").order("name").limit(200)
@@ -81,6 +84,8 @@ export default async function KiosksFleetPage({ searchParams }: {
           </div>
         </div>
 
+        <FleetLive accessToken={accessToken} />
+
         {/* Fleet stats — real DB counts; null sections render as "—" */}
         {s && (
           <section className="grid gap-2 rounded-2xl border border-white/[0.08] bg-white/[0.05] p-4 sm:grid-cols-2 lg:grid-cols-6">
@@ -100,6 +105,27 @@ export default async function KiosksFleetPage({ searchParams }: {
             {s.errors.length > 0 && (
               <p className="col-span-full text-[10px] text-amber-300/80">Partial stats — {s.errors.join("; ")}</p>
             )}
+          </section>
+        )}
+
+        {/* Phase 4.2 ops snapshot — same honesty rules: real counts or "—" */}
+        {s && (
+          <section className="grid gap-2 rounded-2xl border border-white/[0.08] bg-white/[0.05] p-4 sm:grid-cols-2 lg:grid-cols-4">
+            {([
+              ["In maintenance", s.maintenance == null ? "—" : `${s.maintenance.devices} devices · ${s.maintenance.open_visits ?? "—"} open visits`],
+              ["Provisioning pipeline", String(s.provisioning_pending)],
+              ["Certification gaps", s.certification_active == null ? "—" : `${s.certification_active.without_pass} not passing · ${s.certification_active.never_tested} never tested`],
+              ["Auth failures (24h)", s.auth_failures == null ? "—" : String(s.auth_failures)],
+              ["Cmd failed / timeout (24h)", s.command_outcomes_24h == null ? "—" : `${s.command_outcomes_24h.failed} / ${s.command_outcomes_24h.timeout}`],
+              ["Config drift", s.config_drift == null ? "—" : `${s.config_drift.mismatched} mismatched · ${s.config_drift.awaiting_report} awaiting report`],
+              ["Open exceptions", s.open_exceptions == null ? "—" : String(s.open_exceptions)],
+              ["Battery inventory (legacy kiosks)", s.battery_inventory == null ? "—" : `${s.battery_inventory.banks_retired} banks retired · ${s.battery_inventory.banks_unknown_pct} unknown % · ${s.battery_inventory.kiosks_stale}/${s.battery_inventory.kiosks_total} kiosks stale`],
+            ] as const).map(([k, v]) => (
+              <div key={k} className="rounded-xl border border-white/[0.06] bg-black/20 px-3 py-2">
+                <p className="font-mono text-[10px] font-extrabold uppercase tracking-wider text-slate-500">{k}</p>
+                <p className="mt-1 font-mono text-sm font-bold text-slate-100">{v}</p>
+              </div>
+            ))}
           </section>
         )}
 
