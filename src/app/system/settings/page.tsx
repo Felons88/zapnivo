@@ -13,6 +13,12 @@ const SECTIONS = [
     desc: "Control-plane flag metadata and audit trail. Toggling records intent + audit event; high-risk flips route through change requests.",
   },
   {
+    href: "/system/settings/app",
+    title: "App settings",
+    perm: "system.flags.view",
+    desc: "Whitelisted nonsecret application settings. Writes are audited; high-risk keys require step-up elevation + an approved change request.",
+  },
+  {
     href: "/system/settings/retention",
     title: "Data retention",
     perm: "system.security.audit.view",

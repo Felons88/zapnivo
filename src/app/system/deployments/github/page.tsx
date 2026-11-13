@@ -3,10 +3,7 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { SystemGate } from "@/components/SystemGate";
-import {
-  githubGate, getGithubRepo, listGithubBranches, listGithubCommits,
-  listGithubPullRequests, listGithubCheckRuns,
-} from "@/lib/system/deploy-provider";
+import { githubOverview, githubStatus, type GithubResult } from "@/lib/system/github-provider";
 
 export const metadata: Metadata = { title: "GitHub — Deployment Center" };
 
@@ -22,22 +19,28 @@ function Card({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-export default async function GithubDeploymentsPage() {
-  const gate = githubGate();
-
-  let repo = null as Awaited<ReturnType<typeof getGithubRepo>> | null;
-  let branches = null as Awaited<ReturnType<typeof listGithubBranches>> | null;
-  let commits = null as Awaited<ReturnType<typeof listGithubCommits>> | null;
-  let prs = null as Awaited<ReturnType<typeof listGithubPullRequests>> | null;
-  let checks = null as Awaited<ReturnType<typeof listGithubCheckRuns>> | null;
-
-  if (gate.configured) {
-    [repo, branches, commits, prs] = await Promise.all([
-      getGithubRepo(), listGithubBranches(50), listGithubCommits(undefined, 20), listGithubPullRequests("open", 20),
-    ]);
-    const defaultRef = repo.configured && repo.ok ? repo.data.defaultBranch : "main";
-    checks = await listGithubCheckRuns(defaultRef ?? "main");
+function Err({ r }: { r: GithubResult<unknown> }) {
+  if (r.configured && !r.ok) {
+    return <p className="font-mono text-xs text-red-300">{r.reason}{r.status ? ` (HTTP ${r.status})` : ""}{r.detail ? ` — ${r.detail}` : ""}</p>;
   }
+  return <p className="text-sm text-slate-400">No data returned.</p>;
+}
+
+function ExtLink({ href, children }: { href: string | null; children: ReactNode }) {
+  if (!href) return <>{children}</>;
+  return (
+    <a href={href} target="_blank" rel="noreferrer" className="text-lime hover:underline">
+      {children}
+    </a>
+  );
+}
+
+export default async function GithubDeploymentsPage() {
+  const gate = githubStatus();
+  const overview = gate.configured ? await githubOverview() : null;
+
+  const repo = overview?.repository ?? null;
+  const defaultBranch = repo?.configured && repo.ok ? repo.data.defaultBranch : null;
 
   return (
     <SystemGate perm="system.deployments.view">
@@ -47,13 +50,19 @@ export default async function GithubDeploymentsPage() {
             <p className="eyebrow text-lime">Deployment Center</p>
             <h1 className="mt-2 font-display text-3xl font-bold tracking-tight">GitHub</h1>
             <p className="mt-1 max-w-2xl text-sm text-slate-400">
-              Source-control view for deploys — repo, branches, commits, pull requests and check runs.
-              Read-only; the API token is server-only and never rendered.
+              Source-control view for deploys — repo, branches, commits, pull requests, check runs and
+              release tags. Read-only; the API token is server-only and never rendered.
             </p>
           </div>
-          <Link href="/system/deployments" className="rounded-full bg-white/10 px-4 py-2 text-xs font-bold text-slate-200 ring-1 ring-white/15 hover:bg-white/15">
-            ← Deployments
-          </Link>
+          <div className="flex gap-2">
+            <a href="/api/system/deployments/github/overview" target="_blank" rel="noreferrer"
+              className="rounded-full bg-white/10 px-4 py-2 text-xs font-bold text-slate-200 ring-1 ring-white/15 hover:bg-white/15">
+              JSON overview ↗
+            </a>
+            <Link href="/system/deployments" className="rounded-full bg-white/10 px-4 py-2 text-xs font-bold text-slate-200 ring-1 ring-white/15 hover:bg-white/15">
+              ← Deployments
+            </Link>
+          </div>
         </div>
 
         {!gate.configured ? (
@@ -61,120 +70,173 @@ export default async function GithubDeploymentsPage() {
             <div className="space-y-2 text-sm text-slate-400">
               <p>The GitHub API is not configured. Set these env vars (server-only, never NEXT_PUBLIC_) and redeploy:</p>
               <ul className="space-y-1 font-mono text-xs text-slate-300">
-                <li>· GITHUB_TOKEN — fine-grained PAT or classic token with repo read + checks read</li>
+                <li>· GITHUB_TOKEN — fine-grained PAT with <span className="text-slate-200">Contents: read</span>, <span className="text-slate-200">Pull requests: read</span>, <span className="text-slate-200">Checks: read</span>, <span className="text-slate-200">Metadata: read</span> — or a GitHub App installation token</li>
                 <li>· GITHUB_REPO=owner/name — e.g. zapnivo/zapnivo-website</li>
                 <li>· GITHUB_DEPLOY_REFS — optional, comma-separated refs allowed for API deploys (default: main)</li>
               </ul>
               <p className="text-xs text-slate-500">missing: {gate.missing.join(", ")}</p>
             </div>
           </Card>
-        ) : (
+        ) : overview ? (
           <>
-            {/* Repo */}
+            {/* Repo identity */}
             <Card title="Repository">
               {repo?.configured && repo.ok ? (
-                <dl className="grid gap-x-8 gap-y-1 sm:grid-cols-2">
-                  {[
-                    ["repo", repo.data.fullName ?? "—"],
-                    ["default branch", repo.data.defaultBranch ?? "—"],
-                    ["visibility", repo.data.private === null ? "—" : repo.data.private ? "private" : "public"],
-                    ["repo id", repo.data.id === null ? "—" : String(repo.data.id)],
-                  ].map(([k, v]) => (
-                    <div key={k} className="flex items-center justify-between gap-4 py-1">
-                      <dt className="text-slate-500">{k}</dt>
-                      <dd className="font-mono text-xs text-slate-200">{v}</dd>
-                    </div>
-                  ))}
-                </dl>
-              ) : (
-                <p className="font-mono text-xs text-red-300">repo lookup failed{repo?.configured && !repo.ok ? `: ${repo.error}` : ""}</p>
-              )}
+                <div className="space-y-3">
+                  <dl className="grid gap-x-8 gap-y-1 sm:grid-cols-2">
+                    {[
+                      ["repo", repo.data.fullName ?? "—"],
+                      ["default branch", repo.data.defaultBranch ?? "—"],
+                      ["visibility", repo.data.visibility ?? "—"],
+                      ["description", repo.data.description ?? "—"],
+                    ].map(([k, v]) => (
+                      <div key={k} className="flex items-center justify-between gap-4 py-1">
+                        <dt className="text-slate-500">{k}</dt>
+                        <dd className="font-mono text-xs text-slate-200">{v}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                  {repo.data.htmlUrl && (
+                    <ExtLink href={repo.data.htmlUrl}>
+                      <span className="font-mono text-xs">open on GitHub ↗</span>
+                    </ExtLink>
+                  )}
+                </div>
+              ) : repo ? (
+                <Err r={repo} />
+              ) : null}
             </Card>
 
-            {/* Branches */}
-            <Card title={`Branches${branches?.configured && branches.ok ? ` (${branches.data.length})` : ""}`}>
-              {branches?.configured && branches.ok ? (
-                branches.data.length === 0 ? <p className="text-sm text-slate-400">No branches returned.</p> : (
-                  <div className="flex flex-wrap gap-2">
-                    {branches.data.map((b) => (
-                      <span key={b.name} className="rounded-full bg-white/[0.06] px-3 py-1 font-mono text-[11px] text-slate-300 ring-1 ring-white/10">
-                        {b.name}{b.protected ? " 🔒" : ""}
-                      </span>
-                    ))}
+            {/* Branches table */}
+            <Card title={`Branches${overview.branches.configured && overview.branches.ok ? ` (${overview.branches.data.length})` : ""}`}>
+              {overview.branches.configured && overview.branches.ok ? (
+                overview.branches.data.length === 0 ? <p className="text-sm text-slate-400">No branches returned.</p> : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead>
+                        <tr className="border-b border-white/10 text-[10px] uppercase tracking-wider text-slate-500">
+                          <th className="py-2 pr-4 font-medium">branch</th>
+                          <th className="py-2 pr-4 font-medium">head</th>
+                          <th className="py-2 pr-4 font-medium">protected</th>
+                          <th className="py-2 font-medium"></th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/5">
+                        {overview.branches.data.map((b) => (
+                          <tr key={b.name} className="text-slate-300">
+                            <td className="py-2 pr-4 font-mono text-slate-200">{b.name}</td>
+                            <td className="py-2 pr-4 font-mono text-[10px] text-slate-500">{b.commitSha ? b.commitSha.slice(0, 7) : "—"}</td>
+                            <td className="py-2 pr-4">{b.protected === null ? "—" : b.protected ? "🔒 yes" : "no"}</td>
+                            <td className="py-2 text-right">
+                              <ExtLink href={b.htmlUrl}><span className="font-mono text-[10px]">view ↗</span></ExtLink>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 )
-              ) : (
-                <p className="font-mono text-xs text-red-300">branch lookup failed{branches?.configured && !branches.ok ? `: ${branches.error}` : ""}</p>
-              )}
+              ) : overview.branches.configured ? (
+                <Err r={overview.branches} />
+              ) : null}
             </Card>
 
-            {/* Commits */}
-            <Card title="Recent commits (default branch)">
-              {commits?.configured && commits.ok ? (
-                commits.data.length === 0 ? <p className="text-sm text-slate-400">No commits returned.</p> : (
+            {/* Recent commits */}
+            <Card title={`Recent commits${defaultBranch ? ` — ${defaultBranch}` : ""}`}>
+              {overview.commits.configured && overview.commits.ok ? (
+                overview.commits.data.length === 0 ? <p className="text-sm text-slate-400">No commits returned.</p> : (
                   <ul className="divide-y divide-white/5">
-                    {commits.data.map((c) => (
+                    {overview.commits.data.map((c) => (
                       <li key={c.sha} className="flex items-center gap-3 py-2 text-xs">
-                        {c.htmlUrl ? (
-                          <a href={c.htmlUrl} target="_blank" rel="noreferrer" className="font-mono text-lime hover:underline">{c.sha.slice(0, 7)}</a>
-                        ) : <span className="font-mono text-slate-400">{c.sha.slice(0, 7)}</span>}
+                        <ExtLink href={c.htmlUrl}>
+                          <span className="font-mono text-lime">{c.sha.slice(0, 7)}</span>
+                        </ExtLink>
                         <span className="min-w-0 flex-1 truncate text-slate-300">{c.message ?? "—"}</span>
                         <span className="font-mono text-[10px] text-slate-500">{c.author ?? ""} · {when(c.date)}</span>
                       </li>
                     ))}
                   </ul>
                 )
-              ) : (
-                <p className="font-mono text-xs text-red-300">commit lookup failed{commits?.configured && !commits.ok ? `: ${commits.error}` : ""}</p>
-              )}
+              ) : overview.commits.configured ? (
+                <Err r={overview.commits} />
+              ) : null}
             </Card>
 
-            {/* PRs */}
+            {/* Open PRs */}
             <Card title="Open pull requests">
-              {prs?.configured && prs.ok ? (
-                prs.data.length === 0 ? <p className="text-sm text-slate-400">No open pull requests.</p> : (
+              {overview.pullRequests.configured && overview.pullRequests.ok ? (
+                overview.pullRequests.data.length === 0 ? <p className="text-sm text-slate-400">No open pull requests.</p> : (
                   <ul className="divide-y divide-white/5">
-                    {prs.data.map((p) => (
+                    {overview.pullRequests.data.map((p) => (
                       <li key={p.number} className="flex items-center gap-3 py-2 text-xs">
-                        {p.htmlUrl ? (
-                          <a href={p.htmlUrl} target="_blank" rel="noreferrer" className="font-mono text-lime hover:underline">#{p.number}</a>
-                        ) : <span className="font-mono text-slate-400">#{p.number}</span>}
+                        <ExtLink href={p.htmlUrl}>
+                          <span className="font-mono text-lime">#{p.number}</span>
+                        </ExtLink>
                         <span className="min-w-0 flex-1 truncate text-slate-300">{p.title ?? "—"}{p.draft ? " (draft)" : ""}</span>
-                        <span className="font-mono text-[10px] text-slate-500">{p.headRef} → {p.baseRef} · {p.author ?? ""} · {when(p.updatedAt)}</span>
+                        <span className="font-mono text-[10px] text-slate-500">
+                          {p.headRef} → {p.baseRef} · {p.author ?? ""}
+                          {p.mergeable !== null ? ` · ${p.mergeable ? "mergeable" : "conflicts"}` : ""}
+                          {" · "}{when(p.updatedAt)}
+                        </span>
                       </li>
                     ))}
                   </ul>
                 )
-              ) : (
-                <p className="font-mono text-xs text-red-300">PR lookup failed{prs?.configured && !prs.ok ? `: ${prs.error}` : ""}</p>
-              )}
+              ) : overview.pullRequests.configured ? (
+                <Err r={overview.pullRequests} />
+              ) : null}
             </Card>
 
             {/* Check runs */}
-            <Card title={`Check runs — ${repo?.configured && repo.ok ? repo.data.defaultBranch ?? "main" : "main"}`}>
-              {checks?.configured && checks.ok ? (
-                checks.data.length === 0 ? <p className="text-sm text-slate-400">No check runs on this ref.</p> : (
+            <Card title={`Check runs — ${defaultBranch ?? "default branch"}`}>
+              {overview.checkRuns.configured && overview.checkRuns.ok ? (
+                overview.checkRuns.data.length === 0 ? <p className="text-sm text-slate-400">No check runs on this ref.</p> : (
                   <ul className="space-y-1">
-                    {checks.data.map((c, i) => (
+                    {overview.checkRuns.data.map((c, i) => (
                       <li key={i} className="flex items-center gap-3 text-xs">
                         <span className={`rounded-full px-2 py-0.5 font-mono text-[10px] font-bold ring-1 ${
                           c.conclusion === "success" ? "bg-lime/15 text-lime ring-lime/30"
                           : c.conclusion === "failure" || c.conclusion === "cancelled" || c.conclusion === "timed_out" ? "bg-red-500/15 text-red-300 ring-red-400/30"
                           : "bg-amber-400/15 text-amber-300 ring-amber-400/30"
                         }`}>{c.conclusion ?? c.status ?? "unknown"}</span>
-                        {c.htmlUrl ? (
-                          <a href={c.htmlUrl} target="_blank" rel="noreferrer" className="text-slate-300 hover:text-lime hover:underline">{c.name ?? "check"}</a>
-                        ) : <span className="text-slate-300">{c.name ?? "check"}</span>}
+                        <ExtLink href={c.htmlUrl}>
+                          <span className="text-slate-300 hover:text-lime">{c.name ?? "check"}</span>
+                        </ExtLink>
                       </li>
                     ))}
                   </ul>
                 )
-              ) : (
-                <p className="font-mono text-xs text-red-300">check-run lookup failed{checks?.configured && !checks.ok ? `: ${checks.error}` : ""}</p>
-              )}
+              ) : overview.checkRuns.configured ? (
+                <Err r={overview.checkRuns} />
+              ) : null}
+            </Card>
+
+            {/* Release tags */}
+            <Card title="Release tags">
+              {overview.releaseTags.configured && overview.releaseTags.ok ? (
+                overview.releaseTags.data.length === 0 ? <p className="text-sm text-slate-400">No releases returned.</p> : (
+                  <ul className="divide-y divide-white/5">
+                    {overview.releaseTags.data.map((t) => (
+                      <li key={t.name} className="flex items-center gap-3 py-2 text-xs">
+                        <ExtLink href={t.htmlUrl}>
+                          <span className="font-mono text-lime">{t.name}</span>
+                        </ExtLink>
+                        <span className="min-w-0 flex-1 truncate font-mono text-[10px] text-slate-500">
+                          {t.sha ? t.sha.slice(0, 10) : "—"}
+                        </span>
+                        <span className="font-mono text-[10px] text-slate-500">
+                          {t.draft ? "draft · " : ""}{t.prerelease ? "pre-release · " : ""}{when(t.publishedAt)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )
+              ) : overview.releaseTags.configured ? (
+                <Err r={overview.releaseTags} />
+              ) : null}
             </Card>
           </>
-        )}
+        ) : null}
       </div>
     </SystemGate>
   );

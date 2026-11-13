@@ -22,6 +22,30 @@ import { heartbeatStale, HEARTBEAT_STALE_MIN } from "@/lib/kiosk/heartbeat";
  *    testing) whose last_heartbeat_at is stale per heartbeatStale()
  *    (HEARTBEAT_STALE_MIN = 15 min).
  *
+ * Phase 4.1 additions (same contract — aggregate/count probes, stable
+ * fingerprints, PII-free messages, fault-tolerant 'skipped'):
+ *  - deployment.failed — system_deployment_requests rows with
+ *    status='failed' whose freshest timestamp (created_at/decided_at — the
+ *    table has NO updated_at) is within RECENT_WINDOW_HOURS. One alert per
+ *    request id. Limitation: a manual status flip that touches neither
+ *    timestamp is not caught (no schema change made for this).
+ *  - deployment.health_degraded — system_audit_events rows with
+ *    action='deployment.health_degraded' (written by auditHealthProfile in
+ *    deploy-health.ts on a degraded transition) within the window. One alert
+ *    per distinct audit resource (health_profile:<app>), deduped in-sweep.
+ *  - webhook.failures — inbound_jobs rows in status 'failed'/'dead' whose
+ *    processed_at (fallback created_at) is within the window. One alert per
+ *    job id. (inbound_emails 'error' rows are validation rejects, not delivery
+ *    failures, so they are intentionally not alerted here.)
+ *  - jobs.failed — three queue probes: cron_runs ok=false within the window
+ *    (one alert per distinct job name), email_outbox status='failed' rows
+ *    (one per row id), notification_jobs status='failed' rows (one per id).
+ *  - device.credential_abuse — system_device_messages result='rejected'
+ *    within CREDENTIAL_ABUSE_WINDOW_HOURS, grouped per device. Reasons that
+ *    already have dedicated emitters/policy rules (credential_revoked,
+ *    credential_expired, duplicate_message) are excluded. One alert per device
+ *    once rejections reach CREDENTIAL_ABUSE_MIN_REJECTIONS.
+ *
  * Every probe is fault-tolerant: a missing table/column or query error marks
  * that check 'skipped' — the sweep NEVER throws and never crashes the cron.
  * Emissions go through reportError → error_events/error_issues, fingerprinted
@@ -32,10 +56,17 @@ import { heartbeatStale, HEARTBEAT_STALE_MIN } from "@/lib/kiosk/heartbeat";
 export const EXCEPTION_STALE_HOURS = 24;
 export const SETTLEMENT_STALE_HOURS = 24;
 export const COMMAND_STUCK_MINUTES = 10;
+/** Phase 4.1: recency window for deployment/webhook/job failure probes. */
+export const RECENT_WINDOW_HOURS = 24;
+/** Phase 4.1: device auth-failure burst threshold + window. */
+export const CREDENTIAL_ABUSE_MIN_REJECTIONS = 5;
+export const CREDENTIAL_ABUSE_WINDOW_HOURS = 24;
 /** Max rows inspected/emitted per check — bounds cron runtime and alert volume. */
 export const ALERT_SWEEP_ROW_CAP = 25;
 /** Device scan is wider (need the full enrolled fleet to find stale ones). */
 const DEVICE_SCAN_LIMIT = 200;
+/** Wider scan for auth-rejection telemetry (need per-device counts). */
+const MESSAGE_SCAN_LIMIT = 500;
 
 /** Rental states that mean "money/return resolution still outstanding". */
 export const SETTLEMENT_PENDING_STATES = [
@@ -89,6 +120,9 @@ export async function runAlertSweep(
   const exceptionCutoff = new Date(nowMs - EXCEPTION_STALE_HOURS * HOUR).toISOString();
   const settlementCutoff = new Date(nowMs - SETTLEMENT_STALE_HOURS * HOUR).toISOString();
   const commandCutoff = new Date(nowMs - COMMAND_STUCK_MINUTES * MIN).toISOString();
+  const recentCutoff = new Date(nowMs - RECENT_WINDOW_HOURS * HOUR).toISOString();
+  const recentCutoffMs = nowMs - RECENT_WINDOW_HOURS * HOUR;
+  const abuseCutoff = new Date(nowMs - CREDENTIAL_ABUSE_WINDOW_HOURS * HOUR).toISOString();
 
   /* ── rental.exceptions_unresolved ─────────────────────────────────────── */
   {
@@ -253,6 +287,213 @@ export async function runAlertSweep(
       }
     } catch (e) {
       checks[name] = { status: "skipped", reason: e instanceof Error ? e.message : "integration probe failed" };
+    }
+  }
+
+  /* ── Phase 4.1 probes ──────────────────────────────────────────────────── */
+
+  /* ── deployment.failed — failed deployment requests, recent ──────────────
+     system_deployment_requests has no updated_at; 'failed' is a terminal
+     status recorded after a real deploy attempt. Recency = freshest of
+     created_at/decided_at within RECENT_WINDOW_HOURS. */
+  {
+    const name = "deployment_failed";
+    const res = await probe<{ id: string; action: string | null; created_at: string | null; decided_at: string | null }>(() =>
+      db
+        .from("system_deployment_requests")
+        .select("id,action,created_at,decided_at")
+        .eq("status", "failed")
+        .limit(ALERT_SWEEP_ROW_CAP),
+    );
+    if (!res.ok) {
+      checks[name] = { status: "skipped", reason: res.reason };
+    } else {
+      const recent = res.rows.filter((r) => {
+        const stamps = [r.created_at, r.decided_at]
+          .map((s) => (s ? Date.parse(s) : NaN))
+          .filter((t) => Number.isFinite(t));
+        return stamps.length > 0 && Math.max(...stamps) >= recentCutoffMs;
+      });
+      let n = 0;
+      for (const row of recent.slice(0, ALERT_SWEEP_ROW_CAP)) {
+        emit(`deployment.failed request=${row.id} action=${row.action ?? "unknown"}`);
+        n += 1;
+        bump();
+      }
+      checks[name] = { status: "ok", matched: recent.length, emitted: n };
+    }
+  }
+
+  /* ── deployment.health_degraded — degraded health-profile transitions ────
+     auditHealthProfile (deploy-health.ts) writes action='deployment.health_degraded'
+     to system_audit_events on a degraded verdict. One alert per distinct
+     resource (health_profile:<app>); repeat transitions for the same app
+     dedupe to the same fingerprint. */
+  {
+    const name = "deployment_health_degraded";
+    const res = await probe<{ resource: string | null }>(() =>
+      db
+        .from("system_audit_events")
+        .select("resource")
+        .eq("action", "deployment.health_degraded")
+        .gte("created_at", recentCutoff)
+        .limit(ALERT_SWEEP_ROW_CAP),
+    );
+    if (!res.ok) {
+      checks[name] = { status: "skipped", reason: res.reason };
+    } else {
+      const targets = [...new Set(res.rows.map((r) => r.resource).filter((r): r is string => typeof r === "string" && r.length > 0))];
+      let n = 0;
+      for (const target of targets.slice(0, ALERT_SWEEP_ROW_CAP)) {
+        emit(`deployment.health_degraded target=${target}`);
+        n += 1;
+        bump();
+      }
+      checks[name] = { status: "ok", matched: res.rows.length, emitted: n };
+    }
+  }
+
+  /* ── webhook.failures — dead/failed inbound email jobs ───────────────────
+     inbound_jobs is the durable queue drained by /api/cron/inbound; 'failed'
+     is in the CHECK constraint (worker primarily writes 'dead'). Recency uses
+     processed_at with created_at fallback, judged in JS (bounded scan). */
+  {
+    const name = "webhook_inbound_failures";
+    const res = await probe<{ id: string; status: string | null; created_at: string | null; processed_at: string | null }>(() =>
+      db
+        .from("inbound_jobs")
+        .select("id,status,created_at,processed_at")
+        .in("status", ["failed", "dead"])
+        .limit(100),
+    );
+    if (!res.ok) {
+      checks[name] = { status: "skipped", reason: res.reason };
+    } else {
+      const recent = res.rows.filter((r) => {
+        const t = Date.parse(r.processed_at ?? r.created_at ?? "");
+        return Number.isFinite(t) && t >= recentCutoffMs;
+      });
+      let n = 0;
+      for (const row of recent.slice(0, ALERT_SWEEP_ROW_CAP)) {
+        emit(`webhook.failures job=${row.id} status=${row.status ?? "unknown"}`);
+        n += 1;
+        bump();
+      }
+      checks[name] = { status: "ok", matched: recent.length, emitted: n };
+    }
+  }
+
+  /* ── jobs.failed — cron_runs failures (one alert per distinct job) ──────── */
+  {
+    const name = "cron_job_failures";
+    const res = await probe<{ job: string | null }>(() =>
+      db
+        .from("cron_runs")
+        .select("job")
+        .eq("ok", false)
+        .gte("ran_at", recentCutoff)
+        .limit(200),
+    );
+    if (!res.ok) {
+      checks[name] = { status: "skipped", reason: res.reason };
+    } else {
+      const jobs = [...new Set(res.rows.map((r) => r.job).filter((j): j is string => typeof j === "string" && j.length > 0))];
+      let n = 0;
+      for (const job of jobs.slice(0, ALERT_SWEEP_ROW_CAP)) {
+        emit(`jobs.failed job=${job} source=cron_runs`);
+        n += 1;
+        bump();
+      }
+      checks[name] = { status: "ok", matched: res.rows.length, emitted: n };
+    }
+  }
+
+  /* ── jobs.failed — email_outbox permanent failures ─────────────────────── */
+  {
+    const name = "email_outbox_failures";
+    const res = await probe<{ id: string }>(() =>
+      db
+        .from("email_outbox")
+        .select("id")
+        .eq("status", "failed")
+        .gte("created_at", recentCutoff)
+        .limit(ALERT_SWEEP_ROW_CAP),
+    );
+    if (!res.ok) {
+      checks[name] = { status: "skipped", reason: res.reason };
+    } else {
+      let n = 0;
+      for (const row of res.rows.slice(0, ALERT_SWEEP_ROW_CAP)) {
+        emit(`jobs.failed email_outbox=${row.id} source=email_outbox`);
+        n += 1;
+        bump();
+      }
+      checks[name] = { status: "ok", matched: res.rows.length, emitted: n };
+    }
+  }
+
+  /* ── jobs.failed — notification_jobs failures ──────────────────────────── */
+  {
+    const name = "notification_job_failures";
+    const res = await probe<{ id: string }>(() =>
+      db
+        .from("notification_jobs")
+        .select("id")
+        .eq("status", "failed")
+        .gte("created_at", recentCutoff)
+        .limit(ALERT_SWEEP_ROW_CAP),
+    );
+    if (!res.ok) {
+      checks[name] = { status: "skipped", reason: res.reason };
+    } else {
+      let n = 0;
+      for (const row of res.rows.slice(0, ALERT_SWEEP_ROW_CAP)) {
+        emit(`jobs.failed notification_job=${row.id} source=notification_jobs`);
+        n += 1;
+        bump();
+      }
+      checks[name] = { status: "ok", matched: res.rows.length, emitted: n };
+    }
+  }
+
+  /* ── device.credential_abuse — repeated device auth rejections ────────────
+     Groups rejected system_device_messages rows per device over
+     CREDENTIAL_ABUSE_WINDOW_HOURS. Reasons with dedicated emitters/policy
+     (credential_revoked, credential_expired, duplicate_message) are excluded
+     so this probe only catches unexplained failure bursts (bad signatures,
+     unknown devices, missing credentials, …). One alert per device once the
+     count reaches CREDENTIAL_ABUSE_MIN_REJECTIONS; the message stays stable
+     (no counts) so the fingerprint dedups repeat sweeps. */
+  {
+    const name = "device_credential_abuse";
+    const ABUSE_EXCLUDED_REASONS = new Set(["credential_revoked", "credential_expired", "duplicate_message"]);
+    const res = await probe<{ device_id: string | null; detail: Record<string, unknown> | null }>(() =>
+      db
+        .from("system_device_messages")
+        .select("device_id,detail")
+        .eq("result", "rejected")
+        .gte("received_at", abuseCutoff)
+        .limit(MESSAGE_SCAN_LIMIT),
+    );
+    if (!res.ok) {
+      checks[name] = { status: "skipped", reason: res.reason };
+    } else {
+      const counts = new Map<string, number>();
+      for (const row of res.rows) {
+        const reason = typeof row.detail?.reason === "string" ? row.detail.reason : "";
+        if (ABUSE_EXCLUDED_REASONS.has(reason)) continue;
+        const uid = typeof row.detail?.device_uid === "string" ? row.detail.device_uid : null;
+        const scope = row.device_id ?? uid ?? "unattributed";
+        counts.set(scope, (counts.get(scope) ?? 0) + 1);
+      }
+      const abusive = [...counts.entries()].filter(([, c]) => c >= CREDENTIAL_ABUSE_MIN_REJECTIONS);
+      let n = 0;
+      for (const [scope] of abusive.slice(0, ALERT_SWEEP_ROW_CAP)) {
+        emit(`device.credential_abuse device=${scope}`);
+        n += 1;
+        bump();
+      }
+      checks[name] = { status: "ok", matched: res.rows.length, emitted: n };
     }
   }
 

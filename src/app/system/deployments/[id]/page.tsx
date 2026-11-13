@@ -5,9 +5,11 @@ import { notFound } from "next/navigation";
 import { SystemGate } from "@/components/SystemGate";
 import { serviceClient } from "@/lib/supabase";
 import { getDeploymentDetail, githubCommitUrl, manualDeployInstructions, type DeploymentHealth } from "@/lib/system/deploy-center";
+import { getDeploymentPipeline } from "@/lib/system/deploy-pipeline";
 import type { HealthProfileResult } from "@/lib/system/deploy-health";
 import { vercelGate } from "@/lib/system/deploy-provider";
 import { DeploymentMonitor } from "./DeploymentMonitor";
+import { DeploymentPipelineView } from "./DeploymentPipeline";
 
 export const metadata: Metadata = { title: "Deployment detail" };
 
@@ -19,6 +21,7 @@ export default async function DeploymentDetailPage({ params }: { params: Promise
   const db = serviceClient();
   const detail = await getDeploymentDetail(db, id);
   if (!detail) notFound();
+  const pipeline = await getDeploymentPipeline(db, id);
 
   const d = detail.deployment;
   const req = detail.request;
@@ -104,6 +107,9 @@ export default async function DeploymentDetailPage({ params }: { params: Promise
             </p>
           </section>
         )}
+
+        {/* Derived pipeline — evidence-backed stage timeline (Phase 4.1) */}
+        {pipeline && <DeploymentPipelineView pipeline={pipeline} />}
 
         {/* Live status poll — 15s interval, stops on terminal provider state */}
         <DeploymentMonitor id={id} initialHealth={initialHealth} />
