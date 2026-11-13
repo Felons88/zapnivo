@@ -13,6 +13,68 @@ export const CHANGE_RISKS: readonly ChangeRisk[] = ["low", "medium", "high", "cr
 /** Risks that always require an approved change request before execution. */
 export const APPROVAL_RISKS: readonly ChangeRisk[] = ["high", "critical"];
 
+/* ── Identifier-safe audit fields (phase 2.6 fix) ─────────────────────────
+ * `resource` is a TYPED identifier ("type:id") constructed by server code —
+ * never free text. Running it through scrub() mangled all-digit UUIDs via the
+ * card-number pattern (system_device:1234-… → system_device:[redacted]-…),
+ * which silently broke eq("resource", …) correlation queries. Resources that
+ * match the strict type:id charset are stored verbatim; anything else (user
+ * text, query strings carrying secrets, whitespace) falls back to scrub().
+ */
+const RESOURCE_SAFE = /^[a-z][a-z0-9_.-]{0,60}:[A-Za-z0-9_./:-]{1,180}$/i;
+
+/** Canonical stored form of an audit resource identifier. */
+export function auditResource(resource: string): string {
+  const s = String(resource ?? "").trim();
+  if (s.length > 0 && s.length <= 200 && RESOURCE_SAFE.test(s)) return s;
+  return scrub(s, 200);
+}
+
+/* Detail values get schema-aware scrubbing: UUIDs and identifier-ish keys
+ * pass through (they are correlation data, not secrets); secret-ish keys are
+ * always dropped; everything else goes through scrub(). */
+const SECRET_DETAIL_KEY = /pass|secret|token|key|auth|cookie|otp|card|cvv|ssn|signature|authorization/i;
+const UUID_VALUE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const IDENTIFIER_KEY = /(^id$|_id$|_uid$|_ref$|uuid|guid|fingerprint|correlation|request_id|command_id|event_id)/i;
+const SAFE_IDENTIFIER_VALUE = /^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,199}$/;
+const SECRETISH_VALUE = /(^|[^a-z0-9])(sk-[a-z0-9_-]{6,}|whsec_[a-z0-9]+|SG\.[a-z0-9_.-]+|znk_[a-z0-9_-]+)|(bearer\s+[a-z0-9._-]{6,})|(eyJ[A-Za-z0-9_-]{8,})/i;
+const MAX_DETAIL_DEPTH = 3;
+
+function sanitizeDetailValue(key: string, value: unknown, depth: number): unknown {
+  if (typeof value === "string") {
+    const v = value.slice(0, 1000);
+    if (UUID_VALUE.test(v)) return v.slice(0, 500);
+    if (IDENTIFIER_KEY.test(key) && SAFE_IDENTIFIER_VALUE.test(v) && !SECRETISH_VALUE.test(v)) return v.slice(0, 500);
+    return scrub(v, 500);
+  }
+  if (value === null || typeof value === "number" || typeof value === "boolean") return value;
+  if (depth >= MAX_DETAIL_DEPTH) return "[truncated]";
+  if (Array.isArray(value)) return value.slice(0, 50).map((item) => sanitizeDetailValue(key, item, depth + 1));
+  if (typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>).slice(0, 30)) {
+      if (SECRET_DETAIL_KEY.test(k)) continue;
+      out[k] = sanitizeDetailValue(k, v, depth + 1);
+    }
+    return out;
+  }
+  return scrub(String(value), 500);
+}
+
+/**
+ * Sanitizes an audit `detail` payload for storage: drops secret-ish keys at any
+ * depth (≤3), preserves UUIDs and safe identifier values, scrub()s the rest.
+ * Bounded: 30 keys per object level, 50 items per array, strings capped at 500.
+ */
+export function sanitizeAuditDetail(detail: Record<string, unknown> | null | undefined): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(detail ?? {}).slice(0, 30)) {
+    if (SECRET_DETAIL_KEY.test(k)) continue;
+    out[k] = sanitizeDetailValue(k, v, 0);
+  }
+  return out;
+}
+
 export type SystemAuditInput = {
   actor: SystemActor | null;
   action: string;
@@ -29,28 +91,23 @@ export type SystemAuditInput = {
 export async function systemAudit(db: SupabaseClient | null | undefined, input: SystemAuditInput): Promise<void> {
   const correlationId = input.correlationId ?? newTraceId();
   const environment = input.environment ?? process.env.VERCEL_ENV ?? "development";
+  const resource = auditResource(input.resource);
   try {
     if (db) {
-      const detail = input.detail ?? {};
-      const safe: Record<string, unknown> = {};
-      for (const [k, v] of Object.entries(detail).slice(0, 30)) {
-        if (/pass|secret|token|key|auth|cookie|otp|card|cvv|ssn/i.test(k)) continue;
-        safe[k] = typeof v === "string" ? scrub(v, 500) : v;
-      }
       await db.from("system_audit_events").insert({
         actor_id: input.actor?.id ?? null,
         actor_role: input.actor?.role ?? "system",
         action: scrub(input.action, 120),
-        resource: scrub(input.resource, 200),
+        resource,
         environment,
-        detail: safe,
+        detail: sanitizeAuditDetail(input.detail),
         correlation_id: correlationId,
       });
     }
   } catch { /* audit must never break the action */ }
   recordLog("info", `system.${input.action}`, {
     service: "system",
-    attrs: { resource: input.resource, environment, actor: input.actor?.id ?? "system", correlation_id: correlationId },
+    attrs: { resource, environment, actor: input.actor?.id ?? "system", correlation_id: correlationId },
   });
 }
 

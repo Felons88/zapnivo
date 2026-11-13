@@ -17,6 +17,7 @@ import { CredentialPanel } from "./CredentialPanel";
 import { DiagnosticsButton } from "./DiagnosticsButton";
 import { CommandForm } from "./CommandForm";
 import { deviceCredentialStatus, kekStatus, type DeviceAuthRow } from "@/lib/system/device-auth";
+import { getDeviceOpsDashboard } from "@/lib/system/command-ops";
 import type { ReadinessCheck } from "@/lib/system/hardware";
 
 export const metadata: Metadata = { title: "Kiosk Infrastructure — Device" };
@@ -61,10 +62,11 @@ export default async function KioskDevicePage({ params }: { params: Promise<{ id
     venue = (v as VenueLite | null) ?? null;
   }
 
-  const [commands, audit, related] = await Promise.all([
+  const [commands, audit, related, ops] = await Promise.all([
     listDeviceCommands(db, device.id, 100),
     listDeviceAudit(db, device.id, 100),
     device.venue_id ? listVenueLinkedKiosksAndRentals(db, device.venue_id) : Promise.resolve({ kiosks: [], rentals: [] }),
+    getDeviceOpsDashboard(db, device),
   ]);
   const diagnostics = commands.filter((c) => c.command_type === "diagnostic_ping");
   const conn = deriveConnectivity(device);
@@ -175,6 +177,162 @@ export default async function KioskDevicePage({ params }: { params: Promise<{ id
             </div>
             <p className="mt-3 text-[10px] text-slate-500">
               Legal edges only; quarantined/decommissioned require an approved change request (high risk).
+            </p>
+          </Section>
+        </div>
+
+        {/* ── Phase 2.6 ops dashboard: verification signals ── */}
+        <Section title="Verification signals">
+          <p className="mb-3 text-[10px] text-slate-500">
+            Each signal is derived only from stored evidence — nothing here claims live hardware contact.
+            Bound kiosk(s): {ops.bound_kiosks.length === 0 ? "none" : ops.bound_kiosks.map((k) => k.station_id ?? k.id.slice(0, 8)).join(", ")}.
+          </p>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+            {([
+              ["gateway_reachable", ops.verification.gateway_reachable],
+              ["heartbeat_received", ops.verification.heartbeat_received],
+              ["ack_received", ops.verification.ack_received],
+              ["simulated_evidence", ops.verification.simulated_evidence],
+              ["physically_verified", ops.verification.physically_verified],
+            ] as const).map(([name, v]) => (
+              <div key={name} className="rounded-xl border border-white/[0.08] bg-black/20 p-3">
+                <p className="font-mono text-[10px] font-extrabold uppercase tracking-wider text-slate-500">{name}</p>
+                <p className={`mt-1 font-mono text-[11px] font-bold ${
+                  v.state === "yes" ? "text-lime" : v.state === "no" ? "text-slate-400" : "text-amber-300"}`}>
+                  {v.state === "unverifiable" ? "unverifiable" : v.state}
+                </p>
+                <p className="mt-1 text-[10px] leading-snug text-slate-500">{v.detail}</p>
+              </div>
+            ))}
+          </div>
+        </Section>
+
+        {/* ── Command queue (device_commands via bound kiosk) ── */}
+        <Section title={`Command queue — device_commands (${ops.commands.counts.total})`}>
+          {ops.unbound ? (
+            <p className="text-sm text-slate-400">
+              No rental-facing kiosk is bound to this device (kiosks.station_id ↔ device_uid/serial_number).
+              The durable command queue is not applicable until a station binding exists.{" "}
+              <Link href="/system/kiosks/commands" className="text-lime underline">Fleet command history →</Link>
+            </p>
+          ) : (
+            <>
+              <div className="mb-3 flex flex-wrap gap-2 text-[11px] font-mono">
+                <span className="rounded-full bg-amber-400/15 px-2.5 py-1 text-amber-300 ring-1 ring-amber-400/30">open {ops.commands.counts.open}</span>
+                <span className="rounded-full bg-red-500/15 px-2.5 py-1 text-red-300 ring-1 ring-red-400/30">failed {ops.commands.counts.failed}</span>
+                <span className="rounded-full bg-orange-500/15 px-2.5 py-1 text-orange-300 ring-1 ring-orange-400/30">unknown/investigation {ops.commands.counts.unknown_or_investigation}</span>
+                <Link href={`/system/kiosks/commands?device_id=${device.id}`} className="ml-auto rounded-full bg-white/10 px-3 py-1 text-slate-200 ring-1 ring-white/15 hover:bg-white/15">Full history →</Link>
+              </div>
+              {ops.commands.recent.length === 0 ? (
+                <p className="text-sm text-slate-400">No commands recorded for the bound kiosk(s).</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[820px] text-left text-xs">
+                    <thead className="text-[10px] uppercase tracking-wider text-slate-500"><tr>{["When", "Command", "State", "Attempt", "Exception", "Idempotency key"].map((h) => <th key={h} className="pb-2 pr-4 font-extrabold">{h}</th>)}</tr></thead>
+                    <tbody className="font-mono">
+                      {ops.commands.recent.slice(0, 15).map((c) => (
+                        <tr key={c.id} className="border-t border-white/5">
+                          <td className="py-2 pr-4 whitespace-nowrap text-slate-400">{when(c.created_at)}</td>
+                          <td className="py-2 pr-4 font-bold"><Link href={`/system/kiosks/commands/${c.id}`} className="text-lime underline decoration-lime/40 hover:text-white">{c.command}</Link></td>
+                          <td className="py-2 pr-4 text-slate-300">{c.status}{c.resolved_outcome ? ` →${c.resolved_outcome}` : ""}</td>
+                          <td className="py-2 pr-4 text-slate-400">{c.attempt_count}</td>
+                          <td className="py-2 pr-4">{c.open_exception ? <span className="rounded-full bg-amber-400/15 px-2 py-0.5 text-[10px] font-bold text-amber-300 ring-1 ring-amber-400/30">open</span> : "—"}</td>
+                          <td className="max-w-[160px] truncate py-2 text-[10px] text-slate-500" title={c.idempotency_key}>{c.idempotency_key}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              <p className="mt-3 text-[10px] text-slate-500">
+                Open = queued|sent|awaiting_ack. Retries are controlled per-command on the detail page
+                (MFA + reason + eligibility + evidence for physical commands).
+              </p>
+            </>
+          )}
+        </Section>
+
+        <div className="grid gap-4 lg:grid-cols-2">
+          {/* Recent hardware events */}
+          <Section title={`Recent hardware events (${ops.hardware_events.length})`}>
+            {ops.hardware_events.length === 0 ? (
+              <p className="text-sm text-slate-400">{ops.unbound ? "No bound kiosk — no hardware events can be attributed." : "No device_events recorded for the bound kiosk(s)."}</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[560px] text-left text-xs">
+                  <thead className="text-[10px] uppercase tracking-wider text-slate-500"><tr>{["When", "Event", "Outcome", "Error", "Sim"].map((h) => <th key={h} className="pb-2 pr-4 font-extrabold">{h}</th>)}</tr></thead>
+                  <tbody className="font-mono">
+                    {ops.hardware_events.map((e) => (
+                      <tr key={e.id} className="border-t border-white/5">
+                        <td className="py-2 pr-4 whitespace-nowrap text-slate-400">{when(e.occurred_at)}</td>
+                        <td className="py-2 pr-4 font-bold text-slate-200">{e.event_type}</td>
+                        <td className="py-2 pr-4 text-slate-300">{e.outcome ?? "—"}</td>
+                        <td className="py-2 pr-4 text-slate-400">{e.error_code ?? "—"}</td>
+                        <td className="py-2 text-slate-400">{e.simulated ? "sim" : ""}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Section>
+
+          {/* Open exceptions */}
+          <Section title={`Open exceptions (${ops.exceptions.length})`}>
+            {ops.exceptions.length === 0 ? (
+              <p className="text-sm text-slate-400">No open/investigating rental_exceptions for the bound kiosk(s).</p>
+            ) : (
+              <ul className="space-y-1.5">
+                {ops.exceptions.map((x) => (
+                  <li key={x.id} className="flex items-baseline justify-between gap-3 border-b border-white/5 pb-1.5 text-xs last:border-0">
+                    <span className="font-mono font-bold text-amber-300">{x.kind}</span>
+                    <span className="text-slate-500">{x.status} · {when(x.created_at)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Section>
+
+          {/* Inventory */}
+          <Section title="Inventory (bound kiosks)">
+            {ops.unbound ? (
+              <p className="text-sm text-slate-400">No bound kiosk — slot/bank projection is not applicable.</p>
+            ) : (
+              <>
+                <dl>
+                  <Row k="bound kiosks" v={ops.inventory.kiosks.map((k) => `${k.station_id ?? k.id.slice(0, 8)} (${k.slot_count ?? "?"} slots)`).join(", ") || "—"} />
+                  <Row k="slots by state" v={Object.keys(ops.inventory.slots_by_state).length ? Object.entries(ops.inventory.slots_by_state).map(([s, n]) => `${s}:${n}`).join(", ") : "—"} />
+                  <Row k="power banks docked" v={`${ops.inventory.power_banks.docked} active / ${ops.inventory.power_banks.retired} retired / ${ops.inventory.power_banks.total} total`} />
+                </dl>
+                <p className="mt-2 text-[10px] text-slate-500">Projected from kiosk_slots / power_banks for the bound kiosk id(s) only.</p>
+              </>
+            )}
+          </Section>
+
+          {/* Certification + maintenance */}
+          <Section title="Certification & maintenance">
+            <dl>
+              <Row k="physical-tier latest" v={
+                ops.certification.physical_latest
+                  ? <span className={ops.certification.physical_latest.status === "pass" ? "text-lime" : "text-amber-300"}>{ops.certification.physical_latest.status} · {ops.certification.physical_latest.check_key} · {when(ops.certification.physical_latest.created_at)}</span>
+                  : "no runs recorded"
+              } />
+              <Row k="runs by tier" v={Object.keys(ops.certification.runs_by_tier).length ? Object.entries(ops.certification.runs_by_tier).map(([t, n]) => `${t}:${n}`).join(", ") : "—"} />
+              <Row k="maintenance visits" v={String(ops.maintenance.length)} />
+            </dl>
+            {ops.maintenance.length > 0 && (
+              <ul className="mt-3 space-y-1.5">
+                {ops.maintenance.slice(0, 5).map((m) => (
+                  <li key={m.id} className="flex items-baseline justify-between gap-3 border-b border-white/5 pb-1.5 text-xs last:border-0">
+                    <span className="min-w-0 text-slate-300">{m.notes ? m.notes.slice(0, 80) : "visit"}{m.technician ? ` — ${m.technician.slice(0, 8)}` : ""}</span>
+                    <span className="shrink-0 font-mono text-[10px] text-slate-500">{when(m.visited_at)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <p className="mt-2 text-[10px] text-slate-500">
+              Certification runs are the append-only system_certification_runs ledger — a physical-tier pass is
+              the only hardware-verified signal; simulated/gateway results are labeled separately.
             </p>
           </Section>
         </div>

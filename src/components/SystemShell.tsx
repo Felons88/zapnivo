@@ -32,6 +32,9 @@ const NAV: NavGroup[] = [
       { href: "/system/kiosks/firmware", label: "Firmware" },
       { href: "/system/kiosks/hardware", label: "Hardware readiness" },
       { href: "/system/kiosks/certification", label: "Certification" },
+      { href: "/system/kiosks/onboarding", label: "Onboarding" },
+      { href: "/system/kiosks/commands", label: "Commands" },
+      { href: "/system/kiosks/exceptions", label: "Exceptions" },
     ],
   },
   {
