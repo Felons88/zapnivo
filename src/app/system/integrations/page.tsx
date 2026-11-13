@@ -3,9 +3,11 @@ import type { Metadata } from "next";
 import { SystemGate } from "@/components/SystemGate";
 import { serviceClient } from "@/lib/supabase";
 import { getSystemOverview } from "@/lib/system/overview";
-import { listIntegrationStatus } from "@/lib/system/integrations";
+import { getIntegrationDetail } from "@/lib/system/integration-detail";
+import { getProvider, listIntegrationStatus } from "@/lib/system/integrations";
 import { HealthButtons } from "./HealthButtons";
 import { ProviderSetup } from "./ProviderSetup";
+import { ProviderDetail } from "./ProviderDetail";
 
 export const metadata: Metadata = { title: "Integrations" };
 
@@ -18,10 +20,21 @@ const STATUS_TONE: Record<string, string> = {
   not_verified: "bg-white/10 text-slate-300 ring-white/15",
 };
 
-export default async function IntegrationsPage() {
+export default async function IntegrationsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ provider?: string }>;
+}) {
+  const { provider: providerParam } = await searchParams;
   const db = serviceClient();
   const o = await getSystemOverview(db);
   const integrations = await listIntegrationStatus(db);
+  // Detail is computed for ONE provider at a time (?provider=<id>) so the
+  // default page load stays cheap — bounded queries only.
+  const detail =
+    providerParam && getProvider(providerParam)
+      ? await getIntegrationDetail(db, providerParam)
+      : null;
 
   return (
     <SystemGate perm="system.integrations.view">
@@ -51,6 +64,7 @@ export default async function IntegrationsPage() {
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Last check</th>
                 <th className="px-4 py-3 text-right">Health</th>
+                <th className="px-4 py-3 text-right">Detail</th>
               </tr>
             </thead>
             <tbody>
@@ -91,17 +105,28 @@ export default async function IntegrationsPage() {
                     ) : "never"}
                   </td>
                   <td className="px-4 py-3 text-right"><HealthButtons id={i.id} configured={i.configured} /></td>
+                  <td className="px-4 py-3 text-right">
+                    <a
+                      href={detail?.provider.id === i.id ? "/system/integrations" : `/system/integrations?provider=${i.id}`}
+                      className={`font-mono text-[11px] underline ${detail?.provider.id === i.id ? "text-lime" : "text-slate-400 hover:text-lime"}`}
+                    >
+                      {detail?.provider.id === i.id ? "close" : "detail"}
+                    </a>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
 
+        {detail && <ProviderDetail detail={detail} />}
+
         <ProviderSetup />
 
         <p className="text-xs text-slate-500">
           API: <code className="font-mono">GET /api/system/integrations</code> ·{" "}
-          <code className="font-mono">GET /api/system/integrations/{"{id}"}/health</code> — both audited.
+          <code className="font-mono">GET /api/system/integrations/{"{id}"}/health</code> ·{" "}
+          <code className="font-mono">GET /api/system/integrations/{"{id}"}/detail</code> — all audited.
           Deploy providers (github, vercel) additionally return scope/permission detail on health checks.
         </p>
       </div>

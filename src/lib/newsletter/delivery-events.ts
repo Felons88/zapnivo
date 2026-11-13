@@ -73,18 +73,36 @@ export async function recordDeliveryEvent(
     .select("id")
     .single();
 
+  let eventRowId: string | null = null;
+  let duplicate = false;
+
   if (error) {
     if (error.code === "23505") {
-      return { ok: true, duplicate: true, suppressed: false, subscriberId: subscriber?.id ?? null };
+      // Provider replay. If the original row was left processed=false (its
+      // suppression update failed and the route returned 500), re-run
+      // processing now — this is the retry path; there is no separate sweep.
+      const { data: existing } = await db
+        .from("email_delivery_events")
+        .select("id,processed")
+        .eq("provider", ev.provider)
+        .eq("provider_event_id", ev.providerEventId)
+        .maybeSingle();
+      const row = existing as { id?: string; processed?: boolean } | null;
+      if (!row?.id || row.processed !== false) {
+        return { ok: true, duplicate: true, suppressed: false, subscriberId: subscriber?.id ?? null };
+      }
+      eventRowId = row.id;
+      duplicate = true;
+    } else {
+      recordLog("error", "email_delivery_event_insert_failed", {
+        service: "email-delivery",
+        attrs: { provider: ev.provider, event_type: ev.eventType, code: error.code ?? "unknown" },
+      });
+      return { ok: false, status: 500, error: "event_store_failed" };
     }
-    recordLog("error", "email_delivery_event_insert_failed", {
-      service: "email-delivery",
-      attrs: { provider: ev.provider, event_type: ev.eventType, code: error.code ?? "unknown" },
-    });
-    return { ok: false, status: 500, error: "event_store_failed" };
+  } else {
+    eventRowId = (inserted as { id?: string } | null)?.id ?? null;
   }
-
-  const eventRowId = (inserted as { id?: string } | null)?.id ?? null;
   let suppressed = false;
   let processError: string | null = null;
 
@@ -139,11 +157,18 @@ export async function recordDeliveryEvent(
       event_type: ev.eventType,
       subscriber_id: subscriber?.id ?? null,
       suppressed,
+      duplicate,
       processed: processError === null,
     },
   });
 
-  return { ok: true, duplicate: false, suppressed, subscriberId: subscriber?.id ?? null };
+  if (processError) {
+    // Row is durable but unprocessed — report failure so the route returns
+    // 500 and the provider retries; the duplicate path above reprocesses
+    // processed=false rows. No separate sweep exists by design.
+    return { ok: false, status: 500, error: `process_failed:${processError}` };
+  }
+  return { ok: true, duplicate, suppressed, subscriberId: subscriber?.id ?? null };
 }
 
 /**
@@ -182,6 +207,12 @@ export type DeliveryWebhookStatus = {
   /** Which provider webhook secrets are configured (env presence only). */
   resendConfigured: boolean;
   brevoConfigured: boolean;
+  /**
+   * Whether the deprecated Brevo ?key= query-param auth path is still accepted
+   * (BREVO_WEBHOOK_ALLOW_QUERY != "0"). False once the operator has moved the
+   * Brevo webhook to the X-Zapnivo-Delivery-Key header.
+   */
+  brevoQueryKeyAllowed: boolean;
   /** Latest stored event across providers — null when none received yet. */
   lastEventAt: string | null;
   lastEventType: EmailDeliveryEventType | null;
@@ -195,6 +226,10 @@ export async function getEmailDeliveryWebhookStatus(db: SupabaseClient | null): 
   const base: DeliveryWebhookStatus = {
     resendConfigured: Boolean(process.env.RESEND_WEBHOOK_SECRET),
     brevoConfigured: Boolean(process.env.BREVO_WEBHOOK_SECRET),
+    brevoQueryKeyAllowed: (() => {
+      const v = (process.env.BREVO_WEBHOOK_ALLOW_QUERY ?? "1").trim().toLowerCase();
+      return v !== "0" && v !== "false" && v !== "no";
+    })(),
     lastEventAt: null,
     lastEventType: null,
     lastEventProvider: null,
@@ -293,11 +328,15 @@ export async function getSubscriberDeliveryState(
     const email = String((sub as { email: string }).email).toLowerCase();
 
     const [evRes, obRes] = await Promise.all([
+      // Fetch a window of recent events, not just the newest: delivery
+      // webhooks arrive out of order, and a suppressing event
+      // (hard_bounce/complaint/unsubscribe) is TERMINAL for the subscriber —
+      // a later 'delivered' must never mask it in the ladder.
       db.from("email_delivery_events")
         .select("provider,event_type,occurred_at")
         .eq("subscriber_id", subscriberId)
         .order("occurred_at", { ascending: false })
-        .limit(1),
+        .limit(25),
       db.from("email_outbox")
         .select("status,created_at")
         .eq("to_email", email)
@@ -306,9 +345,21 @@ export async function getSubscriberDeliveryState(
         .limit(1),
     ]);
 
-    const evRow = (!evRes.error && Array.isArray(evRes.data) && evRes.data.length
-      ? evRes.data[0] as { provider: string; event_type: string; occurred_at: string }
-      : null);
+    const evRows = (!evRes.error && Array.isArray(evRes.data) ? evRes.data : []) as
+      { provider: string; event_type: string; occurred_at: string }[];
+    // Severity over arrival order: the newest SUPPRESSING event wins over any
+    // newer non-suppressing event (e.g. 'delivered' arriving after
+    // 'hard_bounce' must not present as 'delivered'). Among non-suppressing
+    // events the newest by occurred_at wins.
+    const typedRows = evRows
+      .map((r) => ({
+        ...r,
+        t: (EMAIL_DELIVERY_EVENT_TYPES as readonly string[]).includes(r.event_type)
+          ? (r.event_type as EmailDeliveryEventType)
+          : null,
+      }))
+      .filter((r): r is typeof r & { t: EmailDeliveryEventType } => r.t !== null);
+    const evRow = typedRows.find((r) => isSuppressingEvent(r.t)) ?? typedRows[0] ?? null;
     const obRow = (!obRes.error && Array.isArray(obRes.data) && obRes.data.length
       ? obRes.data[0] as { status: string }
       : null);

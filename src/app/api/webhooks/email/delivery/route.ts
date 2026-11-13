@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { serviceClient } from "@/lib/supabase";
 import { recordLog } from "@/lib/observability";
 import {
-  parseDeliveryWebhook,
+  parseDeliveryWebhookResult,
   verifySharedSecret,
   verifySvixSignature,
   type EmailDeliveryProvider,
@@ -35,17 +35,25 @@ import { recordDeliveryEvent } from "@/lib/newsletter/delivery-events";
  *        5-minute replay window).
  *
  *   Brevo (primary when BREVO_API_KEY is set):
- *     Brevo transactional webhooks cannot sign requests or set arbitrary
- *     headers, so auth is a shared secret:
- *     1. Brevo dashboard → Transactional → Settings → Webhooks → add the
- *        endpoint URL https://<host>/api/webhooks/email/delivery and select
- *        the events: delivered, hard_bounce, soft_bounce, blocked,
- *        invalid_email, deferred, spam, unsubscribed, error.
- *     2. Set env BREVO_WEBHOOK_SECRET to a random string, then configure the
- *        provider to send it — Brevo appends no secret itself, so in practice
- *        front the endpoint with a rule that injects the
- *        `X-Zapnivo-Delivery-Key: <secret>` header (or use ?key=<secret> on the
- *        configured URL — note query strings can leak into provider logs).
+ *     Brevo transactional webhooks carry no signature, so auth is a shared
+ *     secret (BREVO_WEBHOOK_SECRET). Brevo's webhook create/update API DOES
+ *     support custom `headers` and `auth` (bearer/basic), so the PREFERRED
+ *     credential is the `X-Zapnivo-Delivery-Key: <secret>` header:
+ *       1. Brevo → Transactional → Settings → Webhooks (or
+ *          POST /v3/webhooks) → add the endpoint URL
+ *          https://<host>/api/webhooks/email/delivery and select the events:
+ *          delivered, hard_bounce, soft_bounce, blocked, invalid_email,
+ *          deferred, spam, unsubscribed, error — plus a custom header
+ *          `X-Zapnivo-Delivery-Key` (or auth.type=bearer equivalent fronted
+ *          by a proxy that injects the header).
+ *     The `?key=<secret>` query param is DEPRECATED — query strings leak into
+ *     provider logs, browser history and referrers — but still accepted for
+ *     backward compatibility UNLESS BREVO_WEBHOOK_ALLOW_QUERY=0. A warning is
+ *     logged on every query-param auth. Removal plan: recreate the Brevo
+ *     webhook with the header (above), confirm header-authed events arrive,
+ *     then set BREVO_WEBHOOK_ALLOW_QUERY=0 and drop the param path.
+ *     The key is NEVER logged; auth failures return 401 (bad credential) vs
+ *     503 (no secret configured at all).
  *
  *   NO secret configured → 503. Unsigned/invalid → 401. We never process an
  *   unauthenticated event.
@@ -58,6 +66,17 @@ const MAX_BODY_BYTES = 100_000;
 
 const resendSecret = () => process.env.RESEND_WEBHOOK_SECRET ?? "";
 const brevoSecret = () => process.env.BREVO_WEBHOOK_SECRET ?? "";
+
+/**
+ * ?key= query-param auth is deprecated (secrets in URLs leak into provider
+ * logs). Accepted by default for backward compatibility; set
+ * BREVO_WEBHOOK_ALLOW_QUERY=0 (or "false"/"no") to disable once the Brevo
+ * webhook is recreated with the X-Zapnivo-Delivery-Key header.
+ */
+const brevoQueryAllowed = () => {
+  const v = (process.env.BREVO_WEBHOOK_ALLOW_QUERY ?? "1").trim().toLowerCase();
+  return v !== "0" && v !== "false" && v !== "no";
+};
 
 /** Which provider credential authenticated this request, or null. */
 function authenticate(req: Request, body: string): EmailDeliveryProvider | "unconfigured" | null {
@@ -79,9 +98,20 @@ function authenticate(req: Request, body: string): EmailDeliveryProvider | "unco
   }
 
   if (bSecret) {
+    // Preferred: dedicated header (Brevo webhook `headers`/`auth` config).
     const keyHeader = req.headers.get("x-zapnivo-delivery-key") ?? "";
-    const keyParam = new URL(req.url).searchParams.get("key") ?? "";
-    if (verifySharedSecret(keyHeader, bSecret) || verifySharedSecret(keyParam, bSecret)) return "brevo";
+    if (verifySharedSecret(keyHeader, bSecret)) return "brevo";
+    // Deprecated fallback: ?key= — gated, warned, never logged.
+    if (brevoQueryAllowed()) {
+      const keyParam = new URL(req.url).searchParams.get("key") ?? "";
+      if (verifySharedSecret(keyParam, bSecret)) {
+        recordLog("warning", "brevo_delivery_webhook_query_key_deprecated", {
+          service: "email-delivery",
+          attrs: { remediation: "set BREVO_WEBHOOK_ALLOW_QUERY=0 after moving to header auth" },
+        });
+        return "brevo";
+      }
+    }
     return null;
   }
 
@@ -91,11 +121,26 @@ function authenticate(req: Request, body: string): EmailDeliveryProvider | "unco
 }
 
 export async function POST(req: Request) {
+  // Content-Type: both providers POST application/json. Reject anything else
+  // before reading the body (when the header is present at all).
+  const contentType = req.headers.get("content-type") ?? "";
+  if (contentType && !/^application\/(json|[\w.+-]+\+json)\b/i.test(contentType.trim())) {
+    return NextResponse.json({ error: "Unsupported media type" }, { status: 415 });
+  }
+
+  // Cheap pre-read bound via Content-Length (may be absent/spoofed — the
+  // post-read byte check below is authoritative).
   const len = Number(req.headers.get("content-length") ?? 0);
-  if (len > MAX_BODY_BYTES) return NextResponse.json({ error: "Payload too large" }, { status: 413 });
+  if (Number.isFinite(len) && len > MAX_BODY_BYTES) {
+    return NextResponse.json({ error: "Payload too large" }, { status: 413 });
+  }
 
   const body = await req.text();
-  if (body.length > MAX_BODY_BYTES) return NextResponse.json({ error: "Payload too large" }, { status: 413 });
+  // Byte-accurate cap: body.length counts UTF-16 code units, not bytes —
+  // multibyte payloads must still be bounded.
+  if (Buffer.byteLength(body, "utf8") > MAX_BODY_BYTES) {
+    return NextResponse.json({ error: "Payload too large" }, { status: 413 });
+  }
   if (!body.trim()) return NextResponse.json({ error: "Empty payload" }, { status: 400 });
 
   const provider = authenticate(req, body);
@@ -114,11 +159,16 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Bad payload" }, { status: 400 });
   }
 
-  const events = parseDeliveryWebhook(provider, parsed);
+  const { events, malformed } = parseDeliveryWebhookResult(provider, parsed);
+  if (!events.length && malformed > 0) {
+    // Recognized event type but missing required fields (e.g. no recipient) —
+    // 400 so the provider stops retrying garbage.
+    return NextResponse.json({ error: "malformed_payload", malformed }, { status: 400 });
+  }
   if (!events.length) {
-    // Valid auth, untracked event type (opened/clicked) or malformed item —
+    // Valid auth, untracked event type (opened/clicked) or unknown type —
     // acknowledge so the provider doesn't retry forever.
-    return NextResponse.json({ ok: true, ignored: true });
+    return NextResponse.json({ ok: true, ignored: true, malformed });
   }
 
   const db = serviceClient();
@@ -134,8 +184,17 @@ export async function POST(req: Request) {
 
   if (failed > 0) {
     // Partial failure: ask the provider to retry — stored events dedupe on
-    // redelivery via the (provider, provider_event_id) unique index.
+    // redelivery via the (provider, provider_event_id) unique index, and
+    // recordDeliveryEvent reprocesses rows left processed=false.
     return NextResponse.json({ ok: false, error: "processing_failed", processed, duplicates, failed }, { status: 500 });
+  }
+  if (malformed > 0) {
+    // Valid events in the batch were stored; the malformed remainder is
+    // rejected so the provider doesn't retry it forever.
+    return NextResponse.json(
+      { ok: false, error: "malformed_payload", malformed, processed, duplicates, suppressed },
+      { status: 400 },
+    );
   }
   return NextResponse.json({ ok: true, processed, duplicates, suppressed });
 }

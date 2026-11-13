@@ -10,8 +10,12 @@ import { createHash, createHmac, timingSafeEqual } from "node:crypto";
  *    BREVO_API_KEY is set and falls back to Resend — so BREVO is the primary
  *    transactional sender in a both-keys deployment, Resend otherwise.
  *  - Brevo transactional webhooks carry no signature; they are authenticated
- *    by a shared secret the operator configures (BREVO_WEBHOOK_SECRET) sent as
- *    the X-Zapnivo-Delivery-Key header or ?key= param.
+ *    by a shared secret the operator configures (BREVO_WEBHOOK_SECRET).
+ *    Brevo's webhook API supports custom `headers` and `auth` (bearer/basic)
+ *    on create/update, so the preferred credential is the
+ *    X-Zapnivo-Delivery-Key header. The ?key= query param is DEPRECATED —
+ *    query strings leak into provider logs and browser history — but is
+ *    still accepted unless BREVO_WEBHOOK_ALLOW_QUERY=0 (see route.ts).
  *
  * Resend webhook docs: https://resend.com/docs/dashboard/webhooks/introduction
  *   POST body: { type: "email.delivered"|"email.bounced"|"email.complained"|
@@ -124,13 +128,17 @@ export function verifySvixSignature(opts: {
   const { id, timestamp, signature, body, secret } = opts;
   if (!id || !timestamp || !signature || !secret) return false;
   const ts = Number(timestamp);
-  if (!Number.isFinite(ts)) return false;
+  // Svix timestamps are integer epoch SECONDS. Reject NaN, fractional and
+  // non-positive values before the tolerance math.
+  if (!Number.isInteger(ts) || ts <= 0) return false;
   const now = opts.now ?? Date.now();
   if (Math.abs(now - ts * 1000) > (opts.toleranceMs ?? SVIX_TOLERANCE_MS)) return false;
 
+  // Brevo's base64 decoder is lenient (invalid chars are skipped, never
+  // throws) — the try/catch is defensive only. An empty/garbage key is
+  // rejected by the length guard below (fail-closed).
   const keyMaterial = secret.startsWith("whsec_") ? secret.slice("whsec_".length) : secret;
-  let key: Buffer;
-  try { key = b64decode(keyMaterial); } catch { return false; }
+  const key = b64decode(keyMaterial);
   if (!key.length) return false;
 
   const expected = b64encode(createHmac("sha256", key).update(`${id}.${timestamp}.${body}`).digest());
@@ -224,24 +232,48 @@ const RESEND_MAP: Record<string, EmailDeliveryEventType | "ignore"> = {
 };
 
 /**
+ * Parse outcome per payload item:
+ *  - "event":     a tracked, well-formed delivery event
+ *  - "ignore":    valid payload for an event type we deliberately don't track
+ *                 (opened/clicked/…) or an unrecognized type — ack 200
+ *  - "malformed": recognized event type but missing required fields (e.g. no
+ *                 recipient) or not an object at all — route answers 400 so
+ *                 the provider stops retrying garbage
+ */
+export type DeliveryParseOutcome =
+  | { kind: "event"; event: NormalizedDeliveryEvent }
+  | { kind: "ignore" }
+  | { kind: "malformed" };
+
+const isPlainObject = (v: unknown): v is Record<string, unknown> =>
+  typeof v === "object" && v !== null && !Array.isArray(v);
+
+/**
  * Normalizes one Resend webhook event. Returns null for event types we do not
  * track (opened/clicked) or malformed payloads — the route answers 200 ignored.
+ * Prefer parseResendEventDetailed which distinguishes ignore vs malformed.
  */
 export function parseResendEvent(raw: unknown): NormalizedDeliveryEvent | null {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
-  const j = raw as Record<string, unknown>;
-  const type = typeof j.type === "string" ? j.type : "";
-  const mapped = RESEND_MAP[type];
-  if (!mapped || mapped === "ignore") return null;
+  const d = parseResendEventDetailed(raw);
+  return d.kind === "event" ? d.event : null;
+}
 
-  const data = (j.data && typeof j.data === "object" ? j.data : {}) as Record<string, unknown>;
+export function parseResendEventDetailed(raw: unknown): DeliveryParseOutcome {
+  if (!isPlainObject(raw)) return { kind: "malformed" };
+  const j = raw;
+  const type = typeof j.type === "string" ? j.type : "";
+  if (!type) return { kind: "malformed" }; // object with no event type at all
+  const mapped = RESEND_MAP[type];
+  if (!mapped || mapped === "ignore") return { kind: "ignore" }; // unknown/future/untracked type
+
+  const data = isPlainObject(j.data) ? j.data : {};
   const recipient = pickRecipient(data) ?? pickRecipient(j);
-  if (!recipient) return null;
+  if (!recipient) return { kind: "malformed" };
 
   let eventType: EmailDeliveryEventType = mapped;
   if (type === "email.bounced") {
     // Resend includes bounce.type — "Transient"/"Temporary" must NOT suppress.
-    const bounce = (data.bounce && typeof data.bounce === "object" ? data.bounce : {}) as Record<string, unknown>;
+    const bounce = isPlainObject(data.bounce) ? data.bounce : {};
     const bt = String(bounce.type ?? bounce.subType ?? "").toLowerCase();
     if (/transient|temporary|soft/.test(bt)) eventType = "soft_bounce";
   }
@@ -252,17 +284,21 @@ export function parseResendEvent(raw: unknown): NormalizedDeliveryEvent | null {
     fallbackEventId("resend", raw);
 
   return {
-    provider: "resend",
-    providerEventId: `resend:${providerEventId}`,
-    eventType,
-    recipientEmail: recipient,
-    occurredAt: toIso(j.created_at) ?? new Date().toISOString(),
-    payload: sanitizeDeliveryPayload(j),
+    kind: "event",
+    event: {
+      provider: "resend",
+      providerEventId: `resend:${providerEventId}`,
+      eventType,
+      recipientEmail: recipient,
+      occurredAt: toIso(j.created_at) ?? new Date().toISOString(),
+      payload: sanitizeDeliveryPayload(j),
+    },
   };
 }
 
 const BREVO_MAP: Record<string, EmailDeliveryEventType | "ignore"> = {
   request: "accepted",
+  sent: "accepted", // Brevo emits `sent` (alias of `request`) on some plans
   delivered: "delivered",
   deferred: "deferred",
   soft_bounce: "soft_bounce",
@@ -283,14 +319,20 @@ const BREVO_MAP: Record<string, EmailDeliveryEventType | "ignore"> = {
  * untracked types or payloads without a recipient.
  */
 export function parseBrevoEvent(raw: unknown): NormalizedDeliveryEvent | null {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
-  const j = raw as Record<string, unknown>;
+  const d = parseBrevoEventDetailed(raw);
+  return d.kind === "event" ? d.event : null;
+}
+
+export function parseBrevoEventDetailed(raw: unknown): DeliveryParseOutcome {
+  if (!isPlainObject(raw)) return { kind: "malformed" };
+  const j = raw;
   const event = typeof j.event === "string" ? j.event : "";
+  if (!event) return { kind: "malformed" };
   const mapped = BREVO_MAP[event];
-  if (!mapped || mapped === "ignore") return null;
+  if (!mapped || mapped === "ignore") return { kind: "ignore" };
 
   const recipient = pickRecipient(j);
-  if (!recipient) return null;
+  if (!recipient) return { kind: "malformed" };
 
   // Brevo's `id`/`message-id` identifies the MESSAGE, not the event — several
   // distinct events (delivered, then hard_bounce) share it. Suffix the event
@@ -303,26 +345,50 @@ export function parseBrevoEvent(raw: unknown): NormalizedDeliveryEvent | null {
   const providerEventId = `${brevoId}:${event}`;
 
   return {
-    provider: "brevo",
-    providerEventId: `brevo:${providerEventId}`,
-    eventType: mapped,
-    recipientEmail: recipient,
-    occurredAt: toIso(j.ts ?? j.date ?? j.created_at) ?? new Date().toISOString(),
-    payload: sanitizeDeliveryPayload(j),
+    kind: "event",
+    event: {
+      provider: "brevo",
+      providerEventId: `brevo:${providerEventId}`,
+      eventType: mapped,
+      recipientEmail: recipient,
+      occurredAt: toIso(j.ts ?? j.date ?? j.created_at) ?? new Date().toISOString(),
+      payload: sanitizeDeliveryPayload(j),
+    },
   };
 }
 
+export type ParsedDeliveryWebhook = {
+  events: NormalizedDeliveryEvent[];
+  /** Count of items that were recognized-but-malformed (route → 400). */
+  malformed: number;
+};
+
 /**
- * Parses a webhook body into normalized events. Resend sends a single object;
- * Brevo may send one object or an array — both are handled here (bounded).
- * `provider` is whichever credential authenticated the request.
+ * Parses a webhook body into normalized events + a malformed-item count.
+ * Resend sends a single object; Brevo may send one object or an array — both
+ * are handled here (bounded to 50 items). `provider` is whichever credential
+ * authenticated the request.
+ */
+export function parseDeliveryWebhookResult(
+  provider: EmailDeliveryProvider,
+  body: unknown,
+): ParsedDeliveryWebhook {
+  const items = Array.isArray(body) ? body.slice(0, 50) : [body];
+  const events: NormalizedDeliveryEvent[] = [];
+  let malformed = 0;
+  for (const item of items) {
+    const d = provider === "resend" ? parseResendEventDetailed(item) : parseBrevoEventDetailed(item);
+    if (d.kind === "event") events.push(d.event);
+    else if (d.kind === "malformed") malformed++;
+  }
+  return { events, malformed };
+}
+
+/**
+ * Parses a webhook body into normalized events (ignore/malformed dropped).
+ * Kept for callers that only need the event list; the route uses
+ * parseDeliveryWebhookResult so it can 400 on malformed payloads.
  */
 export function parseDeliveryWebhook(provider: EmailDeliveryProvider, body: unknown): NormalizedDeliveryEvent[] {
-  const items = Array.isArray(body) ? body.slice(0, 50) : [body];
-  const out: NormalizedDeliveryEvent[] = [];
-  for (const item of items) {
-    const ev = provider === "resend" ? parseResendEvent(item) : parseBrevoEvent(item);
-    if (ev) out.push(ev);
-  }
-  return out;
+  return parseDeliveryWebhookResult(provider, body).events;
 }

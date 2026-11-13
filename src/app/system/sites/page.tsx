@@ -4,6 +4,7 @@ import Link from "next/link";
 import { SystemGate } from "@/components/SystemGate";
 import { serviceClient } from "@/lib/supabase";
 import { SITE_REGISTRY, catalogPages, siteContentCounts } from "@/lib/system/site-cms";
+import { SelftestCard } from "./SelftestCard";
 
 export const metadata: Metadata = { title: "Website — Sites" };
 
@@ -36,6 +37,8 @@ export default async function SitesPage() {
             notices and redirect rules.
           </p>
         </div>
+
+        <SelftestCard />
 
         {!db ? (
           <p className="rounded-2xl border border-white/[0.08] bg-white/[0.05] px-6 py-10 text-sm text-slate-400">

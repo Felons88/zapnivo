@@ -33,6 +33,58 @@ export default async function BootstrapPage() {
         </p>
       </div>
 
+      {/* Ordered first-administrator runbook — every step is manual until
+          recorded evidence exists (see /system/security/readiness checklist
+          and docs/ADMIN-ACTIVATION.md for the full procedure). */}
+      <section className="rounded-2xl border border-white/[0.08] bg-white/[0.05] p-6">
+        <h2 className="font-display text-lg font-bold text-white">First-administrator runbook</h2>
+        <p className="mt-1 text-xs text-slate-400">
+          Execute in order. Steps marked <span className="text-amber-300">pending manual</span> require a
+          human to perform and attest — nothing here auto-passes. Full detail: <code className="font-mono">docs/ADMIN-ACTIVATION.md</code>.
+        </p>
+        <ol className="mt-4 list-decimal space-y-2 pl-5 text-sm text-slate-300">
+          <li>
+            <strong className="text-white">Set the bootstrap token.</strong>{" "}
+            <span className="text-amber-300">pending manual</span> — generate ≥32 random bytes, set{" "}
+            <code className="font-mono text-xs">SYSTEM_BOOTSTRAP_TOKEN</code> in the deployment env, redeploy.
+            Verified automatically once set (readiness item <code className="font-mono text-xs">bootstrap_token</code>).
+          </li>
+          <li>
+            <strong className="text-white">Register the Supabase redirect URL.</strong>{" "}
+            <span className="text-amber-300">pending manual</span> — Supabase Dashboard → Authentication →
+            URL Configuration → add <code className="font-mono text-xs">https://system.zapnivo.com/api/auth/callback</code>.
+          </li>
+          <li>
+            <strong className="text-white">Sign in</strong> on <code className="font-mono text-xs">system.zapnivo.com</code>{" "}
+            with the operator email (magic link / OAuth via the registered redirect).
+          </li>
+          <li>
+            <strong className="text-white">Enroll + verify TOTP</strong> at{" "}
+            <Link href="/system/security/mfa" className="text-lime underline">MFA &amp; step-up</Link> —
+            enroll a factor, complete a challenge, confirm verify (writes{" "}
+            <code className="font-mono text-xs">mfa.totp.verified</code>).
+          </li>
+          <li>
+            <strong className="text-white">Run bootstrap</strong> — submit the token + confirmed email +
+            verified TOTP below (or on this page). Grants <code className="font-mono text-xs">system_role = sysadmin</code>,
+            single-use.
+          </li>
+          <li>
+            <strong className="text-white">Log out and sign back in</strong> so the new role is loaded fresh.
+          </li>
+          <li>
+            <strong className="text-white">Elevation test</strong>{" "}
+            <span className="text-amber-300">pending manual</span> — trigger a step-up action and confirm a{" "}
+            <code className="font-mono text-xs">system_elevations</code> row (method <code className="font-mono text-xs">totp</code>) appears.
+          </li>
+          <li>
+            <strong className="text-white">Session revoke test</strong>{" "}
+            <span className="text-amber-300">pending manual</span> — revoke a test session and confirm the
+            cookie stops working immediately; record results on the readiness checklist.
+          </li>
+        </ol>
+      </section>
+
       {!user ? (
         <div className="rounded-2xl border border-white/[0.08] bg-white/[0.05] p-8 text-center">
           <p className="text-sm text-slate-300">Sign in first — bootstrap acts on your authenticated session.</p>

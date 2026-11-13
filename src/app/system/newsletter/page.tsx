@@ -128,8 +128,11 @@ export default async function NewsletterAdminPage() {
                 <code className="font-mono">RESEND_WEBHOOK_SECRET</code> to the signing secret (svix-verified).
                 <span className="text-slate-300"> Brevo</span> — Transactional → Settings → Webhooks → add the
                 endpoint with delivered/bounce/spam/unsubscribe events, set <code className="font-mono">BREVO_WEBHOOK_SECRET</code>{" "}
-                and inject it as the <code className="font-mono">X-Zapnivo-Delivery-Key</code> header or{" "}
-                <code className="font-mono">?key=</code> param. No secret configured → the endpoint answers 503 and processes nothing.
+                and configure the webhook <code className="font-mono">headers</code>/<code className="font-mono">auth</code>{" "}
+                to send <code className="font-mono">X-Zapnivo-Delivery-Key</code> (preferred — keeps the secret out of URLs).
+                The <code className="font-mono">?key=</code> param still works but is deprecated and logs a warning;
+                set <code className="font-mono">BREVO_WEBHOOK_ALLOW_QUERY=0</code> once header auth is verified.
+                No secret configured → the endpoint answers 503 and processes nothing.
               </p>
               <dl className="mt-3 grid gap-2 text-xs sm:grid-cols-3">
                 <div className="rounded-xl border border-white/5 bg-black/20 px-3 py-2">

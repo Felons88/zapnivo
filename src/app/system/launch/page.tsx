@@ -4,6 +4,7 @@ import { SystemGate } from "@/components/SystemGate";
 import { serviceClient } from "@/lib/supabase";
 import { launchReadiness, type LaunchStatus, type LaunchSubsystem } from "@/lib/system/launch";
 import { getOpsStatus, type OpsState, type OpsCard } from "@/lib/system/ops-status";
+import { getAcceptanceChecks, type AcceptanceState, type AcceptanceCheck } from "@/lib/system/acceptance";
 
 export const metadata: Metadata = { title: "Launch readiness" };
 
@@ -43,6 +44,24 @@ const OPS_STYLE: Record<OpsState, { label: string; cls: string }> = {
 
 const OPS_ORDER: OpsState[] = ["degraded", "blocked", "requires_action", "not_configured", "operational"];
 
+const ACC_STYLE: Record<AcceptanceState, { label: string; cls: string }> = {
+  verified: { label: "verified", cls: "bg-lime/15 text-lime ring-lime/30" },
+  pending: { label: "pending", cls: "bg-amber-400/10 text-amber-300 ring-amber-400/25" },
+  blocked: { label: "blocked", cls: "bg-red-400/10 text-red-300 ring-red-400/25" },
+  failed: { label: "failed", cls: "bg-rose-400/10 text-rose-300 ring-rose-400/25" },
+};
+
+const ACC_ORDER: AcceptanceState[] = ["failed", "blocked", "pending", "verified"];
+
+function AccBadge({ state }: { state: AcceptanceState }) {
+  const s = ACC_STYLE[state];
+  return (
+    <span className={`inline-block rounded-full px-2 py-0.5 font-mono text-[10px] font-bold ring-1 ${s.cls}`}>
+      {s.label}
+    </span>
+  );
+}
+
 function OpsBadge({ state }: { state: OpsState }) {
   const s = OPS_STYLE[state];
   return (
@@ -54,7 +73,7 @@ function OpsBadge({ state }: { state: OpsState }) {
 
 export default async function LaunchReadinessPage() {
   const db = serviceClient();
-  const [r, ops] = await Promise.all([launchReadiness(db), getOpsStatus(db)]);
+  const [r, ops, acc] = await Promise.all([launchReadiness(db), getOpsStatus(db), getAcceptanceChecks(db)]);
   const sorted = [...r.subsystems].sort(
     (a, b) => ORDER.indexOf(a.status) - ORDER.indexOf(b.status),
   );
@@ -148,6 +167,53 @@ export default async function LaunchReadinessPage() {
                 </p>
                 {c.nextAction && <p className="mt-1.5 text-xs text-amber-200/80">→ {c.nextAction}</p>}
               </a>
+            ))}
+          </div>
+        </section>
+
+        {/* Acceptance — evidence-based operational verification */}
+        <section>
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="eyebrow text-slate-400">Acceptance</h2>
+            <p className="font-mono text-[10px] text-slate-500">
+              {acc.counts.verified} verified · {acc.counts.pending} pending · {acc.counts.blocked} blocked · {acc.counts.failed} failed
+            </p>
+          </div>
+          <p className="mt-1 text-xs text-slate-500">
+            Operational checks verified by recorded evidence only — DB rows proving the flow ran,
+            sent/delivered records, executed requests, passed drills. Env vars and code existence
+            never count as verified; steps that need a human stay pending until performed.
+          </p>
+          <div className="mt-3 space-y-4">
+            {acc.categories.map((cat) => (
+              <div key={cat.id} className="rounded-2xl border border-white/[0.08] bg-white/[0.03] p-4">
+                <h3 className="text-sm font-semibold text-slate-200">{cat.label}</h3>
+                <ul className="mt-2 divide-y divide-white/5">
+                  {[...cat.checks]
+                    .sort((a, b) => ACC_ORDER.indexOf(a.state) - ACC_ORDER.indexOf(b.state))
+                    .map((c: AcceptanceCheck) => (
+                      <li key={c.id} className="py-2.5 first:pt-1 last:pb-0">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <a href={c.href} className="text-sm text-slate-200 hover:text-lime">
+                              {c.label}
+                            </a>
+                            {c.manual && (
+                              <span className="ml-2 inline-block rounded-full bg-sky-400/10 px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wide text-sky-300 ring-1 ring-sky-400/25">
+                                manual
+                              </span>
+                            )}
+                            <p className="mt-0.5 text-xs text-slate-500">{c.evidence}</p>
+                            {c.blocker && c.state !== "verified" && (
+                              <p className="mt-0.5 text-xs text-amber-200/80">→ {c.blocker}</p>
+                            )}
+                          </div>
+                          <AccBadge state={c.state} />
+                        </div>
+                      </li>
+                    ))}
+                </ul>
+              </div>
             ))}
           </div>
         </section>
