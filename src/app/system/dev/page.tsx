@@ -21,6 +21,26 @@ const TOOLS = [
     title: "Webhook tester",
     desc: "Read-only inspector for recent webhook/event rows with sanitized metadata (payloads and PII are never selected). Replay lives on /system/webhooks.",
   },
+  {
+    href: "/system/dev/simulator/console",
+    title: "Simulator console",
+    desc: "Run synthetic kiosk scenarios (heartbeat, lifecycle, replay, forged auth, certification suite) against the sim- namespace through the real ingest pipeline. system.kiosks.manage, audited.",
+  },
+  {
+    href: "/system/dev/env",
+    title: "Environment diagnostics",
+    desc: "Presence matrix of env vars by feature area — set/missing only, never values. The 'why is X not working' page.",
+  },
+  {
+    href: "/system/dev/docs",
+    title: "Docs center",
+    desc: "Repo technical documentation (architecture, deployment, kiosk, security, recovery) rendered read-only from docs/.",
+  },
+  {
+    href: "/system/dev/api",
+    title: "API inventory",
+    desc: "Filesystem-scanned route catalog with heuristic auth labels — documentation only, no call proxy.",
+  },
 ];
 
 export default function DevIndexPage() {
@@ -37,7 +57,7 @@ export default function DevIndexPage() {
           </p>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-4">
           {TOOLS.map((t) => (
             <Link
               key={t.href}

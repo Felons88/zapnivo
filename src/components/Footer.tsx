@@ -1,9 +1,18 @@
 import Link from "next/link";
 import { FOOTER, SITE } from "@/lib/site";
+import { getPublishedContent, text as cmsText } from "@/lib/site-content";
 import { Logo } from "./Logo";
 import { Button } from "./ui";
 
-export function Footer() {
+export async function Footer() {
+  // CMS-overridable footer contact email (apex/footer) — falls back to CONTACTS.
+  const cms = await getPublishedContent("apex", "footer");
+  const contactEmail = cmsText(cms, "contact_email", "");
+  const groups = Object.entries(FOOTER).map(([group, links]) =>
+    group === "Contact Zapnivo" && contactEmail !== ""
+      ? [group, links.map((l, i) => (i === 0 ? { ...l, href: `mailto:${contactEmail}`, label: contactEmail } : l))] as const
+      : [group, links] as const,
+  );
   return (
     <footer className="on-dark bg-ink text-white">
       <div className="section-cinematic border-b border-white/10"><div className="container-z flex flex-col gap-7 py-14 lg:flex-row lg:items-end lg:justify-between"><div><span className="eyebrow text-cyan">Portable power for real life</span><h2 className="display-md mt-4 max-w-2xl">Ready when the day keeps going.</h2></div><div className="flex flex-wrap gap-3"><Button href="/locations">Find a station</Button><Button href="/business/apply" variant="ghost" className="border-white/40 text-white">Host a station</Button></div></div></div>
@@ -13,7 +22,7 @@ export function Footer() {
           <p className="mt-4 max-w-xs text-silver">{SITE.tagline}</p>
           <p className="mt-6 max-w-xs text-sm text-silver">Rolling out across Minnesota. The map shows only verified live stations.</p>
         </div>
-        {Object.entries(FOOTER).map(([group, links]) => (
+        {groups.map(([group, links]) => (
           <nav key={group} aria-label={group} className="col-span-2 mt-8 lg:col-span-2 lg:mt-0">
             <h2 className="eyebrow text-silver">{group}</h2>
             <ul className="mt-4 space-y-3">

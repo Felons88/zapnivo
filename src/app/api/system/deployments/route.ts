@@ -3,19 +3,25 @@ import { z } from "zod";
 import { systemApiGuard, readJson } from "../_shared";
 import { getDeploymentInfo } from "@/lib/system/appinfra";
 import { listDeploymentRequests, createDeploymentRequest, isDeployAction } from "@/lib/system/deployops";
+import { listDeployments } from "@/lib/system/deploy-center";
 import { assertApprovedOrRequest } from "@/lib/system/audit";
 
-/** GET /api/system/deployments — current deployment info + request history. */
+/** GET /api/system/deployments — deployment info + provider-merged records + request history. */
 export async function GET() {
   const g = await systemApiGuard("system.deployments.view", { limit: 120 });
   if (!g.ok) return g.res;
   const { requests, error } = await listDeploymentRequests(g.db, 100);
+  const center = await listDeployments(g.db, { probe: false, limit: 50 });
   return NextResponse.json({
     deployment: getDeploymentInfo(),
     requests,
     requestsError: error,
+    // Provider-merged deployment records (vercel_api + approval_request sources).
+    deployments: center.deployments,
+    providers: center.providers,
+    vercelError: center.vercelError,
     execution: "manual_only",
-    executionNote: "No provider deploy client exists in this app. Approved requests resolve to awaiting_manual_deploy — deploy via git push / the Vercel dashboard.",
+    executionNote: "Approved requests resolve to awaiting_manual_deploy unless VERCEL_TOKEN+VERCEL_PROJECT_ID are configured — then POST /api/system/deployments/[id]/execute calls the Vercel API.",
   });
 }
 

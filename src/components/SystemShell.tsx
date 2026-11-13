@@ -21,8 +21,26 @@ const NAV: NavGroup[] = [
     items: [
       { href: "/system", label: "Overview" },
       { href: "/system/launch", label: "Launch readiness" },
+      { href: "/system/search", label: "Global search" },
+      { href: "/system/activity", label: "Activity feed" },
+      { href: "/system/approvals", label: "Pending approvals" },
       { href: "/system/incidents", label: "Incidents" },
       { href: "/system/status", label: "Status page" },
+      { href: "/system/emergency", label: "Emergency controls" },
+    ],
+  },
+  {
+    name: "Websites",
+    items: [
+      { href: "/system/sites", label: "All websites" },
+    ],
+  },
+  {
+    name: "Deployments",
+    items: [
+      { href: "/system/deployments", label: "Deployment center" },
+      { href: "/system/deployments/github", label: "GitHub" },
+      { href: "/system/app/deployments", label: "Deployment requests" },
     ],
   },
   {
@@ -30,12 +48,25 @@ const NAV: NavGroup[] = [
     items: [
       { href: "/system/kiosks", label: "Fleet registry" },
       { href: "/system/kiosks/register", label: "Register kiosk" },
+      { href: "/system/kiosks/maintenance", label: "Maintenance" },
+      { href: "/system/kiosks/provision-qr", label: "Provisioning QR" },
       { href: "/system/kiosks/firmware", label: "Firmware" },
       { href: "/system/kiosks/hardware", label: "Hardware readiness" },
       { href: "/system/kiosks/certification", label: "Certification" },
       { href: "/system/kiosks/onboarding", label: "Onboarding" },
       { href: "/system/kiosks/commands", label: "Commands" },
       { href: "/system/kiosks/exceptions", label: "Exceptions" },
+    ],
+  },
+  {
+    name: "Infrastructure",
+    items: [
+      { href: "/system/infrastructure", label: "Overview" },
+      { href: "/system/infrastructure/database", label: "Database admin" },
+      { href: "/system/infrastructure/webhooks", label: "Webhook inspector" },
+      { href: "/system/infrastructure/api", label: "API services" },
+      { href: "/system/infrastructure/jobs", label: "Cron detail" },
+      { href: "/system/jobs", label: "Jobs & workers" },
     ],
   },
   {
@@ -59,8 +90,6 @@ const NAV: NavGroup[] = [
   {
     name: "Application",
     items: [
-      { href: "/system/jobs", label: "Jobs & workers" },
-      { href: "/system/app", label: "Deployments" },
       { href: "/system/settings/flags", label: "Feature flags" },
       { href: "/system/app/environments", label: "Environments" },
     ],
@@ -89,6 +118,7 @@ const NAV: NavGroup[] = [
     name: "Security",
     items: [
       { href: "/system/security/audit", label: "Audit log" },
+      { href: "/system/activity", label: "Activity feed" },
       { href: "/system/changes", label: "Change requests" },
       { href: "/system/security/users", label: "Technical users" },
       { href: "/system/security/mfa", label: "MFA & step-up" },
@@ -100,19 +130,24 @@ const NAV: NavGroup[] = [
   {
     name: "Developer Tools",
     items: [
+      { href: "/system/dev", label: "Overview" },
+      { href: "/system/dev/env", label: "Env diagnostics" },
+      { href: "/system/dev/docs", label: "Docs & runbooks" },
+      { href: "/system/dev/api", label: "API catalog" },
       { href: "/system/dev/api-explorer", label: "API explorer" },
-      { href: "/system/dev/webhooks-tester", label: "Webhook inspector" },
+      { href: "/system/dev/webhooks-tester", label: "Webhook tester" },
       { href: "/system/dev/simulator", label: "Kiosk simulator" },
+      { href: "/system/dev/simulator/console", label: "Simulator console" },
     ],
   },
   {
     name: "System Settings",
     items: [
+      { href: "/system/settings", label: "Overview" },
       { href: "/system/security/users", label: "Roles & access" },
       { href: "/system/app/environments", label: "Integrations config" },
       { href: "/system/settings/retention", label: "Retention" },
       { href: "/system/recovery", label: "Disaster recovery" },
-      { href: "/system/app/deployments", label: "Deployment requests" },
     ],
   },
 ];

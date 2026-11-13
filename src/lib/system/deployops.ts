@@ -35,6 +35,20 @@ export type DeploymentRequestRow = {
 export const DEPLOY_REQUEST_SELECT =
   "id,action,target_env,justification,status,requested_by,decided_by,decided_at,result,created_at";
 
+/** Fetches a single deployment request by id (additive helper for the deploy center). */
+export async function getDeploymentRequest(
+  db: SupabaseClient,
+  requestId: string,
+): Promise<{ request: DeploymentRequestRow | null; error: string | null }> {
+  const { data, error } = await db
+    .from("system_deployment_requests")
+    .select(DEPLOY_REQUEST_SELECT)
+    .eq("id", requestId)
+    .maybeSingle();
+  if (error) return { request: null, error: error.message };
+  return { request: (data as DeploymentRequestRow | null) ?? null, error: null };
+}
+
 export async function listDeploymentRequests(db: SupabaseClient, limit = 100): Promise<{ requests: DeploymentRequestRow[]; error: string | null }> {
   const { data, error } = await db
     .from("system_deployment_requests")

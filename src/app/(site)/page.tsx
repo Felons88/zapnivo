@@ -7,14 +7,33 @@ import { RentalGuide } from "@/components/RentalGuide";
 import { HomeFaq } from "@/components/HomeFaq";
 import { NetworkMap } from "@/components/NetworkMap";
 import { getStations } from "@/lib/stations";
+import { getPublishedContent, text as cmsText } from "@/lib/site-content";
 import { IllustrativeTag } from "@/components/Illustrations";
 
 export const revalidate = 300;
 
-export const metadata: Metadata = {
-  title: { absolute: "Portable Phone Charger Rentals | Zapnivo" },
+const META_FALLBACK = {
+  title: "Portable Phone Charger Rentals | Zapnivo",
   description: "Rent a portable power bank from a Zapnivo station, charge while you move, and return it to an eligible participating station. Explore rentals and venue partnerships in Minnesota.",
 };
+
+/** Homepage metadata — CMS-overridable via /system/sites → apex/home. */
+export async function generateMetadata(): Promise<Metadata> {
+  const cms = await getPublishedContent("apex", "home");
+  return {
+    title: { absolute: cmsText(cms, "meta_title", META_FALLBACK.title) },
+    description: cmsText(cms, "meta_description", META_FALLBACK.description),
+  };
+}
+
+/** Markdown-lite renderer for CMS richtext fields: **bold** only, everything else plain text. */
+function rich(text: string): React.ReactNode {
+  return text.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
+    part.startsWith("**") && part.endsWith("**") && part.length > 4
+      ? <strong key={i}>{part.slice(2, -2)}</strong>
+      : part,
+  );
+}
 
 const STEPS = [
   { n: "01", title: "Find a station", body: "Visit a participating Zapnivo location. Stations are added to our map only after they are verified and live." },
@@ -26,15 +45,21 @@ const PLACES = ["Bars & nightlife", "Restaurants & cafés", "Hotels", "Shopping 
 const PLACE_SCENES = ["bar", "cafe", "hotel", "shopping", "campus", "event"] as const;
 
 export default async function Home() {
-  const stations = await getStations();
+  const [stations, cms] = await Promise.all([getStations(), getPublishedContent("apex", "home")]);
+  const hero = {
+    eyebrow: cmsText(cms, "hero_eyebrow", "Portable power, wherever life takes you"),
+    headlineA: cmsText(cms, "hero_headline_a", "Life moves."),
+    headlineB: cmsText(cms, "hero_headline_b", "Power follows."),
+    subhead: cmsText(cms, "hero_subhead", "Zapnivo provides self-service portable phone charger rentals. Scan a station, take a power bank with you, and return it to any eligible participating station — no outlet required."),
+  };
   return <>
     <section className="home-hero relative overflow-hidden bg-forest text-white" aria-labelledby="hero-h">
       <div className="home-hero-grid absolute inset-0" aria-hidden />
       <div className="container-z relative grid min-h-[700px] items-center gap-8 pb-14 pt-36 lg:min-h-[760px] lg:grid-cols-[1.05fr_.95fr] lg:pb-20 lg:pt-40">
         <div className="relative z-10 max-w-3xl">
-          <p className="eyebrow anim-hero text-lime">Portable power, wherever life takes you</p>
-          <h1 id="hero-h" className="display-xl anim-hero mt-6 !text-[clamp(3rem,7.6vw,7.6rem)]" style={{ "--d": "80ms" } as React.CSSProperties}>Life moves.<br /><span className="text-lime">Power follows.</span></h1>
-          <p className="lead anim-hero mt-7 max-w-xl text-white/75" style={{ "--d": "160ms" } as React.CSSProperties}>Zapnivo provides self-service portable phone charger rentals. Scan a station, take a power bank with you, and return it to any eligible participating station — no outlet required.</p>
+          <p className="eyebrow anim-hero text-lime">{hero.eyebrow}</p>
+          <h1 id="hero-h" className="display-xl anim-hero mt-6 !text-[clamp(3rem,7.6vw,7.6rem)]" style={{ "--d": "80ms" } as React.CSSProperties}>{hero.headlineA}<br /><span className="text-lime">{hero.headlineB}</span></h1>
+          <p className="lead anim-hero mt-7 max-w-xl text-white/75" style={{ "--d": "160ms" } as React.CSSProperties}>{rich(hero.subhead)}</p>
           <div className="anim-hero mt-9 flex flex-wrap gap-3" style={{ "--d": "240ms" } as React.CSSProperties}>
             <Button href="/locations">Find a station</Button>
             <Button href="/how-it-works" variant="ghost" className="border-white/40 text-white">See how rentals work</Button>

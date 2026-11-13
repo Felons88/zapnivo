@@ -96,27 +96,30 @@ export default function SystemPolicyPage() {
             </p>
           </Section>
 
-          <Section title="Multi-factor authentication — NOT YET ENFORCED">
+          <Section title="Multi-factor authentication — ENFORCED (second factor) + LIVE VERIFICATION PENDING">
             <p>
-              <code className="font-mono text-xs">profiles.mfa_required</code> exists as a flag column and the DB trigger
-              blocks non-service-role changes to it, but <strong className="text-amber-300">no TOTP/WebAuthn
-              implementation exists in the codebase</strong> — the flag is not backed by a second factor.
+              TOTP enrollment, challenge and verification are implemented for system-plane accounts, with a{" "}
+              <strong className="text-slate-100">15-minute step-up elevation</strong> window for privileged actions
+              (credential rotation, physical commands, production deploys, emergency ops). Elevation never extends the
+              24-hour session deadline.
             </p>
             <p className="text-amber-200/80">
-              Status: requires implementation. Do not treat mfa_required=true as real MFA coverage until a TOTP
-              enrollment + challenge flow ships.
+              Status: code-enforced and test-covered; <strong>live end-to-end verification by an authorized
+              administrator is still pending</strong> (first system_role grant + real TOTP enrollment). Until that
+              checklist completes, treat MFA coverage as implemented-but-unverified-in-production.
             </p>
           </Section>
 
-          <Section title="Session revocation — PARTIAL">
+          <Section title="Session revocation — ENFORCED">
             <p>
-              Self-service revocation on logout works (<code className="font-mono text-xs">revoked_at</code>). There is{" "}
-              <strong className="text-amber-300">no admin endpoint to terminate an arbitrary user's session</strong> —
-              requires implementation if immediate offboarding termination is needed.
+              Self-service revocation on logout works (<code className="font-mono text-xs">revoked_at</code>). System
+              administrators can list and revoke arbitrary user sessions via{" "}
+              <code className="font-mono text-xs">/system/security/sessions</code> and suspend accounts via{" "}
+              <code className="font-mono text-xs">/system/security/users</code> — both audited.
             </p>
             <p>
-              Password/credential reset flows invalidate sessions only indirectly (via Supabase); forced global
-              sign-out is not wired to the registry — requires implementation.
+              Forced global sign-out beyond per-session revocation is not wired to the registry — requires
+              implementation if needed.
             </p>
           </Section>
 

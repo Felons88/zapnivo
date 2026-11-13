@@ -18,6 +18,8 @@ import { DiagnosticsButton } from "./DiagnosticsButton";
 import { CommandForm } from "./CommandForm";
 import { deviceCredentialStatus, kekStatus, type DeviceAuthRow } from "@/lib/system/device-auth";
 import { getDeviceOpsDashboard } from "@/lib/system/command-ops";
+import { listConfigRevisions, type ConfigRevisionRow } from "@/lib/system/device-config";
+import { ConfigPanel } from "./ConfigPanel";
 import type { ReadinessCheck } from "@/lib/system/hardware";
 
 export const metadata: Metadata = { title: "Kiosk Infrastructure — Device" };
@@ -62,11 +64,13 @@ export default async function KioskDevicePage({ params }: { params: Promise<{ id
     venue = (v as VenueLite | null) ?? null;
   }
 
-  const [commands, audit, related, ops] = await Promise.all([
+  const [commands, audit, related, ops, configRevisions] = await Promise.all([
     listDeviceCommands(db, device.id, 100),
     listDeviceAudit(db, device.id, 100),
     device.venue_id ? listVenueLinkedKiosksAndRentals(db, device.venue_id) : Promise.resolve({ kiosks: [], rentals: [] }),
     getDeviceOpsDashboard(db, device),
+    // Tolerant: table arrives with migration 0059 — empty list pre-migration.
+    listConfigRevisions(db, device.id, 50).catch(() => [] as ConfigRevisionRow[]),
   ]);
   const diagnostics = commands.filter((c) => c.command_type === "diagnostic_ping");
   const conn = deriveConnectivity(device);
@@ -336,6 +340,11 @@ export default async function KioskDevicePage({ params }: { params: Promise<{ id
             </p>
           </Section>
         </div>
+
+        {/* ── Desired-state device configuration (migration 0059) ── */}
+        <Section title={`Device configuration — desired state (${configRevisions.length} revisions)`}>
+          <ConfigPanel deviceId={device.id} canManage={canManage} revisions={configRevisions} />
+        </Section>
 
         {/* Commands */}
         <Section title={`Commands (${commands.filter((c) => c.command_type !== "diagnostic_ping").length})`}>

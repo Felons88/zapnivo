@@ -4,7 +4,7 @@ import Link from "next/link";
 import { SystemGate } from "@/components/SystemGate";
 import { serviceClient } from "@/lib/supabase";
 import { getSessionUser } from "@/lib/auth";
-import { roleCan, systemRole } from "@/lib/system/rbac";
+import { roleCan, systemRole, ROLE_PERMISSIONS, SYSTEM_ROLES, SYSTEM_PERMISSIONS } from "@/lib/system/rbac";
 import { listSystemUsers } from "@/lib/system/security";
 import { UserAdmin } from "./UserAdmin";
 
@@ -31,6 +31,20 @@ export default async function SystemUsersPage() {
   const users = db ? await listSystemUsers(db) : [];
   const selfId = user?.id ?? null;
 
+  // Last-activity per user from the session registry (auth_sessions.last_seen_at).
+  // Bounded read: newest 2000 session rows is enough for a max-per-user map.
+  const lastActive = new Map<string, string>();
+  if (db) {
+    const { data: sessRows } = await db
+      .from("auth_sessions")
+      .select("user_id,last_seen_at")
+      .order("last_seen_at", { ascending: false })
+      .limit(2000);
+    for (const r of (sessRows ?? []) as { user_id: string; last_seen_at: string }[]) {
+      if (!lastActive.has(r.user_id)) lastActive.set(r.user_id, r.last_seen_at);
+    }
+  }
+
   return (
     <SystemGate perm="system.security.audit.view">
       <div className="space-y-4">
@@ -44,7 +58,8 @@ export default async function SystemUsersPage() {
             breakglass mutations require an approved change request (separation of duties); privileged grants and
             lifecycle actions also need a live <Link href="/system/security/mfa" className="text-lime underline">MFA step-up</Link>.
             You cannot modify your own access. Every change is written to the{" "}
-            <Link href="/system/security/audit" className="text-lime underline">system audit log</Link>.
+            <Link href="/system/security/audit" className="text-lime underline">system audit log</Link>. Scoped incident
+            actions live under <Link href="/system/emergency" className="text-lime underline">Emergency controls</Link>.
           </p>
         </div>
 
@@ -56,7 +71,7 @@ export default async function SystemUsersPage() {
           ) : (
             <table className="w-full min-w-[900px] text-left text-xs">
               <thead className="border-b border-white/10 text-[10px] uppercase tracking-wider text-slate-500">
-                <tr>{["User", "Business role", "System role", "MFA flag", "Created", canManage ? "Manage" : "Role"].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr>
+                <tr>{["User", "Business role", "System role", "MFA flag", "Last active", "Created", canManage ? "Manage" : "Role"].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr>
               </thead>
               <tbody>
                 {users.map((u) => (
@@ -76,6 +91,7 @@ export default async function SystemUsersPage() {
                     <td className="px-4 py-3 font-mono text-[11px]">
                       <span className={u.mfa_required ? "text-lime" : "text-slate-500"}>{u.mfa_required ? "required" : "not required"}</span>
                     </td>
+                    <td className="whitespace-nowrap px-4 py-3 font-mono text-[10px] text-slate-400">{lastActive.has(u.id) ? when(lastActive.get(u.id)!) : <span className="text-slate-600">no sessions</span>}</td>
                     <td className="whitespace-nowrap px-4 py-3 font-mono text-[10px] text-slate-500">{when(u.created_at)}</td>
                     <td className="px-4 py-3">
                       {u.id === selfId ? (
@@ -96,6 +112,40 @@ export default async function SystemUsersPage() {
             Your role can view this directory but not modify roles — grants require <code className="font-mono">system.users.manage</code> (security/sysadmin/breakglass).
           </p>
         )}
+
+        {/* Permission matrix — read-only view of ROLE_PERMISSIONS (code-defined). */}
+        <section className="overflow-x-auto rounded-2xl border border-white/[0.08] bg-white/[0.05] shadow-[0_12px_32px_-16px_rgba(0,0,0,0.8)]">
+          <div className="border-b border-white/10 px-5 py-3">
+            <h2 className="eyebrow text-slate-400">Permission matrix</h2>
+            <p className="mt-1 text-[11px] text-slate-500">
+              Effective permissions per system role, read live from <code className="font-mono">ROLE_PERMISSIONS</code> in{" "}
+              <code className="font-mono">src/lib/system/rbac.ts</code>. Mutations additionally pass the change-request gate
+              (breakglass: every mutation; any role: high/critical risk) and step-up elevation where required.
+            </p>
+          </div>
+          <table className="w-full min-w-[900px] text-left text-[11px]">
+            <thead className="border-b border-white/10 text-[10px] uppercase tracking-wider text-slate-500">
+              <tr>
+                <th className="px-4 py-2.5 font-extrabold">Permission</th>
+                {SYSTEM_ROLES.map((r) => <th key={r} className="px-3 py-2.5 text-center font-extrabold">{r}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {SYSTEM_PERMISSIONS.map((p) => (
+                <tr key={p} className="border-b border-white/5 last:border-0">
+                  <td className="px-4 py-2 font-mono text-[10px] text-slate-300">{p}</td>
+                  {SYSTEM_ROLES.map((r) => (
+                    <td key={r} className="px-3 py-2 text-center font-mono">
+                      {ROLE_PERMISSIONS[r].includes(p)
+                        ? <span className="font-bold text-lime">✓</span>
+                        : <span className="text-slate-700">·</span>}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
       </div>
     </SystemGate>
   );

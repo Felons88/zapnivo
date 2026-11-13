@@ -97,6 +97,7 @@ export default function SimulatorPage() {
         <p className="text-xs text-slate-500">
           Related: <Link href="/system/kiosks" className="underline hover:text-white">/system/kiosks</Link> ·{" "}
           <Link href="/system/dev/webhooks-tester" className="underline hover:text-white">webhook tester</Link> ·{" "}
+          <Link href="/system/dev/simulator/console" className="underline hover:text-white">simulator console</Link> ·{" "}
           <code className="font-mono">src/lib/kiosk/{"{adapter,adapter-contract,simulator,ingest,lifecycle}.ts"}</code>
         </p>
       </div>

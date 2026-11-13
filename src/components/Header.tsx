@@ -7,7 +7,7 @@ import { Logo } from "./Logo";
 import { btnClass } from "./ui";
 import { SiteSearch } from "./SiteSearch";
 
-export function Header({ heroDark = false }: { heroDark?: boolean }) {
+export function Header({ heroDark = false, announcement }: { heroDark?: boolean; announcement?: { text: string; href?: string } | null }) {
   const path = usePathname();
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
@@ -40,7 +40,13 @@ export function Header({ heroDark = false }: { heroDark?: boolean }) {
     <>
       <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded-full focus:bg-lime focus:px-5 focus:py-3 focus:font-bold">Skip to content</a>
       <header onMouseLeave={() => setMenu(null)} className={`fixed inset-x-0 top-0 z-50 transition-[background-color,box-shadow,color] duration-300 ${solid ? "bg-paper/95 text-ink shadow-[0_1px_0_#e8ebe6] backdrop-blur-md" : onDark ? "text-white" : "text-ink"}`}>
-        <div className="section-neon py-2 text-center text-[10px] font-extrabold uppercase tracking-[.13em] text-ink sm:text-xs">Portable charger rentals · Rolling out across Minnesota <Link href="/locations" className="ml-2 underline underline-offset-2">View locations →</Link></div>
+        <div className="section-neon py-2 text-center text-[10px] font-extrabold uppercase tracking-[.13em] text-ink sm:text-xs">
+          {announcement?.text ? (
+            <>{announcement.text}{announcement.href ? <> · <Link href={announcement.href} className="ml-2 underline underline-offset-2">Learn more →</Link></> : null}</>
+          ) : (
+            <>Portable charger rentals · Rolling out across Minnesota <Link href="/locations" className="ml-2 underline underline-offset-2">View locations →</Link></>
+          )}
+        </div>
         <div className="container-z flex h-[72px] items-center justify-between">
           <Link href="/" aria-label="Zapnivo home" className="relative z-[60]"><Logo className={open ? "text-white" : ""} /></Link>
           <nav aria-label="Primary" className="hidden items-center gap-7 lg:flex">

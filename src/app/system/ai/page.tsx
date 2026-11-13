@@ -6,7 +6,9 @@ import { serviceClient } from "@/lib/supabase";
 import { getSessionUser } from "@/lib/auth";
 import { roleCan, systemRole } from "@/lib/system/rbac";
 import { getAiOverview } from "@/lib/system/ai";
+import { getTodayUsage, getKnowledgeCounts, isEssentialAgent } from "@/lib/system/ai-ops";
 import { AgentControls } from "./AgentControls";
+import { BulkDisable } from "./BulkDisable";
 
 export const metadata: Metadata = { title: "AI — Infrastructure" };
 
@@ -28,7 +30,16 @@ export default async function SystemAiPage() {
   const user = await getSessionUser();
   const role = user ? await systemRole(user) : null;
   const canManage = roleCan(role, "system.ai.manage");
-  const o = await getAiOverview(db);
+  const [o, todayUsage, knowledge] = await Promise.all([
+    getAiOverview(db),
+    getTodayUsage(db),
+    getKnowledgeCounts(db),
+  ]);
+  const todayTotals = Object.values(todayUsage).reduce(
+    (acc, u) => ({ calls: acc.calls + u.calls, costCents: acc.costCents + u.costCents, denied: acc.denied + u.denied }),
+    { calls: 0, costCents: 0, denied: 0 },
+  );
+  const nonessentialEnabledIds = o.agents.filter(({ agent }) => agent.enabled && !isEssentialAgent(agent.id)).map(({ agent }) => agent.id);
 
   return (
     <SystemGate perm="system.ai.view">
@@ -41,13 +52,15 @@ export default async function SystemAiPage() {
               data: {o.configured ? "live (ai_agents / ai_agent_runs / eval_*)" : "backend not configured"}
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            <BulkDisable agentIds={nonessentialEnabledIds} canManage={canManage} />
             <Link href="/admin/evals" className="rounded-full bg-white/10 px-4 py-2 text-xs font-bold text-slate-200 ring-1 ring-white/15 hover:bg-white/15">Business eval lab →</Link>
+            <Link href="/system/emergency" className="rounded-full bg-red-500/15 px-4 py-2 text-xs font-bold text-red-300 ring-1 ring-red-400/30 hover:bg-red-500/25">Emergency controls →</Link>
           </div>
         </div>
 
         {/* Provider / model config — presence only, never values */}
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <Card title="LLM provider">
             {o.providers.map((p) => (
               <div key={p.name} className="mb-3 last:mb-0">
@@ -76,6 +89,34 @@ export default async function SystemAiPage() {
             {o.totals.runs30d === 0 && <p className="mt-2 text-[11px] text-slate-500">No runs recorded — usage is instrumented via ai_agent_runs but nothing has executed in this window.</p>}
           </Card>
 
+          <Card title="Usage — today (UTC)">
+            <dl className="space-y-1.5 font-mono text-xs">
+              <Row k="agent calls" v={String(todayTotals.calls)} />
+              <Row k="recorded cost" v={usd(Math.round(todayTotals.costCents * 100) / 100)} />
+              <Row k="denied by guardrails" v={String(todayTotals.denied)} />
+            </dl>
+            <p className="mt-2 text-[11px] text-slate-500">ai_agent_runs since UTC midnight. Per-agent today/cost on each agent&apos;s detail page.</p>
+          </Card>
+
+          <Card title="Knowledge sources">
+            {knowledge.configured ? (
+              <>
+                <dl className="space-y-1.5 font-mono text-xs">
+                  <Row k="articles" v={String(knowledge.total)} />
+                  {Object.entries(knowledge.byStatus).sort().map(([status, count]) => (
+                    <Row key={status} k={status} v={String(count)} />
+                  ))}
+                </dl>
+                <p className="mt-2 text-[11px] text-slate-500">
+                  knowledge_articles lifecycle (draft → in_review → approved → published → archived). Managed in{" "}
+                  <Link href="/admin/knowledge" className="text-lime underline">/admin/knowledge</Link>.
+                </p>
+              </>
+            ) : (
+              <p className="text-sm text-slate-400">Backend not configured — knowledge counts unavailable.</p>
+            )}
+          </Card>
+
           <Card title="Evals & approvals">
             <dl className="space-y-1.5 font-mono text-xs">
               <Row k="eval suites" v={`${o.evals.activeSuites}/${o.evals.suites} active`} />
@@ -91,13 +132,15 @@ export default async function SystemAiPage() {
           <div className="overflow-x-auto">
             <table className="w-full min-w-[980px] text-left text-xs">
               <thead className="border-b border-white/10 text-[10px] uppercase tracking-wider text-slate-500">
-                <tr>{["Agent", "Dept", "Model", "State", "Runs 30d", "Err %", "Cost 30d", "Last run", "Controls"].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr>
+                <tr>{["Agent", "Dept", "Model", "State", "Runs 30d", "Today", "Err %", "Cost 30d", "Last run", "Controls"].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr>
               </thead>
               <tbody>
-                {o.agents.map(({ agent: a, stats: s }) => (
+                {o.agents.map(({ agent: a, stats: s }) => {
+                  const t = todayUsage[a.id];
+                  return (
                   <tr key={a.id} className="border-b border-white/5 align-top last:border-0">
                     <td className="px-4 py-3">
-                      <div className="font-bold text-slate-200">{a.name}</div>
+                      <Link href={`/system/ai/agents/${encodeURIComponent(a.id)}`} className="font-bold text-slate-200 hover:text-lime hover:underline">{a.name}</Link>
                       <div className="font-mono text-[10px] text-lime">{a.id}</div>
                       {a.description && <div className="mt-0.5 max-w-[16rem] truncate text-[10px] text-slate-500" title={a.description}>{a.description}</div>}
                     </td>
@@ -110,14 +153,18 @@ export default async function SystemAiPage() {
                       {!a.enabled && a.config?.kill_reason ? <div className="mt-1 max-w-[10rem] truncate font-mono text-[9px] text-red-300/70" title={String(a.config.kill_reason)}>{String(a.config.kill_reason).slice(0, 60)}</div> : null}
                     </td>
                     <td className="px-4 py-3 font-mono">{s?.runs ?? 0}</td>
+                    <td className="px-4 py-3 font-mono text-[11px]">
+                      {t ? <>{t.calls} · {usd(t.costCents)}{t.denied ? <span className="text-amber-300"> ({t.denied} denied)</span> : null}</> : <span className="text-slate-600">—</span>}
+                    </td>
                     <td className="px-4 py-3 font-mono">{s ? `${s.errorRate}%` : "—"}</td>
                     <td className="px-4 py-3 font-mono">{s ? usd(s.costCents) : "—"}</td>
                     <td className="whitespace-nowrap px-4 py-3 font-mono text-[10px] text-slate-500">{when(s?.lastRunAt ?? null)}</td>
                     <td className="px-4 py-3"><AgentControls agentId={a.id} enabled={a.enabled} tools={a.tools} canManage={canManage} /></td>
                   </tr>
-                ))}
+                  );
+                })}
                 {o.agents.length === 0 && (
-                  <tr><td colSpan={9} className="px-4 py-8 text-center text-slate-400">
+                  <tr><td colSpan={10} className="px-4 py-8 text-center text-slate-400">
                     No agents registered. Seed via <code className="font-mono text-xs">ensureSeedAgents()</code> (admin AI page) or insert rows into <code className="font-mono text-xs">ai_agents</code>.
                   </td></tr>
                 )}

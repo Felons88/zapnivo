@@ -1,10 +1,12 @@
 export const dynamic = "force-dynamic";
 import type { Metadata } from "next";
+import Link from "next/link";
 import { SystemGate } from "@/components/SystemGate";
 import { serviceClient } from "@/lib/supabase";
 import { getSessionUser } from "@/lib/auth";
 import { roleCan, systemRole } from "@/lib/system/rbac";
 import { getSystemJobs } from "@/lib/system/jobs";
+import { getCronJobDetails } from "@/lib/system/db-admin";
 import { RetryButton } from "./RetryButton";
 
 export const metadata: Metadata = { title: "Jobs & Workers" };
@@ -22,7 +24,7 @@ export default async function JobsPage() {
   const user = await getSessionUser();
   const role = user ? await systemRole(user) : null;
   const canRetry = roleCan(role, "system.webhooks.retry");
-  const jobs = await getSystemJobs(db);
+  const [jobs, cronDetails] = await Promise.all([getSystemJobs(db), getCronJobDetails(db)]);
 
   return (
     <SystemGate perm="system.dashboard.view">
@@ -82,11 +84,16 @@ export default async function JobsPage() {
                   <th className="py-2 pr-4">Last run</th>
                   <th className="py-2 pr-4">Last ok</th>
                   <th className="py-2 pr-4">Runs 24h</th>
-                  <th className="py-2">Failed 24h</th>
+                  <th className="py-2 pr-4">Failed 24h</th>
+                  <th className="py-2 pr-4">Duration (last span)</th>
+                  <th className="py-2">Last detail</th>
                 </tr>
               </thead>
               <tbody>
-                {jobs.cron.map((c) => (
+                {jobs.cron.map((c) => {
+                  const d = cronDetails.get(c.job);
+                  const detailJson = d?.lastDetail ? JSON.stringify(d.lastDetail) : null;
+                  return (
                   <tr key={`${c.route}:${c.job}`} className="border-b border-white/5 last:border-0">
                     <td className="py-2 pr-4 font-mono text-xs">{c.route}</td>
                     <td className="py-2 pr-4 font-mono text-xs text-slate-400">{c.schedule}</td>
@@ -98,14 +105,37 @@ export default async function JobsPage() {
                       </span>
                     </td>
                     <td className="py-2 pr-4 font-mono text-xs">{c.runs24h}</td>
-                    <td className="py-2 font-mono text-xs">{c.failures24h}</td>
+                    <td className="py-2 pr-4 font-mono text-xs">{c.failures24h}</td>
+                    <td className="py-2 pr-4 font-mono text-xs">
+                      {d?.lastDurationMs == null ? <span className="text-slate-600">—</span> : `${d.lastDurationMs}ms`}
+                      {d?.lastSpanStatus && d.lastSpanStatus !== "ok" && <span className="ml-1 text-red-300">({d.lastSpanStatus})</span>}
+                    </td>
+                    <td className="max-w-[280px] py-2">
+                      {d?.lastError ? (
+                        <span className="font-mono text-[11px] text-red-300/90" title={d.lastError}>{d.lastError.slice(0, 120)}</span>
+                      ) : detailJson ? (
+                        <details>
+                          <summary className="cursor-pointer font-mono text-[11px] text-slate-400 hover:text-lime">
+                            {detailJson.length > 80 ? detailJson.slice(0, 80) + "…" : detailJson}
+                          </summary>
+                          <pre className="mt-1 max-h-40 overflow-auto rounded bg-black/30 p-2 font-mono text-[10px] text-slate-300 ring-1 ring-white/10">
+                            {JSON.stringify(d?.lastDetail, null, 2)}
+                          </pre>
+                        </details>
+                      ) : (
+                        <span className="text-slate-600">—</span>
+                      )}
+                    </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
           <p className="mt-2 text-[11px] text-slate-500">
-            Routes marked n/a do not write cron_runs (uptime writes uptime_checks/incidents; analytics writes analytics_daily).
+            All five vercel.json cron routes record <code className="font-mono">cron_runs</code> rows (Phase 2.7+). Duration is the latest{" "}
+            <code className="font-mono">cron.&lt;job&gt;</code> trace span — cron_runs has no duration column; deep-dive at{" "}
+            <Link href="/system/infrastructure/jobs" className="text-lime underline">/system/infrastructure/jobs</Link>.
           </p>
         </section>
 

@@ -1,0 +1,575 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { SessionUser } from "@/lib/auth";
+import { systemAudit, assertApprovedOrRequest, type SystemActor } from "./audit";
+import { requireElevation } from "./elevation";
+import {
+  createDeploymentRequest,
+  executeDeploymentRequest,
+  getDeploymentRequest,
+  listDeploymentRequests,
+  type DeploymentRequestRow,
+} from "./deployops";
+import {
+  allowedDeployRefs,
+  createVercelDeployment,
+  githubGate,
+  getVercelDeployment,
+  getVercelDeploymentEvents,
+  isAllowedDeployRef,
+  listVercelDeployments,
+  promoteVercelDeployment,
+  vercelGate,
+  vercelConfigured,
+  type VercelDeployment,
+  type VercelDeploymentEvent,
+} from "./deploy-provider";
+
+/**
+ * Deployment center — merges provider-live data (Vercel API when configured)
+ * with the approval-gated system_deployment_requests workflow.
+ *
+ * Honesty rules:
+ *  - No provider token → provider sections return configured:false and the UI
+ *    falls back to the manual request→approve→awaiting_manual_deploy flow.
+ *  - Deployment URLs are probed ONLY when they are https://*.vercel.app (or an
+ *    explicit DEPLOY_PROBE_DOMAINS allowlist entry) — never arbitrary URLs.
+ *  - Provider tokens never appear in responses, errors, or audit detail.
+ */
+
+export type DeploymentSource = "vercel_api" | "approval_request" | "manual_record";
+export type DeploymentState =
+  | "queued" | "building" | "ready" | "error" | "canceled"
+  | "pending" | "awaiting_manual" | "unknown";
+
+export type DeploymentRecord = {
+  /** Provider deployment uid for vercel_api rows; request id for approval_request rows. */
+  id: string;
+  source: DeploymentSource;
+  env: string; // production | preview | development | unknown
+  commitSha: string | null;
+  branch: string | null;
+  state: DeploymentState;
+  stateRaw: string | null;
+  createdAt: string | null;
+  url: string | null;
+  inspectorUrl: string | null;
+  /** Present on approval_request rows: the underlying request id + status. */
+  requestId: string | null;
+  requestStatus: string | null;
+  reachable: boolean | null;
+  /** GitHub commit URL when GITHUB_REPO is configured and sha is valid. */
+  commitUrl: string | null;
+};
+
+/* ── State/env mapping ─────────────────────────────────────────────────── */
+
+export function vercelState(readyState: string | null, target: string | null): DeploymentState {
+  switch ((readyState ?? "").toUpperCase()) {
+    case "READY": return "ready";
+    case "ERROR": return "error";
+    case "CANCELED": return "canceled";
+    case "QUEUED": return "queued";
+    case "BUILDING":
+    case "INITIALIZING":
+    case "UPLOADING": return "building";
+    default: return "unknown";
+  }
+}
+
+export function vercelEnv(target: string | null, commitRef: string | null): string {
+  if (target === "production") return "production";
+  if (target === "staging") return "preview";
+  // Vercel omits target on preview builds; treat null as preview unless the
+  // commit ref is the deploy-allowed production ref — we can't know for sure,
+  // so report 'preview' honestly (target null ≠ production alias).
+  return "preview";
+}
+
+const REQUEST_STATE: Record<string, DeploymentState> = {
+  pending: "pending",
+  approved: "awaiting_manual",
+  rejected: "canceled",
+  executed: "ready",
+  failed: "error",
+};
+
+function deploymentRecordFromVercel(d: VercelDeployment): DeploymentRecord {
+  return {
+    id: d.uid,
+    source: "vercel_api",
+    env: vercelEnv(d.target, d.commitRef),
+    commitSha: d.commitSha,
+    branch: d.commitRef,
+    state: vercelState(d.readyState, d.target),
+    stateRaw: d.readyState,
+    createdAt: d.createdAt ? new Date(d.createdAt).toISOString() : null,
+    url: d.url ? `https://${d.url}` : null,
+    inspectorUrl: d.inspectorUrl,
+    requestId: null,
+    requestStatus: null,
+    reachable: null,
+    commitUrl: githubCommitUrl(d.commitSha),
+  };
+}
+
+function deploymentRecordFromRequest(r: DeploymentRequestRow): DeploymentRecord {
+  return {
+    id: `req:${r.id}`,
+    source: "approval_request",
+    env: r.target_env || "unknown",
+    commitSha: null,
+    branch: null,
+    state: REQUEST_STATE[r.status] ?? "unknown",
+    stateRaw: r.status,
+    createdAt: r.created_at,
+    url: null,
+    inspectorUrl: null,
+    requestId: r.id,
+    requestStatus: r.status,
+    reachable: null,
+    commitUrl: null,
+  };
+}
+
+/* ── URL probe allowlist ───────────────────────────────────────────────── */
+
+/**
+ * Only https URLs on *.vercel.app or explicitly allowlisted probe domains are
+ * ever HEAD-probed. Returns the normalized URL or null.
+ */
+export function probeableUrl(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  let u: URL;
+  try { u = new URL(raw); } catch { return null; }
+  if (u.protocol !== "https:") return null;
+  const host = u.hostname.toLowerCase();
+  if (host.endsWith(".vercel.app") || host === "vercel.app") return u.toString();
+  const extra = (process.env.DEPLOY_PROBE_DOMAINS ?? "")
+    .split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+  if (extra.includes(host)) return u.toString();
+  return null;
+}
+
+/** Bounded HEAD probe — reachable:true/false, null when not probeable. */
+export async function probeDeploymentUrl(url: string | null, timeoutMs = 3500): Promise<boolean | null> {
+  const target = probeableUrl(url);
+  if (!target) return null;
+  try {
+    const res = await fetch(target, { method: "HEAD", redirect: "follow", signal: AbortSignal.timeout(timeoutMs) });
+    return res.status < 500;
+  } catch {
+    return false;
+  }
+}
+
+/* ── Aggregation ───────────────────────────────────────────────────────── */
+
+export type DeploymentListResult = {
+  deployments: DeploymentRecord[];
+  providers: { vercel: { configured: boolean; missing: string[] }; github: { configured: boolean; missing: string[] } };
+  vercelError: string | null;
+  requestsError: string | null;
+};
+
+/**
+ * Merges live Vercel deployments (when configured) with approval-request
+ * records. Provider failure degrades honestly — requests still list.
+ */
+export async function listDeployments(db: SupabaseClient | null, opts: { probe?: boolean; limit?: number } = {}): Promise<DeploymentListResult> {
+  const limit = Math.min(opts.limit ?? 50, 100);
+  const vg = vercelGate();
+  const gg = githubGate();
+  const out: DeploymentListResult = {
+    deployments: [],
+    providers: {
+      vercel: { configured: vg.configured, missing: vg.missing },
+      github: { configured: gg.configured, missing: gg.missing },
+    },
+    vercelError: null,
+    requestsError: null,
+  };
+
+  if (vg.configured) {
+    const res = await listVercelDeployments(Math.min(limit, 50));
+    if (res.configured && res.ok) {
+      out.deployments.push(...res.data.map(deploymentRecordFromVercel));
+    } else if (res.configured) {
+      out.vercelError = res.error;
+    }
+  }
+
+  if (db) {
+    const { requests, error } = await listDeploymentRequests(db, limit);
+    out.requestsError = error;
+    out.deployments.push(...requests.map(deploymentRecordFromRequest));
+  }
+
+  out.deployments.sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""));
+  out.deployments = out.deployments.slice(0, limit);
+
+  if (opts.probe) {
+    const targets = out.deployments.filter((d) => d.source === "vercel_api" && d.url).slice(0, 15);
+    await Promise.all(targets.map(async (d) => {
+      d.reachable = await probeDeploymentUrl(d.url);
+    }));
+  }
+  return out;
+}
+
+/* ── GitHub commit links ───────────────────────────────────────────────── */
+
+export function githubCommitUrl(commitSha: string | null): string | null {
+  if (!commitSha || !/^[0-9a-f]{7,64}$/i.test(commitSha)) return null;
+  const repo = process.env.GITHUB_REPO?.trim();
+  const m = /^([A-Za-z0-9_.-]{1,100})\/([A-Za-z0-9_.-]{1,100})$/.exec(repo ?? "");
+  if (!m) return null;
+  return `https://github.com/${m[1]}/${m[2]}/commit/${commitSha}`;
+}
+
+/* ── Request creation (approval-gated) ─────────────────────────────────── */
+
+export type DeployRequestSpec = {
+  ref: string;
+  targetEnv: "preview" | "production";
+  justification: string;
+};
+
+export type DeployRequestOutcome =
+  | { ok: true; status: "created" | "pending_approval"; requestId?: string; changeRequestId?: string }
+  | { ok: false; status: number; error: string };
+
+/**
+ * Creates a deploy/rollback approval request. Git ref must be in the allowed
+ * deploy-ref set (default: main only). Production is high-risk (change-request
+ * approval required); preview is medium-risk (proceeds without a change
+ * request for non-breakglass roles).
+ */
+export async function requestDeploy(
+  db: SupabaseClient,
+  actor: SystemActor,
+  spec: DeployRequestSpec,
+): Promise<DeployRequestOutcome> {
+  const ref = spec.ref.trim();
+  if (!isAllowedDeployRef(ref)) {
+    return { ok: false, status: 400, error: `ref not allowed for API deploys — allowed: ${allowedDeployRefs().join(", ") || "(none)"}` };
+  }
+  const justification = spec.justification.trim();
+  if (justification.length < 10) {
+    return { ok: false, status: 400, error: "justification must be at least 10 characters" };
+  }
+
+  const gate = await assertApprovedOrRequest(db, actor, {
+    action: `deployment.deploy:${spec.targetEnv}`,
+    risk: spec.targetEnv === "production" ? "high" : "medium",
+    justification: `Deploy ${ref} → ${spec.targetEnv}: ${justification}`.slice(0, 4000),
+  });
+  if (gate.status === "pending") {
+    return { ok: true, status: "pending_approval", changeRequestId: gate.changeRequestId };
+  }
+  if (gate.status === "rejected") {
+    return { ok: false, status: 409, error: "A previous change request for this action was rejected" };
+  }
+  if (gate.status === "error") {
+    return { ok: false, status: 500, error: gate.error };
+  }
+
+  const created = await createDeploymentRequest(db, actor, {
+    action: "deploy",
+    targetEnv: spec.targetEnv,
+    justification,
+  });
+  if (!created.ok) return { ok: false, status: created.status, error: created.error };
+
+  // Persist the deploy ref + env on the request row so execute can resolve it.
+  await db.from("system_deployment_requests").update({
+    result: { ref, provider: "vercel", requested_via: "deploy_center" },
+  }).eq("id", created.request.id);
+
+  await systemAudit(db, {
+    actor,
+    action: "deployment.deploy_requested",
+    resource: `deployment_request:${created.request.id}`,
+    detail: { ref, target_env: spec.targetEnv },
+  });
+  return { ok: true, status: "created", requestId: created.request.id };
+}
+
+/**
+ * Rollback eligibility: candidates are READY production deployments from the
+ * provider, excluding the most recent one (the current production deploy).
+ * Returns honest empty state when the provider is unconfigured.
+ */
+export async function rollbackCandidates(): Promise<
+  | { configured: false }
+  | { configured: true; ok: true; candidates: VercelDeployment[] }
+  | { configured: true; ok: false; error: string }
+> {
+  if (!vercelConfigured()) return { configured: false };
+  const res = await listVercelDeployments(50);
+  if (!res.configured) return { configured: false };
+  if (!res.ok) return { configured: true, ok: false, error: res.error };
+  const ready = res.data
+    .filter((d) => d.readyState === "READY" && d.target === "production")
+    .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+  // Exclude the newest — rolling back to the current deploy is a no-op.
+  return { configured: true, ok: true, candidates: ready.slice(1) };
+}
+
+export type RollbackRequestOutcome =
+  | { ok: true; status: "created" | "pending_approval"; requestId?: string; changeRequestId?: string }
+  | { ok: false; status: number; error: string };
+
+/** Creates an approval-gated rollback request targeting a specific deployment. */
+export async function requestRollback(
+  db: SupabaseClient,
+  actor: SystemActor,
+  input: { deploymentId: string; justification: string },
+): Promise<RollbackRequestOutcome> {
+  const justification = input.justification.trim();
+  if (justification.length < 10) {
+    return { ok: false, status: 400, error: "justification must be at least 10 characters" };
+  }
+  if (!/^[A-Za-z0-9_-]{4,100}$/.test(input.deploymentId)) {
+    return { ok: false, status: 400, error: "invalid deployment id" };
+  }
+
+  // Verify the target is an eligible rollback candidate when the provider is live.
+  const rb = await rollbackCandidates();
+  if (rb.configured && rb.ok) {
+    if (!rb.candidates.some((d) => d.uid === input.deploymentId)) {
+      return { ok: false, status: 409, error: "deployment is not an eligible rollback target (must be a previous READY production deployment)" };
+    }
+  } else if (rb.configured) {
+    return { ok: false, status: 502, error: `provider check failed: ${rb.error}` };
+  }
+  // Provider unconfigured → manual rollback request is still allowed; the human
+  // performs the promote in the Vercel dashboard.
+
+  const gate = await assertApprovedOrRequest(db, actor, {
+    action: "deployment.rollback:production",
+    risk: "high",
+    justification: `Rollback production to deployment ${input.deploymentId}: ${justification}`.slice(0, 4000),
+  });
+  if (gate.status === "pending") {
+    return { ok: true, status: "pending_approval", changeRequestId: gate.changeRequestId };
+  }
+  if (gate.status === "rejected") {
+    return { ok: false, status: 409, error: "A previous change request for this action was rejected" };
+  }
+  if (gate.status === "error") {
+    return { ok: false, status: 500, error: gate.error };
+  }
+
+  const created = await createDeploymentRequest(db, actor, {
+    action: "rollback",
+    targetEnv: "production",
+    justification,
+  });
+  if (!created.ok) return { ok: false, status: created.status, error: created.error };
+
+  await db.from("system_deployment_requests").update({
+    result: { target_deployment_id: input.deploymentId, provider: "vercel", requested_via: "deploy_center" },
+  }).eq("id", created.request.id);
+
+  await systemAudit(db, {
+    actor,
+    action: "deployment.rollback_requested",
+    resource: `deployment_request:${created.request.id}`,
+    detail: { target_deployment_id: input.deploymentId },
+  });
+  return { ok: true, status: "created", requestId: created.request.id };
+}
+
+/* ── Provider execution ────────────────────────────────────────────────── */
+
+export type ProviderExecuteResult =
+  | { status: "executed"; requestId: string; deploymentId: string; url: string | null; mode: "provider" }
+  | { status: "provider_error"; requestId: string; error: string; mode: "provider" }
+  | { status: "awaiting_manual_deploy"; requestId: string; reason: string; providerTokenPresent: boolean; mode: "manual" };
+
+/**
+ * Executes an approved (or preview-pending) deployment request through the
+ * Vercel API. Falls back to the manual awaiting_manual_deploy contract when
+ * Vercel is not configured.
+ *
+ * Gating:
+ *  - production: request must be 'approved', executor ≠ requester, AND a live
+ *    step-up elevation (requireElevation) is mandatory.
+ *  - preview:    request may be 'pending' or 'approved' (lower bar — manage
+ *    permission enforced at the route); no elevation required.
+ */
+export async function executeDeploymentCenterRequest(
+  db: SupabaseClient,
+  actor: SystemActor,
+  user: SessionUser,
+  requestId: string,
+): Promise<{ ok: true; result: ProviderExecuteResult } | { ok: false; status: number; error: string; code?: string }> {
+  const { request: req, error } = await getDeploymentRequest(db, requestId);
+  if (error) return { ok: false, status: 500, error };
+  if (!req) return { ok: false, status: 404, error: "Deployment request not found" };
+
+  const isProduction = req.target_env === "production";
+  const allowedStatus = isProduction ? "approved" : (req.status === "pending" || req.status === "approved");
+  if (!allowedStatus) {
+    return { ok: false, status: 409, error: `Request is ${req.status} — ${isProduction ? "only approved requests can be executed" : "only pending or approved requests can be executed"}` };
+  }
+  if (isProduction && req.requested_by === actor.id) {
+    return { ok: false, status: 403, error: "Requester cannot execute their own production deployment request" };
+  }
+
+  // Provider not configured → delegate to the existing manual contract.
+  if (!vercelConfigured()) {
+    const manual = await executeDeploymentRequest(db, actor, requestId);
+    if (!manual.ok) return manual;
+    return {
+      ok: true,
+      result: { ...manual.result, mode: "manual" },
+    };
+  }
+
+  // Production execution requires a fresh step-up elevation.
+  if (isProduction) {
+    const elev = await requireElevation(db, user);
+    if (!elev.ok) return { ok: false, status: elev.status, error: elev.error, code: elev.code };
+  }
+
+  const meta = (typeof req.result === "object" && req.result ? req.result : {}) as Record<string, unknown>;
+  const failWith = async (message: string, extra: Record<string, unknown> = {}) => {
+    await db.from("system_deployment_requests").update({
+      result: { ...meta, last_provider_attempt: { at: new Date().toISOString(), by: actor.id, outcome: "provider_error" }, last_provider_error: message.slice(0, 300) },
+    }).eq("id", requestId);
+    await systemAudit(db, {
+      actor,
+      action: "deployment.execute_failed",
+      resource: `deployment_request:${requestId}`,
+      detail: { action: req.action, target_env: req.target_env, error: message.slice(0, 200) },
+    });
+    return { ok: true as const, result: { status: "provider_error" as const, requestId, error: message, mode: "provider" as const } };
+  };
+
+  let providerDeploymentId: string | null = null;
+  let providerUrl: string | null = null;
+
+  if (req.action === "deploy") {
+    const ref = typeof meta.ref === "string" ? meta.ref : null;
+    if (!ref) return failWith("request has no deploy ref — create it via POST /api/system/deployments/request-deploy");
+    const created = await createVercelDeployment({ ref, target: isProduction ? "production" : "preview" });
+    if (!("ok" in created)) {
+      return failWith("vercel provider reported unconfigured mid-flight");
+    }
+    if (!created.ok) return failWith(created.reason);
+    providerDeploymentId = created.deploymentId;
+    providerUrl = created.url;
+  } else if (req.action === "rollback" || req.action === "promote") {
+    const targetId = typeof meta.target_deployment_id === "string" ? meta.target_deployment_id : null;
+    if (!targetId) return failWith("request has no target deployment — create it via POST /api/system/deployments/rollback");
+    const promoted = await promoteVercelDeployment(targetId);
+    if (!promoted.configured) return failWith("vercel provider reported unconfigured mid-flight");
+    if (!promoted.ok) return failWith(promoted.error);
+    providerDeploymentId = targetId;
+    const detail = await getVercelDeployment(targetId);
+    if (detail.configured && detail.ok) providerUrl = detail.data.url ? `https://${detail.data.url}` : null;
+  } else {
+    return { ok: false, status: 400, error: `unsupported action '${req.action}'` };
+  }
+
+  // Success: mark executed with provider metadata (never tokens).
+  await db.from("system_deployment_requests").update({
+    status: "executed",
+    result: {
+      ...meta,
+      provider: "vercel",
+      provider_deployment_id: providerDeploymentId,
+      provider_url: providerUrl,
+      executed_at: new Date().toISOString(),
+      executed_by: actor.id,
+    },
+  }).eq("id", requestId);
+
+  await systemAudit(db, {
+    actor,
+    action: "deployment.executed",
+    resource: `deployment_request:${requestId}`,
+    detail: {
+      action: req.action,
+      target_env: req.target_env,
+      provider: "vercel",
+      provider_deployment_id: providerDeploymentId,
+      ref: typeof meta.ref === "string" ? meta.ref : undefined,
+    },
+  });
+
+  return {
+    ok: true,
+    result: { status: "executed", requestId, deploymentId: providerDeploymentId ?? "", url: providerUrl, mode: "provider" },
+  };
+}
+
+/* ── Detail view ───────────────────────────────────────────────────────── */
+
+export type DeploymentDetail = {
+  deployment: VercelDeployment | null;
+  events: VercelDeploymentEvent[] | null;
+  eventsStatus: "ok" | "requires_credentials" | "error" | "unavailable";
+  eventsError: string | null;
+  request: DeploymentRequestRow | null;
+};
+
+/**
+ * Detail for one deployment. `id` may be a Vercel deployment uid (dpl_…) or a
+ * deployment-request UUID. Events come from the provider when configured;
+ * otherwise 'requires_credentials'.
+ */
+export async function getDeploymentDetail(db: SupabaseClient | null, id: string): Promise<DeploymentDetail | null> {
+  const out: DeploymentDetail = { deployment: null, events: null, eventsStatus: "unavailable", eventsError: null, request: null };
+
+  const isUuid = /^[0-9a-f-]{36}$/i.test(id);
+  const isProviderId = /^[A-Za-z0-9_-]{4,100}$/.test(id);
+
+  if (isUuid && db) {
+    const { request } = await getDeploymentRequest(db, id);
+    out.request = request;
+  }
+
+  // UUIDs are request ids, not provider deployment uids — skip the provider call.
+  if (isProviderId && !isUuid && vercelConfigured()) {
+    const dep = await getVercelDeployment(id);
+    if (dep.configured && dep.ok) {
+      out.deployment = dep.data;
+      const ev = await getVercelDeploymentEvents(id, 100);
+      if (ev.configured && ev.ok) {
+        out.events = ev.data;
+        out.eventsStatus = "ok";
+      } else if (ev.configured) {
+        out.eventsStatus = "error";
+        out.eventsError = ev.error;
+      } else {
+        out.eventsStatus = "requires_credentials";
+      }
+    } else if (dep.configured) {
+      out.eventsStatus = "error";
+      out.eventsError = dep.error;
+    } else {
+      out.eventsStatus = "requires_credentials";
+    }
+  } else if (isProviderId && !isUuid) {
+    out.eventsStatus = "requires_credentials";
+    out.eventsError = `missing env: ${vercelGate().missing.join(", ") || "VERCEL_TOKEN, VERCEL_PROJECT_ID"}`;
+  }
+
+  if (!out.deployment && !out.request) return null;
+  return out;
+}
+
+/** Manual deploy instructions shown whenever the provider can't execute. */
+export function manualDeployInstructions(action: string, targetEnv: string): string[] {
+  const steps = [
+    `Push the approved ref to the repository (git push origin <ref>).`,
+    `In the Vercel dashboard → project → Deployments, confirm the build for ${targetEnv} succeeds.`,
+    `Verify the deployment URL responds, then record the outcome on this request.`,
+  ];
+  if (action === "rollback" || action === "promote") {
+    steps[1] = `In the Vercel dashboard → project → Deployments, open the target deployment → "Instant Rollback" / Promote to production.`;
+  }
+  return steps;
+}
