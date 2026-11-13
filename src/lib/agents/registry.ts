@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { recordLog } from "@/lib/observability";
+import { recordLog, reportError } from "@/lib/observability";
 
 /**
  * AI agent registry + control center (stage 3). Server-only: every function
@@ -87,6 +87,7 @@ export const SEED_AGENTS: SeedAgent[] = [
   { id: "fleet.ops", name: "Fleet Operations", department: "operations", description: "Reads station telemetry to spot offline/low-battery patterns and suggest checks.", permissions: ["fleet.telemetry.read"], escalation_policy: "staff_review" },
   { id: "finance.review", name: "Finance Review", department: "finance", description: "Reads finance reports to flag anomalies; never moves money.", permissions: ["finance.reports.read"], escalation_policy: "staff_review" },
   { id: "executive.reporting", name: "Executive Reporting", department: "executive", description: "Compiles weekly operating summaries from aggregate data only.", permissions: ["analytics.aggregate.read", "finance.reports.read"], escalation_policy: null },
+  { id: "receptionist.general", name: "Email Receptionist", department: "support", description: "Triages and drafts replies for the general hello@ inbox; autonomy-gated, escalates to humans on any doubt.", permissions: ["support.ticket.create"], escalation_policy: "staff_review" },
 ];
 
 /**
@@ -182,6 +183,24 @@ export async function getAgent(db: AgentsDb, id: string): Promise<AgentRow | nul
   const { data, error } = await db.from("ai_agents").select("*").eq("id", id).maybeSingle();
   if (error || !data) return null;
   return toAgent(data as unknown as RawAgent);
+}
+
+export type AgentLookup =
+  | { ok: true; agent: AgentRow }
+  | { ok: false; kind: "missing" | "error" };
+
+/**
+ * Strict variant of getAgent for EXECUTION paths: distinguishes "row absent"
+ * from "lookup failed" and rejects malformed rows (enabled must be a real
+ * boolean, id must match). Display/admin callers may keep using getAgent.
+ */
+export async function getAgentStrict(db: AgentsDb, id: string): Promise<AgentLookup> {
+  const { data, error } = await db.from("ai_agents").select("*").eq("id", id).maybeSingle();
+  if (error) return { ok: false, kind: "error" };
+  if (!data) return { ok: false, kind: "missing" };
+  const raw = data as unknown as RawAgent;
+  if (typeof raw.enabled !== "boolean" || String(raw.id ?? "") !== id) return { ok: false, kind: "error" };
+  return { ok: true, agent: toAgent(raw) };
 }
 
 const PATCHABLE = [
@@ -463,8 +482,22 @@ export async function runAgent<T>(
   agentId: string,
   opts: { task: string; actor?: string; execute: () => Promise<T> },
 ): Promise<RunOutcome<T>> {
-  const agent = await getAgent(db, agentId);
-  if (!agent) return { ok: false, status: "error", error: "unknown_agent", runId: null };
+  // FAIL-CLOSED: if we cannot verify the agent row (DB error or malformed
+  // row), authorization is unverifiable → the agent does NOT execute. A
+  // warning-severity event is recorded (agent id + reason class only).
+  const lookup = await getAgentStrict(db, agentId);
+  if (!lookup.ok) {
+    if (lookup.kind === "error") {
+      const safeId = String(agentId ?? "").slice(0, 120);
+      recordLog("warning", "ai.authorization_unverifiable", { service: "ai-registry", attrs: { agent: safeId, reason: "agent_lookup_failed" } });
+      reportError(new Error("ai_authorization_unverifiable:agent_lookup_failed"), {
+        severity: "warning", route: "ai/registry", attrs: { agent: safeId, reason: "agent_lookup_failed" },
+      });
+      return { ok: false, status: "error", error: "agent_lookup_failed", runId: null };
+    }
+    return { ok: false, status: "error", error: "unknown_agent", runId: null };
+  }
+  const agent = lookup.agent;
 
   const gate = await canRun(db, agent);
   if (!gate.ok) {

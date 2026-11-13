@@ -154,6 +154,35 @@ describe("runAgent gating", () => {
     expect(final?.duration_ms).toBeTypeOf("number");
   });
 
+  it("fails closed when the agent row lookup errors — no execute, warning event", async () => {
+    const { recordLog, reportError } = await import("@/lib/observability");
+    const db = {
+      from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: { message: "connection reset" } }) }) }) }),
+    } as unknown as SupabaseClient;
+    const execute = vi.fn(async () => ({}));
+    const out = await runAgent(db, "support.public", { task: "ping", execute });
+    expect(out).toMatchObject({ ok: false, status: "error", error: "agent_lookup_failed" });
+    expect(execute).not.toHaveBeenCalled();
+    expect(recordLog).toHaveBeenCalledWith("warning", "ai.authorization_unverifiable", expect.anything());
+    expect(reportError).toHaveBeenCalledWith(expect.any(Error), expect.objectContaining({ severity: "warning" }));
+  });
+
+  it("fails closed on a malformed agent row (enabled not a boolean)", async () => {
+    const { db } = makeDb({ agents: [agentRow({ enabled: "yes" })] });
+    const execute = vi.fn(async () => ({}));
+    const out = await runAgent(db, "support.public", { task: "ping", execute });
+    expect(out).toMatchObject({ ok: false, status: "error", error: "agent_lookup_failed" });
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it("still denies (not errors) a well-formed disabled agent", async () => {
+    const { db } = makeDb({ agents: [agentRow({ enabled: false })] });
+    const execute = vi.fn(async () => ({}));
+    const out = await runAgent(db, "support.public", { task: "ping", execute });
+    expect(out).toMatchObject({ ok: false, status: "denied", reason: "agent_disabled" });
+    expect(execute).not.toHaveBeenCalled();
+  });
+
   it("records scrubbed error when execute throws", async () => {
     const { db, tables } = makeDb({ agents: [agentRow()] });
     const out = await runAgent(db, "support.public", {

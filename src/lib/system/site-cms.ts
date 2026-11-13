@@ -67,9 +67,26 @@ const f = (key: string, label: string, type: FieldType, extra: Partial<FieldDef>
  * page_key "home"    → apex homepage hero + metadata (src/app/(site)/page.tsx)
  * page_key "global"  → announcement bar (src/components/Header.tsx via (site)/layout)
  * page_key "footer"  → footer contact email (src/components/Footer.tsx)
+ * page_key "contact" → apex /contact hero + metadata ((site)/contact/page.tsx)
+ * page_key "home" (support)   → help-center hero + metadata ((site)/support/page.tsx → HelpCenter)
+ * page_key "global" (partners)→ portal announcement banner (components/PartnerShell.tsx)
+ * page_key "global" (internal)→ portal announcement banner (components/AdminShell.tsx)
+ * page_key "home" (customer)  → account portal hero + intro ((site)/account/page.tsx)
  *
- * Other registry sites intentionally have NO catalog entries yet — their render
- * paths do not consume CMS content, so there is nothing honest to edit.
+ * Cataloged per site (multi-site phase):
+ *  - support:  help-center hero eyebrow/headline + page meta — wired via HelpCenter props.
+ *  - partners: announcement banner inside PartnerGate — no public render surface exists
+ *              (partners.zapnivo.com rewrites / → gated /partners), so ONLY the portal
+ *              banner fields are cataloged.
+ *  - internal: announcement banner inside AdminGate — same reasoning (→ /admin).
+ *  - customer: account portal hero eyebrow/title + intro line on /account.
+ *  - system / api: NO catalog — the system console chrome (SystemShell) and the API
+ *    host have no CMS-consumed render surface; nothing is cataloged speculatively.
+ *
+ * Image-type fields: the "image" FieldType accepts /images/ paths or registered
+ * site_media refs (see src/lib/system/site-media.ts). The media library
+ * (migration 0061, /system/sites/[site]/media) supplies those refs; image fields
+ * are only cataloged where a render surface consumes them (e.g. apex/newsletter).
  */
 export const FIELD_CATALOG: Record<string, Record<string, FieldDef[]>> = {
   apex: {
@@ -89,11 +106,58 @@ export const FIELD_CATALOG: Record<string, Record<string, FieldDef[]>> = {
     footer: [
       f("contact_email", "Footer contact email", "string", { format: "email", maxLength: 120, help: "Replaces the first footer contact address." }),
     ],
+    // Newsletter popup — consumed by src/components/NewsletterPopup.tsx via
+    // (site)/layout.tsx → getPublishedContent("apex", "newsletter").
+    newsletter: [
+      f("enabled", "Show newsletter popup", "boolean", { help: "Master switch. Default on; disable to hide everywhere." }),
+      f("headline", "Headline", "string", { maxLength: 90, help: "Default: Never Run Out of Power." }),
+      f("description", "Description", "richtext", { maxLength: 400, help: "Plain text shown under the headline." }),
+      f("cta_customer", "Customer button label", "string", { maxLength: 60, help: "Submit label on the customer tab." }),
+      f("cta_business", "Business button label", "string", { maxLength: 60, help: "Submit label on the business tab." }),
+      f("image", "Popup image", "image", { help: "Optional real photo; empty = typographic design (no placeholder art)." }),
+      f("delay_seconds", "Show delay (seconds)", "string", { maxLength: 3, help: "Seconds after page load before the popup appears (0–120)." }),
+      f("frequency_cap_days", "Frequency cap (days)", "string", { maxLength: 3, help: "Minimum days between popup shows per visitor (1–365)." }),
+      f("excluded_routes", "Excluded routes", "string", { maxLength: 500, help: "Comma-separated paths where the popup never appears." }),
+      f("success_message", "Success message", "string", { maxLength: 200, help: "Shown after a subscription is captured (pre-confirmation)." }),
+      f("business_cta_href", "Business CTA link", "url", { help: "Where the 'full application' link on the business tab points." }),
+    ],
+    contact: [
+      f("hero_eyebrow", "Hero eyebrow", "string", { maxLength: 120 }),
+      f("hero_title", "Hero title", "string", { maxLength: 120, help: "Main heading on /contact." }),
+      f("hero_description", "Hero description", "string", { maxLength: 400, help: "Plain text intro under the heading." }),
+      f("meta_title", "Meta title", "string", { maxLength: 70 }),
+      f("meta_description", "Meta description", "string", { maxLength: 170 }),
+    ],
   },
-  support: {},
-  internal: {},
-  partners: {},
-  customer: {},
+  support: {
+    home: [
+      f("hero_eyebrow", "Hero eyebrow", "string", { maxLength: 120, help: "Small caps line above the headline on the help center." }),
+      f("hero_headline", "Hero headline", "string", { maxLength: 120, help: "Main heading (H1) on the help center." }),
+      f("meta_title", "Meta title", "string", { maxLength: 70 }),
+      f("meta_description", "Meta description", "string", { maxLength: 170 }),
+    ],
+  },
+  internal: {
+    global: [
+      f("announcement_enabled", "Show announcement banner", "boolean", { help: "Renders a notice bar at the top of every staff console page." }),
+      f("announcement_text", "Announcement text", "string", { maxLength: 200 }),
+      f("announcement_href", "Announcement link", "url", { help: "Optional https:// or site-relative path." }),
+    ],
+  },
+  partners: {
+    global: [
+      f("announcement_enabled", "Show announcement banner", "boolean", { help: "Renders a notice bar at the top of every partner portal page." }),
+      f("announcement_text", "Announcement text", "string", { maxLength: 200 }),
+      f("announcement_href", "Announcement link", "url", { help: "Optional https:// or site-relative path." }),
+    ],
+  },
+  customer: {
+    home: [
+      f("hero_eyebrow", "Hero eyebrow", "string", { maxLength: 120 }),
+      f("hero_title", "Hero title", "string", { maxLength: 120, help: "Main heading on the customer account overview." }),
+      f("intro_text", "Intro text", "richtext", { maxLength: 400, help: "Shown under the heading, above the signed-in line. **bold** is the only markup." }),
+    ],
+  },
   system: {},
   api: {},
 };

@@ -1,5 +1,6 @@
 import { buildSystemPrompt } from "../ai/knowledge";
 import { assistantConfigured, openrouterChat, type ChatFn } from "../ai/openrouter";
+import { agentDenied, defaultAgentGate, helpdeskAgentId, type AgentGateFn, type AgentGateResult } from "../ai/agent-gate";
 import { fmt } from "../pricing";
 import { getRefundProvider, type RefundProvider } from "../payments/source";
 import { describeRental, type RentalResult } from "../rental-lookup";
@@ -18,12 +19,18 @@ import { HelpdeskError, type Actor, type Message, type Priority, type RefundReas
 import { notifyTicketReceived } from "../notifications";
 import { recordLog } from "../observability";
 
-export type Ctx = { repo: HelpdeskRepo; chat: ChatFn | null; mailer: Mailer | null; rentals: RentalDirectory; refunds: RefundProvider; now: () => Date; siteUrl: string };
+export type Ctx = { repo: HelpdeskRepo; chat: ChatFn | null; mailer: Mailer | null; rentals: RentalDirectory; refunds: RefundProvider; now: () => Date; siteUrl: string; agentGate?: AgentGateFn };
+
+/** Runs the fail-closed agent gate; a throwing stub counts as unverifiable → deny. */
+async function gateFor(c: Ctx, agentId: string): Promise<AgentGateResult> {
+  const fn = c.agentGate ?? defaultAgentGate;
+  try { return await fn(agentId); } catch { return agentDenied(agentId, "unavailable"); }
+}
 
 export async function defaultCtx(): Promise<Ctx | null> {
   const repo = await getRepo();
   if (!repo) return null;
-  return { repo, chat: assistantConfigured() ? openrouterChat : null, mailer: getMailer(), rentals: getRentalDirectory(), refunds: getRefundProvider(), now: () => new Date(), siteUrl: SITE.url };
+  return { repo, chat: assistantConfigured() ? openrouterChat : null, mailer: getMailer(), rentals: getRentalDirectory(), refunds: getRefundProvider(), now: () => new Date(), siteUrl: SITE.url, agentGate: defaultAgentGate };
 }
 
 type Staff = Extract<Actor, { kind: "staff" }>;
@@ -85,7 +92,7 @@ export async function createTicket(c: Ctx, input: NewTicketInput): Promise<{ tic
   trackServer({ name: "support_ticket_created", entityType: "ticket", entityId: ticket.number, props: { queue: cls.queue, requester_type: input.requesterType } });
   hdLog("ticket_created", { ticket: ticket.number, requesterType: input.requesterType, queue: cls.queue, priority: cls.priority });
 
-  const decision = await triage(ticket, input.description, cls, { chat: c.chat, link: ticketLink(c, ticket) }).catch(() => null);
+  const decision = await triage(ticket, input.description, cls, { chat: c.chat, link: ticketLink(c, ticket), agentGate: c.agentGate }).catch(() => null);
   const d = decision ?? { reply: "", kind: "system" as const, aiState: "needs_human" as const, summary: null };
   if (d.reply) await c.repo.addMessage({ ticketId: ticket.id, authorType: d.kind === "ai" ? "ai" : "system", authorId: null, authorName: d.kind === "ai" ? "Zapnivo Assistant" : "Zapnivo", internal: false, body: d.reply });
   if (d.summary) await c.repo.addMessage({ ticketId: ticket.id, authorType: "ai", authorId: null, authorName: "AI triage", internal: true, body: `Summary for agent: ${d.summary}` });
@@ -118,7 +125,7 @@ export async function requesterMessage(c: Ctx, actor: Actor, number: string, bod
   if (t.aiState === "ai_active" && t.requesterType === "customer") {
     const thread = await c.repo.listMessages(t.id);
     const aiTurns = thread.filter((m) => m.authorType === "ai").length;
-    const r = aiTurns >= 3 ? { reply: "", kind: "system" as const, aiState: "needs_human" as const } : await followUp(t, thread, { chat: c.chat });
+    const r = aiTurns >= 3 ? { reply: "", kind: "system" as const, aiState: "needs_human" as const } : await followUp(t, thread, { chat: c.chat, agentGate: c.agentGate });
     const reply = r.reply || HANDOFF_MESSAGE;
     await c.repo.addMessage({ ticketId: t.id, authorType: r.kind === "ai" ? "ai" : "system", authorId: null, authorName: r.kind === "ai" ? "Zapnivo Assistant" : "Zapnivo", internal: false, body: reply });
     await audit(c, t.id, { kind: "ai" }, "ai_follow_up", { aiState: r.aiState });
@@ -197,6 +204,13 @@ export async function aiDraft(c: Ctx, actor: Actor, number: string): Promise<{ t
   staffOnly(actor);
   if (!c.chat) throw new HelpdeskError("unavailable", "The AI assistant isn't configured (OPENROUTER_API_KEY).");
   const t = await must(c, number);
+  // FAIL-CLOSED: verify the agent is enabled/authorizable BEFORE any private
+  // data retrieval (thread messages, rental records) or model call. Denied →
+  // honest staff-facing error; unverifiable → warning event via authorizeAgent.
+  const gate = await gateFor(c, helpdeskAgentId(t.requesterType));
+  if (!gate.allowed) {
+    throw new HelpdeskError("unavailable", "The AI assistant is unavailable for this ticket right now. Please try again later or write the reply manually.");
+  }
   const thread = await c.repo.listMessages(t.id, { includeInternal: true });
   let ctx = "No rental reference on this ticket.";
   if (t.rentalRef) {

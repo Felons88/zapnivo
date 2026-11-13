@@ -42,10 +42,41 @@ describe("system role → permission matrix", () => {
     expect(roleCan("viewer", "system.changes.decide")).toBe(false);
   });
 
-  it("sysadmin and breakglass get everything", () => {
+  it("sysadmin gets everything; breakglass gets everything EXCEPT emergency.approve", () => {
     for (const p of SYSTEM_PERMISSIONS) {
       expect(roleCan("sysadmin", p)).toBe(true);
-      expect(roleCan("breakglass", p)).toBe(true);
+    }
+    for (const p of SYSTEM_PERMISSIONS) {
+      if (p === "system.emergency.approve") {
+        expect(roleCan("breakglass", p)).toBe(false);
+      } else {
+        expect(roleCan("breakglass", p)).toBe(true);
+      }
+    }
+  });
+
+  it("emergency permission matrix", () => {
+    const P = (r: SystemRole, p: SystemPermission) => roleCan(r, p);
+    // view → every system role
+    for (const r of SYSTEM_ROLES) expect(P(r, "system.emergency.view")).toBe(true);
+    // request → developer/engineer/hardware/security/sysadmin/breakglass (not viewer)
+    expect(P("viewer", "system.emergency.request")).toBe(false);
+    for (const r of ["developer", "engineer", "hardware", "security", "sysadmin", "breakglass"] as const) {
+      expect(P(r, "system.emergency.request")).toBe(true);
+    }
+    // execute → security/sysadmin/breakglass only
+    for (const r of ["security", "sysadmin", "breakglass"] as const) {
+      expect(P(r, "system.emergency.execute")).toBe(true);
+    }
+    for (const r of ["viewer", "developer", "engineer", "hardware"] as const) {
+      expect(P(r, "system.emergency.execute")).toBe(false);
+    }
+    // approve → sysadmin/security ONLY (breakglass excluded for SoD)
+    expect(P("sysadmin", "system.emergency.approve")).toBe(true);
+    expect(P("security", "system.emergency.approve")).toBe(true);
+    expect(P("breakglass", "system.emergency.approve")).toBe(false);
+    for (const r of ["viewer", "developer", "engineer", "hardware"] as const) {
+      expect(P(r, "system.emergency.approve")).toBe(false);
     }
   });
 

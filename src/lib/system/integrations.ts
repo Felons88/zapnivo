@@ -4,8 +4,11 @@ import { stripeMode } from "@/lib/payments/readiness";
 import { backendConfigured } from "@/lib/supabase";
 import { smsConfigured } from "@/lib/sms";
 import { assistantConfigured } from "@/lib/ai/openrouter";
-import { mailerConfigured } from "@/lib/helpdesk/mailer";
 import { scrub } from "@/lib/observability";
+import {
+  githubConfigured, parseGithubRepo, vercelConfigured,
+  getGithubRepo, listVercelDeployments,
+} from "@/lib/system/deploy-provider";
 
 /**
  * Integration registry + credential metadata for the system console.
@@ -30,11 +33,17 @@ export type IntegrationProvider = {
   /** Env var NAMES that gate this provider (values are never read into responses). */
   envVars: readonly string[];
   configured: () => boolean;
-  /** Coarse mode derived from key prefixes only — never the key itself. */
+  /** Coarse mode derived from key prefixes / non-secret config only. */
   mode: () => string;
+  /** Human-readable webhook/inbound-endpoint state, or null when not applicable. */
+  webhook?: () => string | null;
 };
 
 const env = (name: string) => Boolean(process.env[name]);
+const githubRepoLabel = () => {
+  const r = parseGithubRepo();
+  return r ? `${r.owner}/${r.repo}` : "none";
+};
 
 export const INTEGRATION_PROVIDERS: readonly IntegrationProvider[] = [
   {
@@ -45,6 +54,7 @@ export const INTEGRATION_PROVIDERS: readonly IntegrationProvider[] = [
     envVars: ["STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "STRIPE_TAX_ENABLED"],
     configured: () => stripeConfigured(),
     mode: () => stripeMode(),
+    webhook: () => (isStripeWebhookConfigured() ? "webhook signing secret set" : "webhook signing secret MISSING — events will fail verification"),
   },
   {
     id: "supabase",
@@ -57,16 +67,23 @@ export const INTEGRATION_PROVIDERS: readonly IntegrationProvider[] = [
   },
   {
     id: "brevo",
-    name: "Transactional email (Brevo/Resend)",
+    name: "Brevo transactional email",
     category: "messaging",
-    purpose: "Outbound customer/staff email via Brevo SMTP API, Resend fallback (src/lib/helpdesk/mailer.ts).",
-    envVars: ["BREVO_API_KEY", "RESEND_API_KEY", "SUPPORT_FROM_EMAIL"],
-    configured: () => mailerConfigured(),
-    mode: () => {
-      if (process.env.BREVO_API_KEY) return "brevo";
-      if (process.env.RESEND_API_KEY) return "resend";
-      return "none";
-    },
+    purpose: "Primary outbound customer/staff email via the Brevo API (src/lib/helpdesk/mailer.ts prefers Brevo when BREVO_API_KEY is set).",
+    envVars: ["BREVO_API_KEY", "SUPPORT_FROM_EMAIL"],
+    configured: () => env("BREVO_API_KEY"),
+    mode: () => "brevo",
+    webhook: () => (env("EMAIL_INBOUND_SECRET") ? "inbound email webhook secret set" : "inbound email webhook NOT configured (EMAIL_INBOUND_SECRET missing)"),
+  },
+  {
+    id: "resend",
+    name: "Resend email (fallback)",
+    category: "messaging",
+    purpose: "Fallback mailer when BREVO_API_KEY is unset (src/lib/helpdesk/mailer.ts).",
+    envVars: ["RESEND_API_KEY", "SUPPORT_FROM_EMAIL"],
+    configured: () => env("RESEND_API_KEY"),
+    mode: () => "resend",
+    webhook: () => null,
   },
   {
     id: "twilio",
@@ -76,6 +93,7 @@ export const INTEGRATION_PROVIDERS: readonly IntegrationProvider[] = [
     envVars: ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM_NUMBER"],
     configured: () => smsConfigured(),
     mode: () => "live",
+    webhook: () => "inbound SMS + delivery-status webhooks (sender-number ACL; no signing secret)",
   },
   {
     id: "openrouter",
@@ -85,24 +103,27 @@ export const INTEGRATION_PROVIDERS: readonly IntegrationProvider[] = [
     envVars: ["OPENROUTER_API_KEY", "OPENROUTER_MODEL"],
     configured: () => assistantConfigured(),
     mode: () => process.env.OPENROUTER_MODEL ?? "unknown",
+    webhook: () => null,
   },
   {
     id: "github",
     name: "GitHub",
     category: "scm",
-    purpose: "Source control. The app does not call the GitHub API — no token is used at runtime.",
-    envVars: [],
-    configured: () => false,
-    mode: () => "none",
+    purpose: "Source control + deploy-trigger API (src/lib/system/deploy-provider.ts: deployments, commits, PRs, check runs).",
+    envVars: ["GITHUB_TOKEN", "GITHUB_REPO", "GITHUB_DEPLOY_REFS"],
+    configured: () => githubConfigured(),
+    mode: () => githubRepoLabel(),
+    webhook: () => null,
   },
   {
     id: "vercel",
     name: "Vercel",
     category: "hosting",
-    purpose: "Hosting platform. Runtime env (VERCEL_ENV/URL/GIT_COMMIT_SHA) is platform-injected; no API token is configured, so deployments cannot be queried.",
-    envVars: [],
-    configured: () => false,
-    mode: () => (process.env.VERCEL_ENV ?? "none"),
+    purpose: "Hosting platform + deployments API (src/lib/system/deploy-provider.ts). Runtime env (VERCEL_ENV/URL/GIT_COMMIT_SHA) is platform-injected.",
+    envVars: ["VERCEL_TOKEN", "VERCEL_PROJECT_ID", "VERCEL_TEAM_ID"],
+    configured: () => vercelConfigured(),
+    mode: () => process.env.VERCEL_ENV ?? "none",
+    webhook: () => null,
   },
   {
     id: "kiosk_gateway",
@@ -112,8 +133,29 @@ export const INTEGRATION_PROVIDERS: readonly IntegrationProvider[] = [
     envVars: ["KIOSK_INGEST_SECRET"],
     configured: () => env("KIOSK_INGEST_SECRET"),
     mode: () => (env("KIOSK_INGEST_SECRET") ? "ingest_secret" : "none"),
+    webhook: () => (env("KIOSK_INGEST_SECRET") ? "device ingest bearer configured" : null),
+  },
+  {
+    id: "uptime",
+    name: "Uptime & observability",
+    category: "hosting",
+    purpose: "Internal synthetic uptime probes (/api/cron/uptime → uptime_checks) and cron/alert telemetry — no external SaaS dependency.",
+    envVars: ["CRON_SECRET"],
+    configured: () => backendConfigured(),
+    mode: () => "internal",
+    webhook: () => (env("CRON_SECRET") ? "cron endpoints authorized via CRON_SECRET" : "CRON_SECRET missing — scheduled probes cannot authenticate"),
   },
 ];
+
+export type EnvPresence = { name: string; set: boolean };
+
+export type LastHealthCheck = {
+  status: HealthStatus;
+  checkedAt: string;
+  latencyMs: number | null;
+  /** Scrubbed, capped failure/ok detail from the last check (never secrets). */
+  detail: string | null;
+};
 
 export type IntegrationRow = {
   id: string;
@@ -121,11 +163,15 @@ export type IntegrationRow = {
   category: IntegrationProvider["category"];
   purpose: string;
   envVars: readonly string[];
+  /** Per-env-var presence — partial configuration is visible per credential. */
+  envPresence: EnvPresence[];
   configured: boolean;
   mode: string;
+  /** Webhook / inbound-endpoint state, or null when not applicable. */
+  webhook: string | null;
   status: IntegrationStatus;
-  /** Live health checks are on-demand via GET /api/system/integrations/[id]/health. */
-  lastHealthCheck: null;
+  /** Latest on-demand health check from audit (populated by listIntegrationStatus). */
+  lastHealthCheck: LastHealthCheck | null;
 };
 
 /** Registry listing — env presence only, no live calls, no secret material. */
@@ -138,13 +184,50 @@ export function listIntegrations(): IntegrationRow[] {
       category: p.category,
       purpose: p.purpose,
       envVars: p.envVars,
+      envPresence: p.envVars.map((name) => ({ name, set: env(name) })),
       configured,
       mode: p.mode(),
+      webhook: p.webhook ? p.webhook() : null,
       // Without a live check we can only claim 'unconfigured' or 'unknown'.
       status: configured ? "unknown" : "unconfigured",
       lastHealthCheck: null,
     };
   });
+}
+
+/**
+ * Registry listing enriched with the LAST on-demand health check per provider,
+ * recovered from system_audit_events (action 'integration.health_checked').
+ * Best-effort: audit read failures leave lastHealthCheck null.
+ */
+export async function listIntegrationStatus(db: SupabaseClient | null): Promise<IntegrationRow[]> {
+  const rows = listIntegrations();
+  if (!db) return rows;
+  try {
+    const { data } = await db
+      .from("system_audit_events")
+      .select("resource,detail,created_at")
+      .eq("action", "integration.health_checked")
+      .order("created_at", { ascending: false })
+      .limit(500);
+    const latest = new Map<string, LastHealthCheck>();
+    for (const r of (data ?? []) as { resource: string; detail: Record<string, unknown> | null; created_at: string }[]) {
+      if (!r.resource.startsWith("integration:")) continue;
+      const id = r.resource.slice("integration:".length);
+      if (latest.has(id)) continue; // rows are newest-first
+      const d = r.detail ?? {};
+      const status = typeof d.status === "string" ? (d.status as HealthStatus) : "unknown";
+      latest.set(id, {
+        status,
+        checkedAt: r.created_at,
+        latencyMs: typeof d.latencyMs === "number" ? d.latencyMs : null,
+        detail: typeof d.detail === "string" ? d.detail.slice(0, 200) : null,
+      });
+    }
+    return rows.map((row) => ({ ...row, lastHealthCheck: latest.get(row.id) ?? null }));
+  } catch {
+    return rows;
+  }
 }
 
 export function getProvider(id: string): IntegrationProvider | null {
@@ -225,21 +308,27 @@ export async function checkIntegrationHealth(id: string, db: SupabaseClient | nu
       return { ...r, provider: id, checkedAt };
     }
     case "brevo": {
-      // Reuses the same endpoints/credentials as src/lib/helpdesk/mailer.ts.
-      const useBrevo = Boolean(process.env.BREVO_API_KEY);
+      // Same endpoint/credential as src/lib/helpdesk/mailer.ts (Brevo branch).
       const r = await timed(async () => {
-        const res = useBrevo
-          ? await fetch("https://api.brevo.com/v3/account", {
-              signal: AbortSignal.timeout(CHECK_TIMEOUT_MS),
-              headers: { "api-key": process.env.BREVO_API_KEY!, accept: "application/json" },
-            })
-          : await fetch("https://api.resend.com/domains", {
-              signal: AbortSignal.timeout(CHECK_TIMEOUT_MS),
-              headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}` },
-            });
+        const res = await fetch("https://api.brevo.com/v3/account", {
+          signal: AbortSignal.timeout(CHECK_TIMEOUT_MS),
+          headers: { "api-key": process.env.BREVO_API_KEY!, accept: "application/json" },
+        });
         return res.ok
-          ? { ok: true, detail: `GET account info ok via ${useBrevo ? "brevo" : "resend"}` }
-          : { ok: false, detail: `${useBrevo ? "brevo" : "resend"} responded ${res.status}` };
+          ? { ok: true, detail: "GET /v3/account ok via brevo" }
+          : { ok: false, detail: `brevo responded ${res.status}` };
+      });
+      return { ...r, provider: id, checkedAt };
+    }
+    case "resend": {
+      const r = await timed(async () => {
+        const res = await fetch("https://api.resend.com/domains", {
+          signal: AbortSignal.timeout(CHECK_TIMEOUT_MS),
+          headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}` },
+        });
+        return res.ok
+          ? { ok: true, detail: "GET /domains ok via resend" }
+          : { ok: false, detail: `resend responded ${res.status}` };
       });
       return { ...r, provider: id, checkedAt };
     }
@@ -280,9 +369,38 @@ export async function checkIntegrationHealth(id: string, db: SupabaseClient | nu
       return done(n > 0 ? "operational" : "unknown",
         n > 0 ? `${n} device event(s) in last 24h` : "ingest secret set but no device_events in last 24h (idle fleet or silent devices)");
     }
+    case "github": {
+      const r = await timed(async () => {
+        const res = await getGithubRepo();
+        if (!res.configured) return { ok: false, detail: "credentials incomplete" };
+        if (!res.ok) return { ok: false, detail: `github api ${res.status}: ${scrub(res.error, 120)}` };
+        return { ok: true, detail: `GET repo ${res.data.fullName ?? githubRepoLabel()} ok` };
+      });
+      return { ...r, provider: id, checkedAt };
+    }
+    case "vercel": {
+      const r = await timed(async () => {
+        const res = await listVercelDeployments(1);
+        if (!res.configured) return { ok: false, detail: "credentials incomplete" };
+        if (!res.ok) return { ok: false, detail: `vercel api ${res.status}: ${scrub(res.error, 120)}` };
+        return { ok: true, detail: `GET deployments ok (project ${process.env.VERCEL_PROJECT_ID ? "set" : "unset"})` };
+      });
+      return { ...r, provider: id, checkedAt };
+    }
+    case "uptime": {
+      if (!db) return done("unknown", "service client unavailable — cannot read uptime_checks");
+      const dayAgo = new Date(Date.now() - 24 * 3600_000).toISOString();
+      const { count, error } = await db
+        .from("uptime_checks")
+        .select("id", { count: "exact", head: true })
+        .gte("checked_at", dayAgo);
+      if (error) return done("unknown", "uptime_checks not queryable — run migrations / check cron");
+      const n = count ?? 0;
+      const cronAuth = env("CRON_SECRET") ? "CRON_SECRET set" : "CRON_SECRET MISSING";
+      return done(n > 0 ? "operational" : "degraded",
+        `${n} uptime probe(s) in last 24h · ${cronAuth}`);
+    }
     default:
-      // github / vercel: configured() is always false today, so this is only
-      // reachable if a token env is added later without a health client.
       return done("requires_credentials", "no verified API client for this provider — live check not performed");
   }
 }
@@ -309,13 +427,17 @@ export const SECRET_REGISTRY: readonly SecretMeta[] = [
   { provider: "supabase", envVar: "NEXT_PUBLIC_SUPABASE_ANON_KEY", purpose: "Supabase anon/publishable key (browser-safe by design)", rotation: "Supabase Dashboard → Project Settings → API → roll anon key; update Vercel env and redeploy.", configured: has("NEXT_PUBLIC_SUPABASE_ANON_KEY") },
   { provider: "supabase", envVar: "SUPABASE_SERVICE_ROLE_KEY", purpose: "Supabase service-role key — full DB access, server only", rotation: "Supabase Dashboard → Project Settings → API → roll service_role key; update Vercel env and redeploy immediately, then verify all server routes.", configured: has("SUPABASE_SERVICE_ROLE_KEY") },
   { provider: "brevo", envVar: "BREVO_API_KEY", purpose: "Brevo transactional email API key", rotation: "Brevo Dashboard → SMTP & API → API Keys → generate new key, update Vercel env, redeploy, revoke old key.", configured: has("BREVO_API_KEY") },
-  { provider: "brevo", envVar: "RESEND_API_KEY", purpose: "Resend API key (fallback mailer when BREVO_API_KEY unset)", rotation: "Resend Dashboard → API Keys → create new key, update Vercel env, redeploy, revoke old key.", configured: has("RESEND_API_KEY") },
-  { provider: "brevo", envVar: "SUPPORT_FROM_EMAIL", purpose: "Verified sender address for outbound mail", rotation: "Not a secret — change only to another verified sender/domain; update Vercel env and redeploy.", configured: has("SUPPORT_FROM_EMAIL") },
+  { provider: "resend", envVar: "RESEND_API_KEY", purpose: "Resend API key (fallback mailer when BREVO_API_KEY unset)", rotation: "Resend Dashboard → API Keys → create new key, update Vercel env, redeploy, revoke old key.", configured: has("RESEND_API_KEY") },
+  { provider: "platform", envVar: "SUPPORT_FROM_EMAIL", purpose: "Verified sender address for outbound mail (shared by Brevo + Resend)", rotation: "Not a secret — change only to another verified sender/domain; update Vercel env and redeploy.", configured: has("SUPPORT_FROM_EMAIL") },
   { provider: "twilio", envVar: "TWILIO_ACCOUNT_SID", purpose: "Twilio account SID", rotation: "SID identifies the account; rotation = migrate to a new Twilio account/subaccount, then update SID+token+number together.", configured: has("TWILIO_ACCOUNT_SID") },
   { provider: "twilio", envVar: "TWILIO_AUTH_TOKEN", purpose: "Twilio auth token (signs webhook callbacks)", rotation: "Twilio Console → Account → Auth Token → request secondary token, update Vercel env, redeploy, then promote/rollback per Twilio docs.", configured: has("TWILIO_AUTH_TOKEN") },
   { provider: "twilio", envVar: "TWILIO_FROM_NUMBER", purpose: "Twilio sender phone number", rotation: "Not a secret — change to another owned/verified number; update Vercel env and redeploy.", configured: has("TWILIO_FROM_NUMBER") },
   { provider: "openrouter", envVar: "OPENROUTER_API_KEY", purpose: "OpenRouter API key for AI assistants", rotation: "OpenRouter Dashboard → Keys → create new key with credit limit, update Vercel env, redeploy, revoke old key.", configured: has("OPENROUTER_API_KEY") },
   { provider: "openrouter", envVar: "OPENROUTER_MODEL", purpose: "Default chat model slug", rotation: "Not a secret — config value; update Vercel env and redeploy.", configured: has("OPENROUTER_MODEL") },
+  { provider: "github", envVar: "GITHUB_TOKEN", purpose: "GitHub token for deploy-center API (deployments, commits, PRs, check runs)", rotation: "GitHub → Settings → Developer settings → Fine-grained tokens → issue new token scoped to the repo, update Vercel env, redeploy, revoke old token.", configured: has("GITHUB_TOKEN") },
+  { provider: "github", envVar: "GITHUB_REPO", purpose: "GitHub repo slug owner/name used by deploy-center calls", rotation: "Not a secret — config value; update Vercel env and redeploy.", configured: has("GITHUB_REPO") },
+  { provider: "vercel", envVar: "VERCEL_TOKEN", purpose: "Vercel API token for deploy-center API (deployments, events, promote)", rotation: "Vercel → Account Settings → Tokens → create new token scoped to the project/team, update Vercel env, redeploy, revoke old token.", configured: has("VERCEL_TOKEN") },
+  { provider: "vercel", envVar: "VERCEL_PROJECT_ID", purpose: "Vercel project id gating deploy API calls", rotation: "Not a secret — config value from the Vercel project settings; update Vercel env and redeploy.", configured: has("VERCEL_PROJECT_ID") },
   { provider: "kiosk_gateway", envVar: "KIOSK_INGEST_SECRET", purpose: "Bearer secret for device event ingest + kiosk manifest/playback", rotation: "Generate a new random secret, update Vercel env AND provision it to every kiosk/gateway, redeploy — devices with the old secret will be rejected until updated.", configured: has("KIOSK_INGEST_SECRET") },
   { provider: "platform", envVar: "CRON_SECRET", purpose: "Bearer secret authorizing /api/cron/* jobs", rotation: "Generate a new random secret, update Vercel env and any external scheduler (cron-job.org/UptimeRobot) that calls the routes, redeploy.", configured: has("CRON_SECRET") },
   { provider: "platform", envVar: "HELPDESK_SECRET", purpose: "Signs customer helpdesk thread access tokens", rotation: "Generate a new random secret, update Vercel env, redeploy — outstanding customer magic links invalidate (they re-request access).", configured: has("HELPDESK_SECRET") },

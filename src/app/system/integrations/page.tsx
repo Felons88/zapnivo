@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { SystemGate } from "@/components/SystemGate";
 import { serviceClient } from "@/lib/supabase";
 import { getSystemOverview } from "@/lib/system/overview";
-import { listIntegrations } from "@/lib/system/integrations";
+import { listIntegrationStatus } from "@/lib/system/integrations";
 import { HealthButtons } from "./HealthButtons";
 
 export const metadata: Metadata = { title: "Integrations" };
@@ -13,12 +13,14 @@ const STATUS_TONE: Record<string, string> = {
   unconfigured: "bg-white/10 text-slate-300 ring-white/15",
   unknown: "bg-amber-400/15 text-amber-300 ring-amber-400/30",
   degraded: "bg-red-500/15 text-red-300 ring-red-400/30",
+  requires_credentials: "bg-white/10 text-slate-300 ring-white/15",
+  not_verified: "bg-white/10 text-slate-300 ring-white/15",
 };
 
 export default async function IntegrationsPage() {
   const db = serviceClient();
   const o = await getSystemOverview(db);
-  const integrations = listIntegrations();
+  const integrations = await listIntegrationStatus(db);
 
   return (
     <SystemGate perm="system.integrations.view">
@@ -42,7 +44,8 @@ export default async function IntegrationsPage() {
               <tr className="border-b border-white/[0.08] bg-white/[0.06] font-mono text-[11px] uppercase tracking-wider text-slate-400">
                 <th className="px-4 py-3">Provider</th>
                 <th className="px-4 py-3">Purpose</th>
-                <th className="px-4 py-3">Env vars</th>
+                <th className="px-4 py-3">Credentials</th>
+                <th className="px-4 py-3">Webhooks</th>
                 <th className="px-4 py-3">Mode</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Last check</th>
@@ -59,24 +62,33 @@ export default async function IntegrationsPage() {
                   <td className="max-w-[280px] px-4 py-3 text-xs text-slate-400">{i.purpose}</td>
                   <td className="px-4 py-3">
                     {i.envVars.length === 0 ? (
-                      <span className="font-mono text-[11px] text-slate-500">none (no runtime client)</span>
+                      <span className="font-mono text-[11px] text-slate-500">none required</span>
                     ) : (
                       <div className="flex flex-wrap gap-1">
-                        {i.envVars.map((v) => (
-                          <span key={v} className={`rounded px-1.5 py-0.5 font-mono text-[10px] ring-1 ${i.configured ? "bg-lime/10 text-lime ring-lime/25" : "bg-white/5 text-slate-500 ring-white/10"}`} title={v}>
-                            {v}
+                        {i.envPresence.map((v) => (
+                          <span key={v.name} className={`rounded px-1.5 py-0.5 font-mono text-[10px] ring-1 ${v.set ? "bg-lime/10 text-lime ring-lime/25" : "bg-white/5 text-slate-500 ring-white/10 line-through decoration-red-400/40"}`} title={v.name}>
+                            {v.name}
                           </span>
                         ))}
                       </div>
                     )}
                   </td>
+                  <td className="max-w-[200px] px-4 py-3 text-[11px] text-slate-400">{i.webhook ?? <span className="text-slate-600">—</span>}</td>
                   <td className="px-4 py-3 font-mono text-xs">{i.mode}</td>
                   <td className="px-4 py-3">
                     <span className={`rounded-full px-2.5 py-0.5 font-mono text-[11px] font-bold ring-1 ${STATUS_TONE[i.status] ?? STATUS_TONE.unknown}`}>
                       {i.status}
                     </span>
                   </td>
-                  <td className="px-4 py-3 font-mono text-xs text-slate-400">never</td>
+                  <td className="px-4 py-3 font-mono text-xs text-slate-400">
+                    {i.lastHealthCheck ? (
+                      <span title={i.lastHealthCheck.detail ?? undefined}>
+                        {new Date(i.lastHealthCheck.checkedAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "UTC" })}Z
+                        {" · "}{i.lastHealthCheck.status}
+                        {i.lastHealthCheck.latencyMs != null ? ` · ${i.lastHealthCheck.latencyMs}ms` : ""}
+                      </span>
+                    ) : "never"}
+                  </td>
                   <td className="px-4 py-3 text-right"><HealthButtons id={i.id} configured={i.configured} /></td>
                 </tr>
               ))}

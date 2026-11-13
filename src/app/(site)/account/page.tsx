@@ -8,6 +8,7 @@ import { signAccess } from "@/lib/helpdesk/access";
 import { subUrl } from "@/lib/site";
 import { fetchSavedCard, lastSignInAt, shapeSessionActivity, type SavedCard, type SessionActivity } from "@/lib/customer-privacy";
 import { serviceClient } from "@/lib/supabase";
+import { getPublishedContent, text as cmsText } from "@/lib/site-content";
 import { PrivacyPanel } from "./PrivacyPanel";
 import { SignOutButton } from "./SignOutButton";
 import { SmsToggle } from "./SmsToggle";
@@ -18,6 +19,15 @@ export const metadata: Metadata = { title: "Your rentals", robots: { index: fals
 const SELECT = "id,reference,state,started_at,dispensed_at,returned_at,non_return_deadline,created_at,kiosks!rentals_kiosk_id_fkey(station_id,venues(name,city)),payments(state,amount_captured_cents,amount_refunded_cents,stripe_payment_intent_id)";
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short", timeZone: "America/Chicago" }) : "Not yet");
 const UUID_RE = /^[0-9a-f-]{36}$/i;
+
+/** Markdown-lite renderer for CMS richtext fields: **bold** only, everything else plain text. */
+function rich(text: string): React.ReactNode {
+  return text.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
+    part.startsWith("**") && part.endsWith("**") && part.length > 4
+      ? <strong key={i}>{part.slice(2, -2)}</strong>
+      : part,
+  );
+}
 
 type PrivacyState = {
   smsOptIn: boolean;
@@ -112,9 +122,20 @@ export default async function Account() {
 
   const cardLabel = privacy.card ? `${privacy.card.brand} •••• ${privacy.card.last4}` : null;
 
+  // CMS-overridable hero copy (customer/home) — cached read, falls back to defaults.
+  const cms = await getPublishedContent("customer", "home");
+  const hero = {
+    eyebrow: cmsText(cms, "hero_eyebrow", "Your account"),
+    title: cmsText(cms, "hero_title", "Your rentals."),
+    intro: cmsText(cms, "intro_text", ""),
+  };
+
   return (
     <>
-      <PageHero eyebrow="Your account" title={<>Your rentals.</>}><p>Signed in as {user.email}.</p></PageHero>
+      <PageHero eyebrow={hero.eyebrow} title={hero.title}>
+        {hero.intro !== "" && <p>{rich(hero.intro)}</p>}
+        <p>Signed in as {user.email}.</p>
+      </PageHero>
       <Section className="pt-14">
         <div className="mx-auto max-w-3xl space-y-6">
           {console_ ? (

@@ -274,16 +274,17 @@ describe("executeEmergencyOp — maintenance_banner", () => {
     const { db } = dbWithElevation({ system_feature_flags: flags });
     const res = await executeEmergencyOp(db, user(), actor, base({
       op: "maintenance_banner", confirm: "maintenance_banner",
-      banner_enabled: true, banner_message: "Scheduled maintenance 02:00–04:00 UTC", banner_minutes: 120,
+      banner_enabled: true, banner_message: "Scheduled maintenance 02:00–04:00 UTC", banner_minutes: 120, banner_severity: "warning",
     }));
     expect(res).toMatchObject({ ok: true, op: "maintenance_banner" });
     expect(res.ok && res.expiresAt).toBeTruthy();
     const up = flags._upsert as Record<string, unknown>;
     expect(up.key).toBe("maintenance.notice");
     expect(up.enabled).toBe(true);
-    const prereq = up.prerequisites as { expires_at: string; message: string };
+    const prereq = up.prerequisites as { expires_at: string; message: string; severity: string };
     expect(Date.parse(prereq.expires_at)).toBeGreaterThan(Date.now());
     expect(prereq.message).toContain("Scheduled maintenance");
+    expect(prereq.severity).toBe("warning");
 
     // Clear path.
     const res2 = await executeEmergencyOp(db, user(), actor, base({
@@ -308,7 +309,7 @@ describe("getMaintenanceNotice / listEmergencyActions", () => {
     const future = new Date(Date.now() + 60_000).toISOString();
     const flags = fakeTable({ singles: [{ data: { enabled: true, prerequisites: { expires_at: future, message: "Down for upgrades" } }, error: null }] });
     const { db } = fakeDb({ system_feature_flags: flags });
-    expect(await getMaintenanceNotice(db)).toEqual({ message: "Down for upgrades", expiresAt: future });
+    expect(await getMaintenanceNotice(db)).toEqual({ message: "Down for upgrades", expiresAt: future, severity: "info" });
 
     const expired = fakeTable({ singles: [{ data: { enabled: true, prerequisites: { expires_at: "2020-01-01T00:00:00Z", message: "old" } }, error: null }] });
     const { db: d2 } = fakeDb({ system_feature_flags: expired });

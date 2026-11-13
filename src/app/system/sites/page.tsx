@@ -31,7 +31,9 @@ export default async function SitesPage() {
             CMS for the public web properties. Only fields the live render path actually consumes are
             editable (whitelist in <code className="font-mono text-xs">src/lib/system/site-cms.ts</code>).
             Drafts never affect the live site until published; publishes and schedules require step-up
-            verification. Host health is not probed here — see deployments for release status.
+            verification. Host health is not probed here — see deployments for release status.{" "}
+            <Link href="/system/sites/ops" className="text-lime underline">Site ops</Link> covers maintenance
+            notices and redirect rules.
           </p>
         </div>
 

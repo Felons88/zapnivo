@@ -1,6 +1,6 @@
 import { buildSystemPrompt } from "../ai/knowledge";
 import type { ChatFn } from "../ai/openrouter";
-import { helpdeskAgentId, isAgentEnabled, type AgentEnabledFn } from "../ai/agent-gate";
+import { helpdeskAgentId, agentDenied, defaultAgentGate, type AgentGateFn, type AgentGateResult } from "../ai/agent-gate";
 import { looksLikeCardNumber } from "../validation";
 import type { AiState, Message, Priority, Queue, RequesterType, Ticket } from "./types";
 
@@ -103,14 +103,20 @@ export type TriageDecision = { reply: string; kind: "ai" | "system"; aiState: Ai
 const autosendOn = (deps: { autosend?: boolean }): boolean =>
   deps.autosend !== undefined ? deps.autosend : process.env.HELPDESK_AI_AUTOSEND !== "0";
 
-/** Kill-switch check against ai_agents.enabled; fails open (isAgentEnabled logs lookup errors). */
-async function agentOn(ticket: Pick<Ticket, "requesterType">, deps: { agentEnabled?: AgentEnabledFn }): Promise<boolean> {
-  const fn = deps.agentEnabled ?? ((id: string) => isAgentEnabled(id));
-  try { return await fn(helpdeskAgentId(ticket.requesterType)); } catch { return true; }
+/**
+ * FAIL-CLOSED kill-switch check against ai_agents.enabled. authorizeAgent does
+ * a fresh DB read per call; disabled → quiet deny, unverifiable (DB error,
+ * missing/malformed row) → warning event + deny. A throwing stub also denies.
+ */
+async function agentOn(ticket: Pick<Ticket, "requesterType">, deps: { agentGate?: AgentGateFn }): Promise<boolean> {
+  const fn = deps.agentGate ?? defaultAgentGate;
+  let g: AgentGateResult;
+  try { g = await fn(helpdeskAgentId(ticket.requesterType)); } catch { g = agentDenied(helpdeskAgentId(ticket.requesterType), "unavailable"); }
+  return g.allowed === true;
 }
 
 /** Decides what (if anything) is sent automatically for a brand-new ticket. */
-export async function triage(ticket: Ticket, firstMessage: string, c: Classification, deps: { chat: ChatFn | null; link: string; agentEnabled?: AgentEnabledFn; autosend?: boolean }): Promise<TriageDecision> {
+export async function triage(ticket: Ticket, firstMessage: string, c: Classification, deps: { chat: ChatFn | null; link: string; agentGate?: AgentGateFn; autosend?: boolean }): Promise<TriageDecision> {
   const ack = ackMessage(ticket.name, ticket.number, deps.link);
   if (c.safety) return { reply: SAFETY_MESSAGE, kind: "system", aiState: "needs_human", summary: "SAFETY REPORT: possible battery hazard. Contact the customer and arrange retrieval of the unit." };
   if (!deps.chat) return { reply: ack, kind: "system", aiState: "needs_human", summary: null };
@@ -130,7 +136,7 @@ export async function triage(ticket: Ticket, firstMessage: string, c: Classifica
 }
 
 /** Follow-up when a customer replies to an AI-handled ticket. */
-export async function followUp(ticket: Ticket, thread: Message[], deps: { chat: ChatFn | null; agentEnabled?: AgentEnabledFn; autosend?: boolean }): Promise<{ reply: string; kind: "ai" | "system"; aiState: AiState }> {
+export async function followUp(ticket: Ticket, thread: Message[], deps: { chat: ChatFn | null; agentGate?: AgentGateFn; autosend?: boolean }): Promise<{ reply: string; kind: "ai" | "system"; aiState: AiState }> {
   if (!deps.chat) return { reply: HANDOFF_MESSAGE, kind: "system", aiState: "needs_human" };
   // Autosend off or agent killed → a human takes over; don't spend a model call.
   if (!autosendOn(deps) || !(await agentOn(ticket, deps))) return { reply: HANDOFF_MESSAGE, kind: "system", aiState: "needs_human" };

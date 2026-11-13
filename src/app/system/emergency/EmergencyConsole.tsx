@@ -25,13 +25,13 @@ const OPS: { kind: OpKind; label: string; desc: string; danger: boolean }[] = [
  * surfaced honestly.
  */
 export function EmergencyConsole({
-  canManage,
+  canExecute,
   configured,
   devices,
   agents,
   pausableFlags,
 }: {
-  canManage: boolean;
+  canExecute: boolean;
   configured: boolean;
   devices: DeviceOption[];
   agents: AgentOption[];
@@ -45,6 +45,7 @@ export function EmergencyConsole({
   const [bannerOn, setBannerOn] = useState(true);
   const [bannerMessage, setBannerMessage] = useState("");
   const [bannerMinutes, setBannerMinutes] = useState(60);
+  const [bannerSeverity, setBannerSeverity] = useState<"info" | "warning" | "critical">("info");
   const [reason, setReason] = useState("");
   const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState(false);
@@ -67,6 +68,7 @@ export function EmergencyConsole({
       if (bannerOn) {
         body.banner_message = bannerMessage;
         body.banner_minutes = bannerMinutes;
+        body.banner_severity = bannerSeverity;
       }
     }
     try {
@@ -96,7 +98,7 @@ export function EmergencyConsole({
     : kind === "disable_ai_agent" ? Boolean(agentId)
     : kind === "maintenance_banner" ? (!bannerOn || bannerMessage.trim().length >= 10)
     : false;
-  const ready = canManage && configured && targetReady && reason.trim().length >= 10 && confirm === kind && !busy;
+  const ready = canExecute && configured && targetReady && reason.trim().length >= 10 && confirm === kind && !busy;
 
   return (
     <Card title="Execute scoped action" className="!p-0">
@@ -122,9 +124,9 @@ export function EmergencyConsole({
         {/* Form */}
         <div className="space-y-4 p-5">
           {!configured && <p className="text-sm text-amber-300">Backend not configured — emergency ops unavailable.</p>}
-          {!canManage && (
+          {!canExecute && (
             <p className="rounded-lg bg-amber-400/10 px-3 py-2 text-xs text-amber-200 ring-1 ring-amber-400/30">
-              Your role can view this page but cannot execute ops — requires <code className="font-mono">system.users.manage</code> (security / sysadmin / breakglass).
+              Your role can view this page but cannot execute ops — requires <code className="font-mono">system.emergency.execute</code> (security / sysadmin / breakglass).
             </p>
           )}
 
@@ -186,9 +188,17 @@ export function EmergencyConsole({
                     <input type="number" min={5} max={240} value={bannerMinutes} onChange={(e) => setBannerMinutes(Number(e.target.value))} className="w-20 rounded-lg border border-white/15 bg-black/30 px-2 py-1 font-mono text-xs text-slate-200 outline-none" />
                     minutes (5–240)
                   </label>
+                  <label className="flex items-center gap-3 text-[11px] text-slate-400">
+                    Severity
+                    <select value={bannerSeverity} onChange={(e) => setBannerSeverity(e.target.value as typeof bannerSeverity)} className="rounded-lg border border-white/15 bg-black/30 px-2 py-1 font-mono text-xs text-slate-200 outline-none">
+                      <option value="info">info</option>
+                      <option value="warning">warning</option>
+                      <option value="critical">critical</option>
+                    </select>
+                  </label>
                 </>
               )}
-              <p className="text-[10px] text-slate-500">Stored on the <code className="font-mono">maintenance.notice</code> feature flag with an expires_at payload. Flag rows are control-plane metadata — a public banner reader is not wired yet.</p>
+              <p className="text-[10px] text-slate-500">Stored on the <code className="font-mono">maintenance.notice</code> feature flag with an expires_at payload. Flag rows are control-plane metadata — the public site reads it via src/lib/maintenance-notice.ts (30s cache).</p>
             </div>
           )}
 

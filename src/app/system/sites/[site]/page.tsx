@@ -60,6 +60,17 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ sit
             })}
           </div>
         )}
+
+        <Link
+          href={`/system/sites/${site}/media`}
+          className="group flex items-center justify-between rounded-2xl border border-white/[0.08] bg-white/[0.05] p-5 transition-colors hover:border-lime/40"
+        >
+          <div>
+            <h2 className="font-display text-lg font-bold text-white group-hover:text-lime">Media library</h2>
+            <p className="mt-1 text-xs text-slate-400">Uploaded images for CMS image fields — validated, alt-text required, delete-blocked while referenced.</p>
+          </div>
+          <span className="font-mono text-[10px] text-slate-500">open →</span>
+        </Link>
       </div>
     </SystemGate>
   );

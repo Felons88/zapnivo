@@ -7,7 +7,7 @@ import { contextFor, retrieve, buildSystemPrompt } from "./knowledge";
 import { ACCOUNT_SYSTEM_NOTE, ACCOUNT_TOOLS, ACCOUNT_TOOL_NAMES, runAccountTool } from "./account-tools";
 import { openrouterChat, type ChatFn, type ChatMessage, type ToolDef } from "./openrouter";
 import { newTraceId, recordLog, traced } from "../observability";
-import { assistantAgentId, isAgentEnabled, type AgentEnabledFn } from "./agent-gate";
+import { assistantAgentId, agentDenied, defaultAgentGate, type AgentGateFn, type AgentGateResult } from "./agent-gate";
 import { scanInjection } from "../receptionist/injection";
 
 export type UserTurn = { role: "user" | "assistant"; content: string };
@@ -37,13 +37,28 @@ export function chicagoToUtc(date: string, time: string): Date {
   return new Date(guess - (asUtc - guess));
 }
 
-type Deps = { chat?: ChatFn; lookup?: (q: Parameters<typeof realLookup>[0], ip: string) => Promise<LookupOutcome>; agentEnabled?: AgentEnabledFn };
+type Deps = { chat?: ChatFn; lookup?: (q: Parameters<typeof realLookup>[0], ip: string) => Promise<LookupOutcome>; agentGate?: AgentGateFn };
 
-export async function runAssistant({ messages, ip, chat = openrouterChat, lookup = realLookup, actor = null, agentEnabled = isAgentEnabled }: { messages: UserTurn[]; ip: string; actor?: SessionUser | null } & Deps): Promise<AssistantResult> {
+/** Gate calls never throw into the assistant: a throwing stub is treated as unverifiable → deny. */
+async function checkGate(gate: AgentGateFn, agentId: string): Promise<AgentGateResult> {
+  try { return await gate(agentId); } catch { return agentDenied(agentId, "unavailable"); }
+}
+
+export async function runAssistant({ messages, ip, chat = openrouterChat, lookup = realLookup, actor = null, agentGate = defaultAgentGate }: { messages: UserTurn[]; ip: string; actor?: SessionUser | null } & Deps): Promise<AssistantResult> {
   const traceId = newTraceId();
   const log = (message: string, attrs?: Record<string, unknown>) =>
     recordLog("info", message, { service: "ai-assistant", route: "support/assistant", traceId, attrs });
   log("assistant_run", { authenticated: !!actor, role: actor?.role ?? null, turns: messages.length });
+
+  // FAIL-CLOSED authorization: fresh ai_agents read before ANY model call,
+  // tool call, or private-data retrieval. Disabled → quiet deny; unverifiable
+  // → warning event (recorded inside authorizeAgent) + graceful fallback.
+  const agentId = assistantAgentId(actor);
+  const gate = await checkGate(agentGate, agentId);
+  if (!gate.allowed) {
+    log("assistant_agent_denied", { agentId, reason: gate.reason });
+    return { reply: FALLBACK, rentals: [], sources: [] };
+  }
 
   const userText = messages.filter((m) => m.role === "user").map((m) => m.content).join("\n").toLowerCase();
   const lastUser = [...messages].reverse().find((m) => m.role === "user")?.content ?? "";
@@ -61,6 +76,14 @@ export async function runAssistant({ messages, ip, chat = openrouterChat, lookup
   for (const a of retrieve(lastUser)) sources.set(a.id, a.title);
 
   async function runTool(name: string, rawArgs: string): Promise<string> {
+    // Tool-layer enforcement: authorization is re-verified on EVERY tool call,
+    // so an agent disabled mid-session cannot keep using tools. A denial here
+    // returns a controlled error to the model — no data is retrieved.
+    const tg = await checkGate(agentGate, agentId);
+    if (!tg.allowed) {
+      log("assistant_tool_denied", { agentId, tool: name, reason: tg.reason });
+      return JSON.stringify({ error: "assistant_unavailable", note: "The assistant is temporarily unavailable." });
+    }
     let args: Record<string, string>;
     try { args = JSON.parse(rawArgs || "{}"); } catch { return JSON.stringify({ error: "Invalid arguments." }); }
 
@@ -119,17 +142,14 @@ export async function runAssistant({ messages, ip, chat = openrouterChat, lookup
     return finish(INJECTION_REFUSAL);
   }
 
-  // Kill switch: a disabled ai_agents row for this audience means no model call.
-  // isAgentEnabled fails open on lookup errors (logged inside); a thrown stub also fails open.
-  const agentId = assistantAgentId(actor);
-  let agentOn = true;
-  try { agentOn = await agentEnabled(agentId); } catch { agentOn = true; }
-  if (!agentOn) {
-    log("assistant_agent_disabled", { agentId });
-    return finish(FALLBACK);
-  }
-
   for (let i = 0; i < 4; i++) {
+    // Re-verify before EVERY model turn: an agent disabled mid-session stops
+    // immediately rather than finishing the tool loop.
+    const turnGate = await checkGate(agentGate, agentId);
+    if (!turnGate.allowed) {
+      log("assistant_agent_denied_midrun", { agentId, reason: turnGate.reason, iteration: i });
+      return finish(FALLBACK);
+    }
     const res = await traced("ai.assistant.turn", traceId, () => chat({ messages: convo, tools }), { iteration: i });
     if (!res.tool_calls?.length) return finish((res.content ?? "").trim() || FALLBACK);
     convo.push({ role: "assistant", content: res.content, tool_calls: res.tool_calls });

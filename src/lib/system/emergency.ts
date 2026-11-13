@@ -23,7 +23,15 @@ import { setAgentKillState } from "./ai";
  * Every op: requireElevation ALWAYS → assertApprovedOrRequest (breakglass and
  * high/critical risks need an approved change request) → typed mutation →
  * system_audit_events row (action 'emergency.<op>'). The route layer adds the
- * permission check (system.users.manage) + rate limit.
+ * permission check (system.emergency.execute for POST, system.emergency.view
+ * for GET) + rate limit.
+ *
+ * system.emergency.request / system.emergency.approve are reserved for the
+ * future dedicated two-person emergency flow. TODAY separation of duties is
+ * enforced by assertApprovedOrRequest → hasApprovedChange: an approved change
+ * request only counts when decided_by is a DIFFERENT principal than
+ * requested_by, and breakglass mutations always need one. The approve
+ * permission is deliberately withheld from breakglass in rbac.ts.
  */
 
 export const EMERGENCY_OPS = [
@@ -70,6 +78,8 @@ export type EmergencyInput = {
   banner_enabled?: boolean;
   banner_message?: string;
   banner_minutes?: number;
+  /** maintenance_banner severity shown by the public reader (default 'info'). */
+  banner_severity?: "info" | "warning" | "critical";
 };
 
 export type EmergencyResult =
@@ -206,6 +216,9 @@ async function opDisableAgent(
   };
 }
 
+export const BANNER_SEVERITIES = ["info", "warning", "critical"] as const;
+export type BannerSeverity = (typeof BANNER_SEVERITIES)[number];
+
 async function opMaintenanceBanner(
   db: SupabaseClient,
   actor: SystemActor,
@@ -241,22 +254,25 @@ async function opMaintenanceBanner(
     ? Math.min(Math.max(input.banner_minutes as number, BANNER_MIN_MINUTES), BANNER_MAX_MINUTES)
     : BANNER_DEFAULT_MINUTES;
   const expiresAt = new Date(Date.now() + minutes * 60_000).toISOString();
+  const severity: BannerSeverity = BANNER_SEVERITIES.includes(input.banner_severity as BannerSeverity)
+    ? (input.banner_severity as BannerSeverity)
+    : "info";
 
   const { error } = await db.from("system_feature_flags").upsert({
     key: MAINTENANCE_FLAG_KEY,
     environment: "production",
     enabled: true,
-    description: `Maintenance notice: ${message.slice(0, 200)}`,
+    description: `Maintenance notice (${severity}): ${message.slice(0, 200)}`,
     owner: "platform",
     // prerequisites carries the TTL payload — flags have no dedicated expiry column.
-    prerequisites: { expires_at: expiresAt, message: message.slice(0, 280), set_by: actor.id, set_at: nowIso },
+    prerequisites: { expires_at: expiresAt, message: message.slice(0, 280), severity, set_by: actor.id, set_at: nowIso },
     updated_by: actor.id,
     updated_at: nowIso,
   }, { onConflict: "key" });
   if (error) return fail(500, error.message ?? "flag update failed");
   return {
     ok: true, op: "maintenance_banner",
-    summary: `Maintenance notice set — expires ${expiresAt} (${minutes} min). NOTE: flag rows are control-plane metadata; a public banner reader is not wired yet.`,
+    summary: `Maintenance notice set (${severity}) — expires ${expiresAt} (${minutes} min). Public banner reads it via src/lib/maintenance-notice.ts (30s cache).`,
     expiresAt, changeRequestId: null,
   };
 }
@@ -381,7 +397,7 @@ export async function listEmergencyActions(db: SupabaseClient | null, limit = 50
   }));
 }
 
-export type MaintenanceNotice = { message: string; expiresAt: string } | null;
+export type MaintenanceNotice = { message: string; expiresAt: string; severity: BannerSeverity } | null;
 
 /**
  * Reads the maintenance.notice flag and returns the notice ONLY while it is
@@ -400,9 +416,10 @@ export async function getMaintenanceNotice(db: SupabaseClient | null, nowMs = Da
   if (row.enabled !== true) return null;
   const p = row.prerequisites;
   if (!p || typeof p !== "object" || Array.isArray(p)) return null;
-  const { expires_at, message } = p as { expires_at?: unknown; message?: unknown };
+  const { expires_at, message, severity } = p as { expires_at?: unknown; message?: unknown; severity?: unknown };
   if (typeof expires_at !== "string" || typeof message !== "string" || !message.trim()) return null;
   const exp = Date.parse(expires_at);
   if (!Number.isFinite(exp) || exp <= nowMs) return null;
-  return { message: message.slice(0, 280), expiresAt: expires_at };
+  const sev: BannerSeverity = BANNER_SEVERITIES.includes(severity as BannerSeverity) ? (severity as BannerSeverity) : "info";
+  return { message: message.slice(0, 280), expiresAt: expires_at, severity: sev };
 }

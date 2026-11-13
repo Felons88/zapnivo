@@ -8,12 +8,22 @@ import { fmt, PRICING_V1 } from "@/lib/pricing";
 import { OpenAssistant } from "@/components/OpenAssistant";
 import type { Audience } from "@/lib/support-content";
 import { subUrl } from "@/lib/site";
+import { getPublishedContent, text as cmsText } from "@/lib/site-content";
 
-export const metadata: Metadata = {
-  title: { absolute: "Phone Charger Rental Support | Zapnivo" },
+const META_FALLBACK = {
+  title: "Phone Charger Rental Support | Zapnivo",
   description: "Zapnivo help center for renters and venue partners: find a past rental, request a refund review, track a ticket, and search answers about rentals, returns and billing.",
-  alternates: { canonical: subUrl("support", "/") },
 };
+
+/** Help-center metadata — CMS-overridable via /system/sites → support/home. */
+export async function generateMetadata(): Promise<Metadata> {
+  const cms = await getPublishedContent("support", "home");
+  return {
+    title: { absolute: cmsText(cms, "meta_title", META_FALLBACK.title) },
+    description: cmsText(cms, "meta_description", META_FALLBACK.description),
+    alternates: { canonical: subUrl("support", "/") },
+  };
+}
 
 const P = PRICING_V1;
 const QUICK = [
@@ -24,10 +34,14 @@ const QUICK = [
 ];
 
 export default async function Support({ searchParams }: { searchParams: Promise<{ audience?: string }> }) {
-  const { audience } = await searchParams;
+  const [{ audience }, cms] = await Promise.all([searchParams, getPublishedContent("support", "home")]);
   const initial: Audience = audience === "venue" ? "venue" : "renter";
+  const hero = {
+    eyebrow: cmsText(cms, "hero_eyebrow", "Zapnivo help center"),
+    title: cmsText(cms, "hero_headline", "How can we help?"),
+  };
   return (
-    <HelpCenter initialAudience={initial} before={<>
+    <HelpCenter initialAudience={initial} heroEyebrow={hero.eyebrow} heroTitle={hero.title} before={<>
       <section className="relative z-10 -mt-10 pb-6" aria-label="Quick actions">
         <div className="container-z grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {QUICK.map((q) => (

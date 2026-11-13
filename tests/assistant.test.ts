@@ -7,6 +7,9 @@ import { fmt, PRICING_V1 } from "@/lib/pricing";
 import { describeRental, type RentalRow, type RentalResult } from "@/lib/rental-lookup";
 import { lookupRentals } from "@/lib/rental-service";
 import { resetRateLimits } from "@/lib/rate-limit";
+import { agentAllowed } from "@/lib/ai/agent-gate";
+
+const allowGate = async () => agentAllowed("test.agent");
 
 const P = PRICING_V1;
 const U = (content: string): UserTurn => ({ role: "user", content });
@@ -45,7 +48,7 @@ describe("grounding", () => {
 describe("assistant orchestration", () => {
   it("injects retrieved help content as a system message before the model answers", async () => {
     const { chat, seen } = scripted({ content: "ok" });
-    await runAssistant({ messages: [U("What is the non-return charge?")], ip: "1.1.1.1", chat });
+    await runAssistant({ agentGate: allowGate, messages: [U("What is the non-return charge?")], ip: "1.1.1.1", chat });
     const sys = seen[0].filter((m) => m.role === "system");
     expect(sys.length).toBe(2);
     expect(String(sys[1].content)).toContain("Relevant help articles");
@@ -54,7 +57,7 @@ describe("assistant orchestration", () => {
   it("refuses a lookup when the model uses an email the customer never typed", async () => {
     const lookup = vi.fn();
     const { chat } = scripted(call("lookup_rental", { email: "victim@example.com", reference: "ZR-1A2B3C4D" }), { content: "done" });
-    const r = await runAssistant({ messages: [U("check my rental")], ip: "1.1.1.1", chat, lookup });
+    const r = await runAssistant({ agentGate: allowGate, messages: [U("check my rental")], ip: "1.1.1.1", chat, lookup });
     expect(lookup).not.toHaveBeenCalled();
     expect(r.rentals).toEqual([]);
   });
@@ -62,7 +65,7 @@ describe("assistant orchestration", () => {
   it("looks up by reference with the customer's own email and returns the cards", async () => {
     const lookup = vi.fn().mockResolvedValue({ status: "ok", results: [RESULT] });
     const { chat, seen } = scripted(call("lookup_rental", { email: "Pat@Example.com", reference: "zr-1a2b3c4d" }), { content: "Here's what I found." });
-    const r = await runAssistant({ messages: [U("my email is pat@example.com and ref zr-1a2b3c4d")], ip: "9.9.9.9", chat, lookup });
+    const r = await runAssistant({ agentGate: allowGate, messages: [U("my email is pat@example.com and ref zr-1a2b3c4d")], ip: "9.9.9.9", chat, lookup });
     expect(lookup).toHaveBeenCalledTimes(1);
     expect(lookup.mock.calls[0][0]).toMatchObject({ email: "pat@example.com", reference: "ZR-1A2B3C4D" });
     expect(lookup.mock.calls[0][1]).toBe("9.9.9.9");
@@ -74,7 +77,7 @@ describe("assistant orchestration", () => {
   it("builds a Minnesota-time date window (<=48h) for date lookups", async () => {
     const lookup = vi.fn().mockResolvedValue({ status: "not_found" });
     const { chat } = scripted(call("lookup_rental", { email: "pat@example.com", date: "2026-11-08", time: "12:00", station: "Riverside" }), { content: "No match." });
-    await runAssistant({ messages: [U("pat@example.com rented around noon on 2026-11-08 at Riverside")], ip: "x", chat, lookup });
+    await runAssistant({ agentGate: allowGate, messages: [U("pat@example.com rented around noon on 2026-11-08 at Riverside")], ip: "x", chat, lookup });
     const q = lookup.mock.calls[0][0];
     expect(q.from).toBe("2026-11-08T15:00:00.000Z"); // 12:00 CST (UTC-6) = 18:00Z, minus 3h
     expect(q.to).toBe("2026-11-08T21:00:00.000Z");
@@ -84,14 +87,14 @@ describe("assistant orchestration", () => {
   it("rejects malformed references and missing date/reference without calling lookup", async () => {
     const lookup = vi.fn();
     const { chat } = scripted(call("lookup_rental", { email: "pat@example.com", reference: "nope" }), call("lookup_rental", { email: "pat@example.com" }, "c2"), { content: "Need more info." });
-    const r = await runAssistant({ messages: [U("pat@example.com")], ip: "x", chat, lookup });
+    const r = await runAssistant({ agentGate: allowGate, messages: [U("pat@example.com")], ip: "x", chat, lookup });
     expect(lookup).not.toHaveBeenCalled();
     expect(r.reply).toBe("Need more info.");
   });
 
   it("falls back to a safe message if the model loops on tools", async () => {
     const { chat } = scripted(call("search_help_articles", { query: "refund" }));
-    const r = await runAssistant({ messages: [U("refund?")], ip: "x", chat });
+    const r = await runAssistant({ agentGate: allowGate, messages: [U("refund?")], ip: "x", chat });
     expect(r.reply).toMatch(/\/support\/new/);
   });
 

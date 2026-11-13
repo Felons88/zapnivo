@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ChatFn } from "@/lib/ai/openrouter";
+import { agentAllowed, agentDenied } from "@/lib/ai/agent-gate";
 import { signAccess, verifyAccess } from "@/lib/helpdesk/access";
 import { flushOutbox } from "@/lib/helpdesk/mailer";
 import { MACROS, renderMacro } from "@/lib/helpdesk/macros";
@@ -14,7 +15,8 @@ import { HelpdeskError, type Actor } from "@/lib/helpdesk/types";
 import { NotConfiguredRefundProvider, type RefundProvider } from "@/lib/payments/source";
 
 const NOW = new Date("2026-11-08T12:00:00Z");
-const mk = (o: Partial<svc.Ctx> = {}): svc.Ctx => ({ repo: new MemoryRepo(), chat: null, mailer: null, rentals: new DemoRentalDirectory(), refunds: new NotConfiguredRefundProvider(), now: () => NOW, siteUrl: "https://z.test", ...o });
+const allowGate = async () => agentAllowed("test.agent");
+const mk = (o: Partial<svc.Ctx> = {}): svc.Ctx => ({ repo: new MemoryRepo(), chat: null, mailer: null, rentals: new DemoRentalDirectory(), refunds: new NotConfiguredRefundProvider(), now: () => NOW, siteUrl: "https://z.test", agentGate: allowGate, ...o });
 const agent: Actor = { kind: "staff", id: "agent-1", name: "Alex", role: "staff" };
 const admin1: Actor = { kind: "staff", id: "admin-1", name: "Dana", role: "admin" };
 const admin2: Actor = { kind: "staff", id: "admin-2", name: "Sam", role: "admin" };
@@ -188,6 +190,31 @@ describe("replies and access control", () => {
     const d = await svc.aiDraft(c, agent, t2.number);
     expect(d.warnings.length).toBe(1);
     expect((await c.repo.listMessages(t2.id)).length).toBe(before);
+  });
+
+  it("aiDraft is denied when the agent gate denies or is unverifiable — before any data retrieval", async () => {
+    const chat = vi.fn(async () => ({ content: "draft" }));
+    for (const reason of ["disabled", "unavailable"] as const) {
+      const c = mk({ chat, agentGate: async () => agentDenied("support.customer", reason) });
+      const { ticket } = await svc.createTicket(c, base); // same ctx → same repo; triage also denied, ticket still created
+      expect(await code(svc.aiDraft(c, agent, ticket.number))).toBe("unavailable");
+    }
+    expect(chat).not.toHaveBeenCalled();
+    // A throwing gate also denies.
+    const c2 = mk({ chat, agentGate: async () => { throw new Error("db down"); } });
+    const { ticket } = await svc.createTicket(c2, base);
+    expect(await code(svc.aiDraft(c2, agent, ticket.number))).toBe("unavailable");
+    expect(chat).not.toHaveBeenCalled();
+  });
+
+  it("triage does not call the model when the gate denies; customer still gets the ack", async () => {
+    const chat = vi.fn(async () => ({ content: JSON.stringify({ reply: "hi", confidence: 0.9, needs_human: false, summary: "s" }) }));
+    const c = mk({ chat, agentGate: async () => agentDenied("support.customer", "unavailable") });
+    const { ticket } = await svc.createTicket(c, base);
+    expect(chat).not.toHaveBeenCalled();
+    expect(ticket.aiState).toBe("needs_human");
+    const msgs = await c.repo.listMessages(ticket.id);
+    expect(msgs.some((m) => m.authorType === "system" && m.body.includes(ticket.number))).toBe(true);
   });
 });
 

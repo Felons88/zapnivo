@@ -39,8 +39,8 @@ function ArticleCard({ a, open, onToggle }: { a: Article; open: boolean; onToggl
   );
 }
 
-/** Zendesk-style help center: audience switch, instant search, category browse. `before` renders between hero and articles, `after` below the articles. */
-export function HelpCenter({ initialAudience = "renter", before, after }: { initialAudience?: Audience; before?: ReactNode; after?: ReactNode }) {
+/** Zendesk-style help center: audience switch, instant search, category browse. `before` renders between hero and articles, `after` below the articles. Hero copy is CMS-overridable (support/home) with these defaults. */
+export function HelpCenter({ initialAudience = "renter", before, after, heroEyebrow = "Zapnivo help center", heroTitle = "How can we help?" }: { initialAudience?: Audience; before?: ReactNode; after?: ReactNode; heroEyebrow?: string; heroTitle?: string }) {
   const [audience, setAudience] = useState<Audience>(initialAudience);
   const [q, setQ] = useState("");
   const [cat, setCat] = useState<string | null>(null);
@@ -62,8 +62,8 @@ export function HelpCenter({ initialAudience = "renter", before, after }: { init
         <div className="absolute -left-32 top-1/3 h-64 w-64 rounded-full border border-cyan/20" aria-hidden />
         <div className="absolute -right-20 -top-20 h-80 w-80 rounded-full border border-pink/20" aria-hidden />
         <div className="container-z relative mx-auto max-w-4xl text-center">
-          <Eyebrow className="justify-center text-lime">Zapnivo help center</Eyebrow>
-          <h1 className="display-lg mt-6">How can we help?</h1>
+          <Eyebrow className="justify-center text-lime">{heroEyebrow}</Eyebrow>
+          <h1 className="display-lg mt-6">{heroTitle}</h1>
           <div role="tablist" aria-label="Who is asking?" className="mx-auto mt-9 inline-flex rounded-full bg-white/10 p-1.5">
             {AUDIENCES.map((a) => (
               <button key={a.id} type="button" role="tab" aria-selected={audience === a.id} onClick={() => pickAudience(a.id)} className={`min-h-11 rounded-full px-5 text-sm font-bold transition-colors ${audience === a.id ? "bg-lime text-ink" : "text-white/80 hover:text-white"}`}>{a.label}</button>

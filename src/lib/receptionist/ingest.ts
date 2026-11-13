@@ -5,6 +5,7 @@ import { alertStaff } from "../email-triggers";
 import { recordLog } from "../observability";
 import { subUrl } from "../site";
 import { ALWAYS_ESCALATE, classifyByRules, classifyWithModel } from "./classify";
+import { authorizeAgent, type AgentGateFn } from "../ai/agent-gate";
 import { decideDraftAction, defaultAutonomyLevel, queueReceptionistEmail } from "./draft";
 import { scanInjection } from "./injection";
 import { auditEvent } from "./service";
@@ -123,7 +124,7 @@ async function insertMessage(db: ReceptionistDb, row: Record<string, unknown>) {
  * Processes one normalized inbound message. `db` is the service client —
  * required (receptionist state lives only in Postgres).
  */
-export async function ingestGeneralMail(db: ReceptionistDb, mail: InboundMail): Promise<GeneralOutcome> {
+export async function ingestGeneralMail(db: ReceptionistDb, mail: InboundMail, opts: { agentGate?: AgentGateFn } = {}): Promise<GeneralOutcome> {
   const started = Date.now();
   const body = stripQuoted(mail.text).slice(0, 20_000);
 
@@ -208,7 +209,10 @@ export async function ingestGeneralMail(db: ReceptionistDb, mail: InboundMail): 
     escalate = true;
     escalationReason = mail.autoSubmitted ? "auto_submitted" : "rules_spam";
   } else {
-    const model = await classifyWithModel({ subject: mail.subject, from: mail.from, bodyText: body });
+    // FAIL-CLOSED: the gate does a fresh ai_agents read on THIS db per call —
+    // disabled/unverifiable → no model call, thread escalates to a human.
+    const agentGate = opts.agentGate ?? ((id: string) => authorizeAgent(id, db, "receptionist"));
+    const model = await classifyWithModel({ subject: mail.subject, from: mail.from, bodyText: body }, undefined, agentGate);
     if (model.ok) {
       aiOk = true;
       via = "model";

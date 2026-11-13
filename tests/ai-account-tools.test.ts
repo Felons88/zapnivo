@@ -13,6 +13,9 @@ vi.mock("@/lib/supabase", () => ({
 }));
 
 import { runAssistant, type UserTurn } from "@/lib/ai/assistant";
+import { agentAllowed } from "@/lib/ai/agent-gate";
+
+const allowGate = async () => agentAllowed("test.agent");
 import { runAccountTool } from "@/lib/ai/account-tools";
 import type { ChatFn, ChatMessage } from "@/lib/ai/openrouter";
 import type { SessionUser } from "@/lib/auth";
@@ -178,7 +181,7 @@ describe("partner information", () => {
 describe("runAssistant actor plumbing", () => {
   it("passes actor through: account tool executes and tools list includes account tools", async () => {
     const { chat, seen } = scripted(call("get_my_active_rentals", {}), { content: "You have one open rental." });
-    const r = await runAssistant({ messages: [U("what rentals do I have?")], ip: "1.2.3.4", chat, actor: A });
+    const r = await runAssistant({ agentGate: allowGate, messages: [U("what rentals do I have?")], ip: "1.2.3.4", chat, actor: A });
     expect(r.reply).toBe("You have one open rental.");
     const toolMsg = seen[1].messages.find((m) => m.role === "tool");
     expect(toolMsg && JSON.stringify(toolMsg)).toContain("ZR-AAAA1111");
@@ -189,7 +192,7 @@ describe("runAssistant actor plumbing", () => {
 
   it("unauthenticated account-tool call returns authentication_required", async () => {
     const { chat, seen } = scripted(call("get_my_support_tickets", {}), { content: "Please verify first." });
-    await runAssistant({ messages: [U("show my tickets")], ip: "1.2.3.4", chat });
+    await runAssistant({ agentGate: allowGate, messages: [U("show my tickets")], ip: "1.2.3.4", chat });
     const toolMsg = seen[1].messages.find((m) => m.role === "tool");
     expect(toolMsg && JSON.stringify(toolMsg)).toContain("authentication_required");
     const names = ((seen[0].tools ?? []) as { function: { name: string } }[]).map((t) => t.function.name);
@@ -198,9 +201,9 @@ describe("runAssistant actor plumbing", () => {
 
   it("adds the signed-in system note only when an actor is present", async () => {
     const { chat: c1, seen: s1 } = scripted({ content: "hi" });
-    await runAssistant({ messages: [U("hi")], ip: "x", chat: c1, actor: A });
+    await runAssistant({ agentGate: allowGate, messages: [U("hi")], ip: "x", chat: c1, actor: A });
     const { chat: c2, seen: s2 } = scripted({ content: "hi" });
-    await runAssistant({ messages: [U("hi")], ip: "x", chat: c2 });
+    await runAssistant({ agentGate: allowGate, messages: [U("hi")], ip: "x", chat: c2 });
     const sys1 = s1[0].messages.filter((m) => m.role === "system").map((m) => String(m.content)).join("\n");
     const sys2 = s2[0].messages.filter((m) => m.role === "system").map((m) => String(m.content)).join("\n");
     expect(sys1).toContain("signed in");

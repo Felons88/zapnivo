@@ -33,7 +33,10 @@ export default async function SystemEmergencyPage() {
   const db = serviceClient();
   const user = await getSessionUser();
   const role = user ? await systemRole(user) : null;
-  const canManage = roleCan(role, "system.users.manage");
+  const canView = roleCan(role, "system.emergency.view");
+  const canExecute = roleCan(role, "system.emergency.execute");
+  const canRequest = roleCan(role, "system.emergency.request");
+  const canApprove = roleCan(role, "system.emergency.approve");
 
   const [actions, fleet, agents, flags, notice] = db
     ? await Promise.all([
@@ -56,7 +59,7 @@ export default async function SystemEmergencyPage() {
   });
 
   return (
-    <SystemGate perm="system.security.audit.view">
+    <SystemGate perm="system.emergency.view">
       <div className="space-y-6">
         <div>
           <p className="eyebrow text-red-300">Emergency</p>
@@ -64,22 +67,39 @@ export default async function SystemEmergencyPage() {
           <p className="mt-1 max-w-3xl text-sm text-slate-400">
             Scoped incident actions only — every operation names exactly ONE target. There is deliberately{" "}
             <strong className="text-slate-200">no global kill switch</strong>. Each op requires{" "}
-            <code className="font-mono text-xs">system.users.manage</code>, a live{" "}
+            <code className="font-mono text-xs">system.emergency.execute</code>, a live{" "}
             <Link href="/system/security/mfa" className="text-lime underline">MFA step-up</Link>, passes the change-request
             gate, and writes a <code className="font-mono text-xs">system_audit_events</code> row. Payment, auth, and
-            secret-rotation surfaces are not reachable from here.
+            secret-rotation surfaces are not reachable from here. Dedicated{" "}
+            <code className="font-mono text-xs">system.emergency.request</code>/
+            <code className="font-mono text-xs">.approve</code> permissions are reserved for a future two-person
+            flow — today separation of duties is enforced by the change-request gate (approver ≠ requester;
+            breakglass can never hold <code className="font-mono text-xs">.approve</code>).
           </p>
+        </div>
+
+        <div className="flex flex-wrap gap-2 text-[11px]">
+          {([
+            ["system.emergency.view", canView],
+            ["system.emergency.request", canRequest],
+            ["system.emergency.execute", canExecute],
+            ["system.emergency.approve", canApprove],
+          ] as const).map(([p, ok]) => (
+            <span key={p} className={`rounded-full px-2.5 py-1 font-mono ring-1 ${ok ? "bg-lime/10 text-lime ring-lime/30" : "bg-white/5 text-slate-500 ring-white/10"}`}>
+              {p} {ok ? "✓" : "—"}
+            </span>
+          ))}
         </div>
 
         {notice && (
           <div className="rounded-2xl border border-amber-400/30 bg-amber-400/10 px-5 py-3 text-sm text-amber-200">
-            Active maintenance notice: <span className="font-bold">{notice.message}</span>{" "}
+            Active maintenance notice ({notice.severity}): <span className="font-bold">{notice.message}</span>{" "}
             <span className="font-mono text-xs">(expires {when(notice.expiresAt)})</span>
           </div>
         )}
 
         <EmergencyConsole
-          canManage={canManage}
+          canExecute={canExecute}
           configured={Boolean(db)}
           devices={devices}
           agents={agentOptions}

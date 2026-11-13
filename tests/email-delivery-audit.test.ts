@@ -218,7 +218,7 @@ describe("tri-state send", () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
       choices: [{ message: { content: JSON.stringify({ category: "general", confidence: 0.95, priority: "normal", draft_reply: "Thanks!", escalate: false, escalation_reason: null }) } }],
     }), { status: 200 })));
-    const db = fakeDb({});
+    const db = fakeDb({ ai_agents: [{ id: "receptionist.general", enabled: true }] });
     const r = await ingestGeneralMail(db as never, mail({ messageId: "<auto@x>" }));
     expect(r.status).toBe("accepted");
     const t = tables(db).receptionist_threads[0];

@@ -9,7 +9,7 @@ import { CRON_ROUTES } from "@/lib/system/jobs";
 describe("integration registry", () => {
   it("covers the expected providers", () => {
     const ids = INTEGRATION_PROVIDERS.map((p) => p.id);
-    for (const id of ["stripe", "supabase", "brevo", "twilio", "openrouter", "github", "vercel", "kiosk_gateway"]) {
+    for (const id of ["stripe", "supabase", "brevo", "resend", "twilio", "openrouter", "github", "vercel", "kiosk_gateway", "uptime"]) {
       expect(ids).toContain(id);
     }
   });
@@ -17,9 +17,12 @@ describe("integration registry", () => {
   it("never exposes secret values — rows carry names/booleans only", () => {
     for (const row of listIntegrations()) {
       expect(Object.keys(row).sort()).toEqual(
-        ["id", "name", "category", "purpose", "envVars", "configured", "mode", "status", "lastHealthCheck"].sort(),
+        ["id", "name", "category", "purpose", "envVars", "envPresence", "configured", "mode", "webhook", "status", "lastHealthCheck"].sort(),
       );
       expect(row.lastHealthCheck).toBeNull();
+      // per-var presence mirrors envVars 1:1
+      expect(row.envPresence.map((e) => e.name)).toEqual([...row.envVars]);
+      expect(row.envPresence.every((e) => typeof e.set === "boolean")).toBe(true);
       expect(["operational", "unconfigured", "unknown", "degraded"]).toContain(row.status);
       // env var NAMES are fine; nothing should look like a secret value
       for (const v of row.envVars) expect(v).toMatch(/^[A-Z0-9_]+$/);

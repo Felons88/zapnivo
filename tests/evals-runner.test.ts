@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { DEFAULT_SCENARIOS, runEvalSuite, scoreReply, type EvalScenario } from "@/lib/evals/runner";
 import type { ChatFn } from "@/lib/ai/openrouter";
+import { agentAllowed } from "@/lib/ai/agent-gate";
+
+const allowGate = async () => agentAllowed("test.agent");
 
 const dims = (reply: string, expect: Parameters<typeof scoreReply>[1] = {}, input = "") => scoreReply(reply, expect, input).dims;
 
@@ -67,7 +70,7 @@ describe("runEvalSuite with a mock model", () => {
   it("runs every scenario, scores it and records the run", async () => {
     const { db, inserted } = mockDb();
     const chat: ChatFn = async () => ({ content: "Rentals start at $6.99 for the first started hour." });
-    const res = await runEvalSuite(db, "suite-1", { chat, ip: "eval" });
+    const res = await runEvalSuite(db, "suite-1", { chat, ip: "eval", agentGate: allowGate });
     expect("error" in res).toBe(false);
     if ("error" in res) return;
     expect(res.total).toBe(2);

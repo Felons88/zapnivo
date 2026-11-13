@@ -6,6 +6,7 @@ import { Logo } from "./Logo";
 import { LogoutButton } from "./LogoutButton";
 import { Notice } from "./ui";
 import { SITE } from "@/lib/site";
+import { getPublishedContent, flag, text as cmsText } from "@/lib/site-content";
 
 const stroke = { fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round", strokeLinejoin: "round" } as const;
 const I = ({ children, className = "h-[18px] w-[18px] shrink-0" }: { children: ReactNode; className?: string }) => (
@@ -109,6 +110,11 @@ export async function AdminGate({ title, nav, children }: { title: string; nav: 
   if (!isStaff(user)) redirect("/partners");
 
   const all = Object.entries(NAV_ITEMS) as [AdminNavKey, (typeof NAV_ITEMS)[AdminNavKey]][];
+  // CMS announcement banner (internal/global) — cached read, off unless enabled.
+  const cms = await getPublishedContent("internal", "global");
+  const announcement = flag(cms, "announcement_enabled", false)
+    ? { text: cmsText(cms, "announcement_text", ""), href: cmsText(cms, "announcement_href", "") || undefined }
+    : null;
   return (
     <div className="min-h-screen bg-[#f2f1fa] text-ink">
       {devAuth() && (
@@ -151,6 +157,12 @@ export async function AdminGate({ title, nav, children }: { title: string; nav: 
       </aside>
 
       <div className="lg:pl-72">
+        {announcement?.text ? (
+          <div className="border-b border-lime/40 bg-lime px-5 py-2.5 text-center text-xs font-bold text-ink md:px-8">
+            {announcement.text}
+            {announcement.href ? <> · <Link href={announcement.href} className="underline underline-offset-2">Learn more →</Link></> : null}
+          </div>
+        ) : null}
         {/* Topbar */}
         <header className="sticky top-0 z-30 border-b border-mist bg-[#f2f1fa]/85 backdrop-blur">
           <div className="flex h-16 items-center justify-between gap-4 px-5 md:px-8">

@@ -20,7 +20,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     actor: { id: g.user.id, role: g.role },
     action: "integration.health_checked",
     resource: `integration:${id}`,
-    detail: { status: health?.status, latencyMs: health?.latencyMs },
+    detail: { status: health?.status, latencyMs: health?.latencyMs, detail: health?.detail?.slice(0, 200) ?? null },
   });
   return NextResponse.json({ health });
 }

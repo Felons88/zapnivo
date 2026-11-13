@@ -17,8 +17,14 @@ import { serviceClient } from "@/lib/supabase";
  *   engineer    — deployments + database schema + integrations (incl. flag toggles)
  *   security    — audit, secrets rotation requests, user management view, change decisions
  *   sysadmin    — everything
- *   breakglass  — everything, BUT every mutation requires an approved change request
- *                 (separation of duties: the approver must be a different principal)
+ *   breakglass  — everything EXCEPT system.emergency.approve, BUT every mutation
+ *                 requires an approved change request (separation of duties:
+ *                 the approver must be a different principal)
+ *
+ * Emergency tier (system.emergency.*): view → every role; request →
+ * developer/engineer/hardware/security/sysadmin/breakglass; execute →
+ * security/sysadmin/breakglass; approve → sysadmin/security ONLY (breakglass
+ * can never approve — dual-control separation of duties).
  */
 
 export const SYSTEM_ROLES = ["viewer", "developer", "hardware", "engineer", "security", "sysadmin", "breakglass"] as const;
@@ -45,6 +51,10 @@ export const SYSTEM_PERMISSIONS = [
   "system.changes.decide",
   "system.flags.view",
   "system.flags.manage",
+  "system.emergency.view",
+  "system.emergency.request",
+  "system.emergency.execute",
+  "system.emergency.approve",
 ] as const;
 export type SystemPermission = (typeof SYSTEM_PERMISSIONS)[number];
 
@@ -59,6 +69,7 @@ const READ_ONLY: readonly SystemPermission[] = [
   "system.security.audit.view",
   "system.changes.view",
   "system.flags.view",
+  "system.emergency.view",
 ];
 
 export const ROLE_PERMISSIONS: Record<SystemRole, readonly SystemPermission[]> = {
@@ -69,6 +80,7 @@ export const ROLE_PERMISSIONS: Record<SystemRole, readonly SystemPermission[]> =
     "system.webhooks.retry",
     "system.ai.manage",
     "system.deployments.manage",
+    "system.emergency.request",
   ],
   hardware: [
     "system.dashboard.view",
@@ -78,6 +90,8 @@ export const ROLE_PERMISSIONS: Record<SystemRole, readonly SystemPermission[]> =
     "system.changes.view",
     "system.changes.request",
     "system.flags.view",
+    "system.emergency.view",
+    "system.emergency.request",
   ],
   engineer: [
     ...READ_ONLY,
@@ -89,6 +103,7 @@ export const ROLE_PERMISSIONS: Record<SystemRole, readonly SystemPermission[]> =
     "system.ai.manage",
     "system.flags.manage",
     "system.changes.request",
+    "system.emergency.request",
   ],
   security: [
     ...READ_ONLY,
@@ -96,9 +111,15 @@ export const ROLE_PERMISSIONS: Record<SystemRole, readonly SystemPermission[]> =
     "system.users.manage",
     "system.changes.decide",
     "system.changes.request",
+    "system.emergency.request",
+    "system.emergency.execute",
+    "system.emergency.approve",
   ],
   sysadmin: ALL,
-  breakglass: ALL,
+  // Breakglass gets every permission EXCEPT system.emergency.approve — the
+  // emergency approve tier is reserved for security/sysadmin so the break-glass
+  // role can never self-approve an emergency action (separation of duties).
+  breakglass: ALL.filter((p) => p !== "system.emergency.approve"),
 };
 
 /** Pure permission check — use this in tests and anywhere the role is already known. */

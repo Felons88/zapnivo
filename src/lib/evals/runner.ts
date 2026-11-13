@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { runAssistant, type UserTurn, type AssistantResult } from "@/lib/ai/assistant";
 import type { ChatFn } from "@/lib/ai/openrouter";
+import type { AgentGateFn } from "@/lib/ai/agent-gate";
 import { recordLog } from "@/lib/observability";
 
 /**
@@ -108,7 +109,7 @@ export type EvalRunResult = {
 export async function runEvalSuite(
   db: SupabaseClient,
   suiteId: string,
-  opts: { chat?: ChatFn; actor?: import("@/lib/auth").SessionUser | null; ip?: string } = {},
+  opts: { chat?: ChatFn; actor?: import("@/lib/auth").SessionUser | null; ip?: string; agentGate?: AgentGateFn } = {},
 ): Promise<EvalRunResult | { error: string }> {
   const { data: suite, error } = await db.from("eval_suites").select("*").eq("id", suiteId).single();
   if (error || !suite) return { error: "suite_not_found" };
@@ -121,7 +122,7 @@ export async function runEvalSuite(
     const start = Date.now();
     try {
       const messages: UserTurn[] = [...(sc.history ?? []), { role: "user", content: sc.input }];
-      const res: AssistantResult = await runAssistant({ messages, ip: opts.ip ?? "eval", chat: opts.chat, ...(opts.actor ? { actor: opts.actor } : {}) } as Parameters<typeof runAssistant>[0]);
+      const res: AssistantResult = await runAssistant({ messages, ip: opts.ip ?? "eval", chat: opts.chat, agentGate: opts.agentGate, ...(opts.actor ? { actor: opts.actor } : {}) } as Parameters<typeof runAssistant>[0]);
       const latency = Date.now() - start;
       totalLatency += latency; calls++;
       const { dims, notes } = scoreReply(res.reply, sc.expect, sc.input);

@@ -4,6 +4,9 @@ import { ConsentBanner } from "@/components/ConsentBanner";
 import { Analytics } from "@/components/Analytics";
 import { Telemetry } from "@/components/Telemetry";
 import { getPublishedContent, flag, text } from "@/lib/site-content";
+import { NewsletterPopup } from "@/components/NewsletterPopup";
+import { newsletterConfigFromContent } from "@/lib/newsletter/core";
+import { getPublicMaintenanceNotice } from "@/lib/maintenance-notice";
 
 export default async function SiteLayout({ children }: { children: React.ReactNode }) {
   // CMS announcement bar (apex/global) — cached read, falls back to the default strip.
@@ -11,12 +14,31 @@ export default async function SiteLayout({ children }: { children: React.ReactNo
   const announcement = flag(global, "announcement_enabled", false)
     ? { text: text(global, "announcement_text", ""), href: text(global, "announcement_href", "") || undefined }
     : null;
+  // Newsletter popup config (apex / "newsletter" CMS page) — defaults apply with zero rows.
+  const newsletter = newsletterConfigFromContent(await getPublishedContent("apex", "newsletter"));
+  // Maintenance notice (emergency control, TTL-bound) — null when inactive/expired.
+  const notice = await getPublicMaintenanceNotice();
   return (
     <>
+      {notice ? (
+        <div
+          role="status"
+          className={`px-4 py-2 text-center text-xs font-semibold tracking-wide ${
+            notice.severity === "critical"
+              ? "bg-red-600 text-white"
+              : notice.severity === "warning"
+                ? "bg-amber-500 text-ink"
+                : "bg-ink text-paper"
+          }`}
+        >
+          {notice.text}
+        </div>
+      ) : null}
       <Header heroDark announcement={announcement?.text ? announcement : null} />
       <main id="main">{children}</main>
       <Footer />
       <ConsentBanner />
+      <NewsletterPopup config={newsletter} />
       <Analytics />
       <Telemetry />
     </>

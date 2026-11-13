@@ -1,4 +1,5 @@
 import { openrouterChat, assistantConfigured, type ChatFn, type ChatMessage } from "../ai/openrouter";
+import { agentDenied, defaultAgentGate, RECEPTIONIST_AGENT, type AgentGateFn, type AgentGateResult } from "../ai/agent-gate";
 import { recordLog } from "../observability";
 import { RECEPTIONIST_CATEGORIES, type ReceptionistCategory, type ReceptionistPriority } from "./types";
 
@@ -109,10 +110,23 @@ export type ClassifyResult =
 
 /**
  * Runs the model classification. `chat` is injectable for tests; production
- * callers omit it to use the shared OpenRouter client.
+ * callers omit it to use the shared OpenRouter client. `gate` is the
+ * FAIL-CLOSED ai_agents authorization check — a fresh DB read per call; when
+ * it cannot verify the receptionist agent is enabled, NO model call happens
+ * and the caller falls back to human review.
  */
-export async function classifyWithModel(input: ClassifyInput, chat: ChatFn = openrouterChat): Promise<ClassifyResult> {
+export async function classifyWithModel(
+  input: ClassifyInput,
+  chat: ChatFn = openrouterChat,
+  gate: AgentGateFn = defaultAgentGate,
+): Promise<ClassifyResult> {
   if (!assistantConfigured() && chat === openrouterChat) return { ok: false, reason: "ai_not_configured" };
+  let g: AgentGateResult;
+  try { g = await gate(RECEPTIONIST_AGENT); } catch { g = agentDenied(RECEPTIONIST_AGENT, "unavailable"); }
+  if (!g.allowed) {
+    recordLog("info", "receptionist.agent_denied", { service: "receptionist", attrs: { agent: RECEPTIONIST_AGENT, reason: g.reason } });
+    return { ok: false, reason: `agent_denied:${g.reason}` };
+  }
   const body = input.bodyText.slice(0, 12_000);
   const messages: ChatMessage[] = [
     { role: "system", content: SYSTEM_PROMPT },

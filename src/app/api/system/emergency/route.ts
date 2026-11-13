@@ -10,20 +10,23 @@ import {
 /**
  * /api/system/emergency — SCOPED emergency controls.
  *
- * GET  — recent executed emergency ops from system_audit_events (audit.view).
- * POST — execute ONE typed emergency op (system.users.manage — the closest
- *        existing permission to a security-emergency tier; rbac has no
- *        system.emergency.* permission and SYSTEM_PERMISSIONS is owned by the
- *        RBAC module). Every op additionally requires a live step-up elevation
- *        and goes through the change-request gate inside executeEmergencyOp.
+ * GET  — recent executed emergency ops from system_audit_events
+ *        (system.emergency.view — every system role).
+ * POST — execute ONE typed emergency op (system.emergency.execute —
+ *        security/sysadmin/breakglass). system.emergency.request/.approve are
+ *        reserved for the future dedicated two-person flow; today SoD is
+ *        enforced inside executeEmergencyOp via the change-request gate
+ *        (assertApprovedOrRequest requires decided_by ≠ requested_by, and
+ *        breakglass always needs an approved request). Every op additionally
+ *        requires a live step-up elevation.
  *
  * There is intentionally NO bulk / "disable everything" endpoint — each op
  * names exactly one target (device, flag, agent, or the maintenance banner).
  */
 
-/** GET /api/system/emergency — recent emergency actions (system.security.audit.view). */
+/** GET /api/system/emergency — recent emergency actions (system.emergency.view). */
 export async function GET() {
-  const g = await systemApiGuard("system.security.audit.view", { limit: 120 });
+  const g = await systemApiGuard("system.emergency.view", { limit: 120 });
   if (!g.ok) return g.res;
   const actions = await listEmergencyActions(g.db, 50);
   return NextResponse.json({ actions });
@@ -65,16 +68,17 @@ const opSchema = z.discriminatedUnion("op", [
     banner_enabled: z.boolean(),
     banner_message: z.string().trim().max(280).optional(),
     banner_minutes: z.number().int().min(1).max(480).optional(),
+    banner_severity: z.enum(["info", "warning", "critical"]).optional(),
   }),
 ]);
 
 /**
  * POST /api/system/emergency — execute one scoped emergency op.
- * Gates (in order): system.users.manage → zod → executeEmergencyOp
+ * Gates (in order): system.emergency.execute → zod → executeEmergencyOp
  * (confirm check → step-up elevation → change-request gate → mutation+audit).
  */
 export async function POST(req: Request) {
-  const g = await systemApiGuard("system.users.manage", { limit: 20 });
+  const g = await systemApiGuard("system.emergency.execute", { limit: 20 });
   if (!g.ok) return g.res;
   const body = await readJson(req);
   if (!body) return NextResponse.json({ error: "Invalid request" }, { status: 400 });
