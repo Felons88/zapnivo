@@ -136,6 +136,13 @@ export const FIELD_CATALOG: Record<string, Record<string, FieldDef[]>> = {
       f("meta_title", "Meta title", "string", { maxLength: 70 }),
       f("meta_description", "Meta description", "string", { maxLength: 170 }),
     ],
+    // Announcement bar on support.zapnivo.com pages — rendered by Header via
+    // (site)/layout.tsx → getPublishedContent("support", "global") + pickAnnouncement.
+    global: [
+      f("announcement_enabled", "Show announcement bar", "boolean", { help: "Renders a notice strip on support host pages only." }),
+      f("announcement_text", "Announcement text", "string", { maxLength: 160 }),
+      f("announcement_href", "Announcement link", "url", { help: "Optional https:// or site-relative path." }),
+    ],
   },
   internal: {
     global: [

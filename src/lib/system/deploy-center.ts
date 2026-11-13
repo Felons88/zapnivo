@@ -23,6 +23,7 @@ import {
   type VercelDeployment,
   type VercelDeploymentEvent,
 } from "./deploy-provider";
+import { MIGRATIONS } from "./database";
 
 /**
  * Deployment center — merges provider-live data (Vercel API when configured)
@@ -316,7 +317,7 @@ export async function rollbackCandidates(): Promise<
 }
 
 export type RollbackRequestOutcome =
-  | { ok: true; status: "created" | "pending_approval"; requestId?: string; changeRequestId?: string }
+  | { ok: true; status: "created" | "pending_approval"; requestId?: string; changeRequestId?: string; migrationWarning: string }
   | { ok: false; status: number; error: string };
 
 /** Creates an approval-gated rollback request targeting a specific deployment. */
@@ -351,7 +352,7 @@ export async function requestRollback(
     justification: `Rollback production to deployment ${input.deploymentId}: ${justification}`.slice(0, 4000),
   });
   if (gate.status === "pending") {
-    return { ok: true, status: "pending_approval", changeRequestId: gate.changeRequestId };
+    return { ok: true, status: "pending_approval", changeRequestId: gate.changeRequestId, migrationWarning: ROLLBACK_MIGRATION_WARNING };
   }
   if (gate.status === "rejected") {
     return { ok: false, status: 409, error: "A previous change request for this action was rejected" };
@@ -375,15 +376,17 @@ export async function requestRollback(
     actor,
     action: "deployment.rollback_requested",
     resource: `deployment_request:${created.request.id}`,
-    detail: { target_deployment_id: input.deploymentId },
+    detail: { target_deployment_id: input.deploymentId, migration_warning_acknowledged: true },
   });
-  return { ok: true, status: "created", requestId: created.request.id };
+  return { ok: true, status: "created", requestId: created.request.id, migrationWarning: ROLLBACK_MIGRATION_WARNING };
 }
 
 /* ── Provider execution ────────────────────────────────────────────────── */
 
 export type ProviderExecuteResult =
-  | { status: "executed"; requestId: string; deploymentId: string; url: string | null; mode: "provider" }
+  | { status: "executed"; requestId: string; deploymentId: string; url: string | null; mode: "provider";
+      /** Honest post-accept state — 'executed' ≠ 'healthy'. */
+      providerState: DeploymentState | null; health: DeploymentHealth | null; terminal: boolean }
   | { status: "provider_error"; requestId: string; error: string; mode: "provider" }
   | { status: "awaiting_manual_deploy"; requestId: string; reason: string; providerTokenPresent: boolean; mode: "manual" };
 
@@ -453,6 +456,13 @@ export async function executeDeploymentCenterRequest(
   if (req.action === "deploy") {
     const ref = typeof meta.ref === "string" ? meta.ref : null;
     if (!ref) return failWith("request has no deploy ref — create it via POST /api/system/deployments/request-deploy");
+    // Defense in depth: the allowlist is enforced at request creation, but a
+    // stored ref is re-validated here so a tampered/legacy row can never
+    // reach the provider. Branch/tag names only — SHAs must be allowlisted
+    // literally via GITHUB_DEPLOY_REFS.
+    if (!isAllowedDeployRef(ref)) {
+      return failWith(`stored ref '${ref.slice(0, 80)}' is not in the allowed deploy-ref set (${allowedDeployRefs().join(", ") || "none"})`);
+    }
     const created = await createVercelDeployment({ ref, target: isProduction ? "production" : "preview" });
     if (!("ok" in created)) {
       return failWith("vercel provider reported unconfigured mid-flight");
@@ -473,17 +483,22 @@ export async function executeDeploymentCenterRequest(
     return { ok: false, status: 400, error: `unsupported action '${req.action}'` };
   }
 
-  // Success: mark executed with provider metadata (never tokens).
+  // Success: mark executed with provider metadata (never tokens). 'executed'
+  // means the provider ACCEPTED the deployment — it is NOT proof the deploy
+  // is live/healthy. The initial monitor pass below records the honest
+  // provider state; result.health is only populated once the deployment
+  // reports READY *and* the production URL probe passes.
+  const executedResult: Record<string, unknown> = {
+    ...meta,
+    provider: "vercel",
+    provider_deployment_id: providerDeploymentId,
+    provider_url: providerUrl,
+    executed_at: new Date().toISOString(),
+    executed_by: actor.id,
+  };
   await db.from("system_deployment_requests").update({
     status: "executed",
-    result: {
-      ...meta,
-      provider: "vercel",
-      provider_deployment_id: providerDeploymentId,
-      provider_url: providerUrl,
-      executed_at: new Date().toISOString(),
-      executed_by: actor.id,
-    },
+    result: executedResult,
   }).eq("id", requestId);
 
   await systemAudit(db, {
@@ -499,9 +514,22 @@ export async function executeDeploymentCenterRequest(
     },
   });
 
+  // Single bounded monitor pass (the UI keeps polling via /monitor). Failure
+  // here must not fail the execute — the deployment was already accepted.
+  const monitor = await monitorRequest(db, actor, { ...req, status: "executed", result: executedResult });
+
   return {
     ok: true,
-    result: { status: "executed", requestId, deploymentId: providerDeploymentId ?? "", url: providerUrl, mode: "provider" },
+    result: {
+      status: "executed",
+      requestId,
+      deploymentId: providerDeploymentId ?? "",
+      url: providerUrl,
+      mode: "provider",
+      providerState: monitor.state,
+      health: monitor.health,
+      terminal: monitor.terminal,
+    },
   };
 }
 
@@ -572,4 +600,292 @@ export function manualDeployInstructions(action: string, targetEnv: string): str
     steps[1] = `In the Vercel dashboard → project → Deployments, open the target deployment → "Instant Rollback" / Promote to production.`;
   }
   return steps;
+}
+
+/* ── Post-deploy monitoring + health checks ────────────────────────────── */
+
+/**
+ * Result of an HTTP probe against a deployment URL. `probeable:false` means
+ * the URL failed the allowlist (probeableUrl) and was NEVER fetched.
+ */
+export type DeploymentHealth = {
+  status: "healthy" | "unhealthy" | "skipped" | "unknown";
+  checkedAt: string;
+  /** HTTP status of the probe, or null when the request never completed. */
+  httpStatus: number | null;
+  /** The exact URL probed (already allowlist-normalized), or null. */
+  url: string | null;
+  detail: string | null;
+};
+
+export type MonitorOutcome = {
+  ok: boolean;
+  requestId: string;
+  found: boolean;
+  requestStatus: string | null;
+  /** Mapped deployment state (building/queued/ready/error/canceled/…). */
+  state: DeploymentState | null;
+  providerStateRaw: string | null;
+  /** True when the provider reports a terminal state (ready/error/canceled). */
+  terminal: boolean;
+  health: DeploymentHealth | null;
+  error: string | null;
+};
+
+const TERMINAL_STATES: ReadonlySet<DeploymentState> = new Set(["ready", "error", "canceled"]);
+
+/**
+ * Bounded HTTP probe for post-deploy health. Only ever fetches URLs that pass
+ * probeableUrl (*.vercel.app or DEPLOY_PROBE_DOMAINS). HEAD first; on 405/501
+ * falls back to a single GET. Healthy = final status 200–399.
+ */
+export async function probeDeploymentHealth(
+  rawUrl: string | null,
+  timeoutMs = 3500,
+): Promise<{ probeable: boolean; httpStatus: number | null; healthy: boolean | null; url: string | null }> {
+  const target = probeableUrl(rawUrl);
+  if (!target) return { probeable: false, httpStatus: null, healthy: null, url: null };
+  const attempt = async (method: "HEAD" | "GET") => {
+    const res = await fetch(target, { method, redirect: "follow", signal: AbortSignal.timeout(timeoutMs) });
+    return res.status;
+  };
+  try {
+    let status = await attempt("HEAD");
+    if (status === 405 || status === 501) status = await attempt("GET");
+    return { probeable: true, httpStatus: status, healthy: status >= 200 && status < 400, url: target };
+  } catch {
+    return { probeable: true, httpStatus: null, healthy: false, url: target };
+  }
+}
+
+function healthFromProbe(
+  probe: Awaited<ReturnType<typeof probeDeploymentHealth>>,
+  checkedAt: string,
+): DeploymentHealth {
+  if (!probe.probeable) {
+    return { status: "skipped", checkedAt, httpStatus: null, url: null, detail: "url not probeable (not *.vercel.app / DEPLOY_PROBE_DOMAINS)" };
+  }
+  if (probe.healthy === null) {
+    return { status: "unknown", checkedAt, httpStatus: probe.httpStatus, url: probe.url, detail: "probe request did not complete" };
+  }
+  return {
+    status: probe.healthy ? "healthy" : "unhealthy",
+    checkedAt,
+    httpStatus: probe.httpStatus,
+    url: probe.url,
+    detail: probe.healthy ? `HTTP ${probe.httpStatus}` : `HTTP ${probe.httpStatus ?? "none"} — deployment not serving`,
+  };
+}
+
+/**
+ * Runs the production health probe for an executed request and persists
+ * result.health. Audited as 'deployment.health_checked' — the caller decides
+ * whether to audit (monitorDeployment only audits on status transitions;
+ * the explicit health-check route always audits).
+ */
+async function applyDeploymentHealth(
+  db: SupabaseClient,
+  actor: SystemActor,
+  req: DeploymentRequestRow,
+  meta: Record<string, unknown>,
+  candidateUrl: string | null,
+): Promise<DeploymentHealth> {
+  const checkedAt = new Date().toISOString();
+  const probe = await probeDeploymentHealth(candidateUrl);
+  const health = healthFromProbe(probe, checkedAt);
+  await db.from("system_deployment_requests").update({
+    result: { ...meta, health },
+  }).eq("id", req.id);
+  return health;
+}
+
+async function auditHealth(
+  db: SupabaseClient,
+  actor: SystemActor,
+  requestId: string,
+  health: DeploymentHealth,
+  prevStatus: string | null,
+): Promise<void> {
+  if (prevStatus === health.status) return; // only audit transitions/first check
+  await systemAudit(db, {
+    actor,
+    action: "deployment.health_checked",
+    resource: `deployment_request:${requestId}`,
+    detail: {
+      health_status: health.status,
+      http_status: health.httpStatus,
+      url: health.url,
+    },
+  });
+}
+
+/**
+ * Single bounded monitor pass for one execution request. The UI polls this —
+ * it NEVER blocks waiting for the provider; each call performs at most one
+ * GET /v13/deployments/{uid} plus (only when READY + production) one HTTP
+ * probe. State is persisted to result.provider_monitor so refreshes and the
+ * list view reflect the latest known state.
+ *
+ * Health rule: only target_env 'production' deployments that report READY are
+ * probed. 'executed' is never treated as healthy — result.health.status must
+ * be 'healthy' for the deployment to count as verified-live.
+ */
+async function monitorRequest(
+  db: SupabaseClient,
+  actor: SystemActor,
+  req: DeploymentRequestRow,
+): Promise<MonitorOutcome> {
+  const meta = (typeof req.result === "object" && req.result ? req.result : {}) as Record<string, unknown>;
+  const pid = typeof meta.provider_deployment_id === "string" ? meta.provider_deployment_id : null;
+  const out = (patch: Partial<MonitorOutcome>): MonitorOutcome => ({
+    ok: true, requestId: req.id, found: true, requestStatus: req.status,
+    state: null, providerStateRaw: null, terminal: false, health: null, error: null, ...patch,
+  });
+
+  if (!pid) {
+    // Nothing provider-side to monitor — request-level state is the truth.
+    const state = REQUEST_STATE[req.status] ?? "unknown";
+    return out({ state, terminal: ["executed", "failed", "rejected"].includes(req.status) });
+  }
+  if (!vercelConfigured()) {
+    return out({ state: "unknown", error: "vercel provider not configured", terminal: false });
+  }
+
+  const dep = await getVercelDeployment(pid);
+  if (!dep.configured || !dep.ok) {
+    return out({ state: "unknown", providerStateRaw: null, error: dep.configured ? dep.error : "unconfigured mid-flight", terminal: false });
+  }
+
+  const state = vercelState(dep.data.readyState, dep.data.target);
+  const storedUrl = typeof meta.provider_url === "string" ? meta.provider_url : null;
+  const providerUrl = storedUrl ?? (dep.data.url ? `https://${dep.data.url}` : null);
+  const checkedAt = new Date().toISOString();
+
+  // Persist the latest provider state on the request row.
+  const priorHealth = (typeof meta.health === "object" && meta.health ? meta.health : null) as DeploymentHealth | null;
+  let health = priorHealth;
+  let nextMeta: Record<string, unknown> = {
+    ...meta,
+    provider_monitor: { state, raw: dep.data.readyState, checked_at: checkedAt },
+  };
+
+  if (state === "ready" && req.target_env === "production") {
+    health = await applyDeploymentHealth(db, actor, req, nextMeta, providerUrl);
+    nextMeta = { ...nextMeta, health };
+    await auditHealth(db, actor, req.id, health, priorHealth?.status ?? null);
+  }
+
+  await db.from("system_deployment_requests").update({ result: nextMeta }).eq("id", req.id);
+
+  return out({
+    state,
+    providerStateRaw: dep.data.readyState,
+    terminal: TERMINAL_STATES.has(state),
+    health,
+  });
+}
+
+/**
+ * Monitor entry point for API routes: loads the request, then runs one
+ * bounded provider check. `found:false` when the request id doesn't exist.
+ */
+export async function monitorDeployment(
+  db: SupabaseClient,
+  actor: SystemActor,
+  requestId: string,
+): Promise<MonitorOutcome> {
+  const { request, error } = await getDeploymentRequest(db, requestId);
+  if (error) {
+    return { ok: false, requestId, found: false, requestStatus: null, state: null, providerStateRaw: null, terminal: false, health: null, error };
+  }
+  if (!request) {
+    return { ok: false, requestId, found: false, requestStatus: null, state: null, providerStateRaw: null, terminal: false, health: null, error: "Deployment request not found" };
+  }
+  return monitorRequest(db, actor, request);
+}
+
+/**
+ * Explicit health-check trigger (POST /api/system/deployments/[id]/health-check).
+ * Probes the deployment URL NOW regardless of provider build state and always
+ * audits 'deployment.health_checked'. Requires an executed request with a
+ * provider_deployment_id.
+ */
+export async function checkDeploymentHealthNow(
+  db: SupabaseClient,
+  actor: SystemActor,
+  requestId: string,
+): Promise<{ ok: boolean; error?: string; health?: DeploymentHealth; requestId: string }> {
+  const { request, error } = await getDeploymentRequest(db, requestId);
+  if (error) return { ok: false, error, requestId };
+  if (!request) return { ok: false, error: "Deployment request not found", requestId };
+  const meta = (typeof request.result === "object" && request.result ? request.result : {}) as Record<string, unknown>;
+  const pid = typeof meta.provider_deployment_id === "string" ? meta.provider_deployment_id : null;
+  if (!pid) return { ok: false, error: "request has no provider deployment — nothing to health-check", requestId };
+  if (!vercelConfigured()) return { ok: false, error: "vercel provider not configured", requestId };
+
+  // Resolve the freshest URL from the provider when possible.
+  let url = typeof meta.provider_url === "string" ? meta.provider_url : null;
+  const dep = await getVercelDeployment(pid);
+  if (dep.configured && dep.ok && dep.data.url) url = `https://${dep.data.url}`;
+
+  const health = await applyDeploymentHealth(db, actor, request, meta, url);
+  await systemAudit(db, {
+    actor,
+    action: "deployment.health_checked",
+    resource: `deployment_request:${requestId}`,
+    detail: { health_status: health.status, http_status: health.httpStatus, url: health.url, manual: true },
+  });
+  return { ok: true, health, requestId };
+}
+
+/* ── Rollback ↔ migration compatibility ────────────────────────────────── */
+
+/**
+ * Rollbacks promote an OLD deployment but NEVER revert database migrations —
+ * migrations are forward-only. This warning is shown unconditionally on every
+ * rollback UI and returned by the API; the operator must explicitly confirm.
+ */
+export const ROLLBACK_MIGRATION_WARNING =
+  "Rollback does NOT revert database migrations. Supabase migrations are forward-only — rolling back code to an older deployment can leave the schema ahead of (or incompatible with) that code. Verify schema compatibility between the target deployment and the current database manually before approving.";
+
+export type RollbackCompatibility = {
+  /** Repo truth: migrations defined in supabase/migrations (manifest). */
+  repoMigrationCount: number;
+  latestMigration: { file: string; number: number | null; title: string } | null;
+  /**
+   * Whether a migration-tracking table is queryable via PostgREST.
+   * 'unavailable' is the expected/honest state — Supabase does not expose
+   * per-file applied state through supabase_migrations to the REST API, so
+   * the repo manifest is the only reliable truth here.
+   */
+  dbMigrationTracking: "queryable" | "unavailable";
+  appliedCount: number | null;
+  warning: string;
+};
+
+export async function rollbackCompatibility(db: SupabaseClient | null): Promise<RollbackCompatibility> {
+  const latest = MIGRATIONS.length ? MIGRATIONS[MIGRATIONS.length - 1] : null;
+  let dbMigrationTracking: RollbackCompatibility["dbMigrationTracking"] = "unavailable";
+  let appliedCount: number | null = null;
+  if (db) {
+    try {
+      const { count, error } = await db
+        .from("supabase_migrations")
+        .select("version", { count: "exact", head: true })
+        .limit(1);
+      if (!error) {
+        dbMigrationTracking = "queryable";
+        appliedCount = typeof count === "number" ? count : null;
+      }
+    } catch {
+      /* table not exposed via PostgREST — expected */
+    }
+  }
+  return {
+    repoMigrationCount: MIGRATIONS.length,
+    latestMigration: latest ? { file: latest.file, number: latest.number, title: latest.title } : null,
+    dbMigrationTracking,
+    appliedCount,
+    warning: ROLLBACK_MIGRATION_WARNING,
+  };
 }

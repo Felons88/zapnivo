@@ -114,7 +114,7 @@ export function MediaLibrary({
 
       <form onSubmit={upload} className="rounded-2xl border border-white/[0.08] bg-white/[0.05] p-5">
         <h2 className="font-display text-lg font-bold text-white">Upload image</h2>
-        <p className="mt-1 text-xs text-slate-500">jpg, png, webp, gif or avif · max 5 MB · SVG is rejected · alt text required.</p>
+        <p className="mt-1 text-xs text-slate-500">jpg, png, webp, gif or avif · max 5 MB · SVG is rejected · alt text required · thumb + card variants generated on upload.</p>
         <div className="mt-4 grid gap-3 md:grid-cols-[1fr_1fr_1fr_auto]">
           <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/avif" required disabled={!backendConfigured} className={inputCls} />
           <input value={alt} onChange={(e) => setAlt(e.target.value)} placeholder="Alt text (required)" maxLength={300} required disabled={!backendConfigured} className={inputCls} />
@@ -149,12 +149,30 @@ export function MediaLibrary({
             <div key={item.id} className={`overflow-hidden rounded-2xl border bg-white/[0.05] ${item.archived ? "border-white/[0.06] opacity-60" : "border-white/[0.08]"}`}>
               <div className="relative flex h-40 items-center justify-center bg-ink/60">
                 {/* eslint-disable-next-line @next/next/no-img-element -- same-origin serve route, intrinsic size unknown */}
-                <img src={item.url ?? "#"} alt={item.alt_text} loading="lazy" className="max-h-full max-w-full object-contain" />
+                <img
+                  src={item.url ? `${item.url}${item.variants?.thumb ? "?variant=thumb" : ""}` : "#"}
+                  alt={item.alt_text}
+                  loading="lazy"
+                  className="max-h-full max-w-full object-contain"
+                />
                 {item.archived && <span className="absolute left-2 top-2 rounded-full bg-ink/80 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-widest text-slate-300 ring-1 ring-white/20">archived</span>}
+                {(item.variants?.thumb || item.variants?.card) && (
+                  <span className="absolute right-2 top-2 rounded-full bg-lime/90 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-widest text-ink">
+                    {[item.variants.thumb ? "thumb" : null, item.variants.card ? "card" : null].filter(Boolean).join("+")}
+                  </span>
+                )}
               </div>
               <div className="space-y-2 p-4">
                 <p className="truncate font-mono text-[10px] text-slate-500" title={item.path}>{item.path}</p>
-                <p className="text-xs text-slate-400">{item.mime ?? "?"} · {item.bytes != null ? `${(item.bytes / 1024).toFixed(0)} KB` : "?"} · {item.category}</p>
+                <p className="text-xs text-slate-400">
+                  {item.mime ?? "?"} · {item.bytes != null ? `${(item.bytes / 1024).toFixed(0)} KB` : "?"} · {item.category}
+                  {item.width != null && item.height != null && <> · <span className="font-mono">{item.width}×{item.height}</span></>}
+                </p>
+                {item.variant_error && (
+                  <p className="rounded-lg border border-amber-400/20 bg-amber-400/10 px-2 py-1 text-[10px] text-amber-300" title={item.variant_error}>
+                    variants failed — serving original ({item.variant_error.slice(0, 80)})
+                  </p>
+                )}
                 {editingAlt === item.id ? (
                   <div className="flex gap-2">
                     <input value={altDraft} onChange={(e) => setAltDraft(e.target.value)} maxLength={300} className={inputCls} aria-label="Alt text" />

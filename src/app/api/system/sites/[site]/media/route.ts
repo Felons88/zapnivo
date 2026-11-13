@@ -4,8 +4,11 @@ import { systemApiGuard } from "../../../_shared";
 import { getSiteEntry } from "@/lib/system/site-cms";
 import {
   MEDIA_BUCKET, MEDIA_CATEGORIES, extForMediaMime, isMediaCategory, listSiteMedia,
-  registerMedia, validateMediaUpload, type MediaCategory,
+  registerMedia, validateMediaUpload, type MediaCategory, type MediaVariants,
 } from "@/lib/system/site-media";
+import {
+  generateMediaVariants, inspectMediaUpload, isMediaVariantName, mediaVariantPath,
+} from "@/lib/system/site-media-process";
 import { assertApprovedOrRequest } from "@/lib/system/audit";
 import { reportError } from "@/lib/observability";
 
@@ -81,14 +84,64 @@ export async function POST(req: Request, ctx: Params) {
   const check = validateMediaUpload({ fileName: file.name, declaredMime: file.type, bytes });
   if (!check.ok) return NextResponse.json({ error: check.error }, { status: 422 });
 
+  // Decompression-bomb gate #1: header sniff BEFORE any decoder runs. Rejects
+  // oversized pixel counts/edges up front; unknown dims (avif, corrupt) pass
+  // through to the decoder-side limit in generateMediaVariants.
+  const dims = inspectMediaUpload(check.mime, bytes);
+  if (!dims.ok) return NextResponse.json({ error: dims.error }, { status: 422 });
+
+  // Variant generation is bounded (≤5 MB input, ≤50 MP, sharp limitInputPixels)
+  // and NEVER throws — a failure stores the original + variant_error honestly.
+  const variants = await generateMediaVariants(bytes, check.mime);
+
   const storagePath = `${site}/${randomUUID()}.${extForMediaMime(check.mime)}`;
-  const { error: upErr } = await g.db.storage.from(MEDIA_BUCKET).upload(storagePath, bytes, {
-    contentType: check.mime,
-    upsert: false,
-  });
+  const storedPaths = [storagePath];
+  const uploadOne = async (path: string, data: Uint8Array | Buffer, mime: string) => {
+    const { error } = await g.db.storage.from(MEDIA_BUCKET).upload(path, data, {
+      contentType: mime,
+      upsert: false,
+    });
+    return error;
+  };
+
+  // Original is ALWAYS retained (revisions/rollback); variants are optional.
+  const upErr = await uploadOne(storagePath, bytes, check.mime);
   if (upErr) {
     reportError(upErr, { route: "/api/system/sites/[site]/media", attrs: { op: "storage_upload" } });
     return NextResponse.json({ error: "Couldn't store the file — is the 'site-media' bucket provisioned?" }, { status: 500 });
+  }
+
+  const variantMap: MediaVariants = {};
+  const variantErrors: string[] = [];
+  let width = dims.width;
+  let height = dims.height;
+  let variantError: string | null = null;
+
+  if (variants.ok) {
+    // Prefer decoder-reported dims (covers formats the sniffer skips, e.g. avif).
+    if (variants.width !== null) width = variants.width;
+    if (variants.height !== null) height = variants.height;
+    for (const [name, gen] of Object.entries(variants.variants)) {
+      if (!isMediaVariantName(name)) continue;
+      const vPath = mediaVariantPath(storagePath, name);
+      const vErr = await uploadOne(vPath, gen.data, "image/webp");
+      if (vErr) {
+        variantErrors.push(`${name}: ${vErr.message}`);
+        continue;
+      }
+      storedPaths.push(vPath);
+      variantMap[name] = {
+        path: vPath,
+        mime: "image/webp",
+        bytes: gen.data.length,
+        width: gen.width,
+        height: gen.height,
+      };
+    }
+    if (variantErrors.length > 0) variantError = `variant upload failed: ${variantErrors.join("; ")}`.slice(0, 300);
+  } else {
+    // Processing failed → original-only upload, honestly flagged.
+    variantError = variants.error;
   }
 
   const result = await registerMedia(g.db, actor, {
@@ -98,10 +151,15 @@ export async function POST(req: Request, ctx: Params) {
     bytes: check.bytes,
     altText,
     category,
+    width,
+    height,
+    variants: variantMap,
+    variantError,
   });
   if (!result.ok) {
-    // Roll back the orphaned storage object — never leave unregistered bytes.
-    await g.db.storage.from(MEDIA_BUCKET).remove([storagePath]).catch(() => {});
+    // Roll back ALL stored objects (original + variants) — never leave
+    // unregistered bytes in the bucket.
+    await g.db.storage.from(MEDIA_BUCKET).remove(storedPaths).catch(() => {});
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
   return NextResponse.json({ item: result.data }, { status: 201 });

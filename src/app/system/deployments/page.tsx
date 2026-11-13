@@ -5,11 +5,39 @@ import { SystemGate } from "@/components/SystemGate";
 import { serviceClient } from "@/lib/supabase";
 import { getSessionUser } from "@/lib/auth";
 import { roleCan, systemRole } from "@/lib/system/rbac";
-import { listDeployments, rollbackCandidates } from "@/lib/system/deploy-center";
-import { vercelGate, githubGate, allowedDeployRefs } from "@/lib/system/deploy-provider";
+import { listDeployments, rollbackCandidates, rollbackCompatibility } from "@/lib/system/deploy-center";
+import { vercelGate, allowedDeployRefs } from "@/lib/system/deploy-provider";
+import { deployProviderReadiness, type ProviderReadiness } from "@/lib/system/deploy-verify";
+import { listIntegrationStatus, type IntegrationRow } from "@/lib/system/integrations";
 import { DeploymentsClient } from "./DeploymentsClient";
+import { ProviderReadinessCards, type ProviderCardData } from "./ProviderReadinessCards";
 
 export const metadata: Metadata = { title: "Deployments — Deployment Center" };
+
+function cardData(
+  readiness: ProviderReadiness,
+  row: IntegrationRow | undefined,
+): ProviderCardData {
+  const providerMeta = row
+    ? { envVars: row.envVars }
+    : { envVars: readiness.provider === "vercel" ? ["VERCEL_TOKEN", "VERCEL_PROJECT_ID", "VERCEL_TEAM_ID"] : ["GITHUB_TOKEN", "GITHUB_REPO", "GITHUB_DEPLOY_REFS"] };
+  return {
+    provider: readiness.provider,
+    name: readiness.provider === "vercel" ? "Vercel" : "GitHub",
+    configured: readiness.configured,
+    missing: readiness.missing,
+    envPresence: providerMeta.envVars.map((name) => ({ name, set: Boolean(process.env[name]) })),
+    lastHealthCheck: row?.lastHealthCheck
+      ? {
+          status: row.lastHealthCheck.status,
+          checkedAt: row.lastHealthCheck.checkedAt,
+          latencyMs: row.lastHealthCheck.latencyMs,
+          detail: row.lastHealthCheck.detail,
+        }
+      : null,
+    requiredAction: readiness.requiredAction,
+  };
+}
 
 export default async function DeploymentsCenterPage() {
   const db = serviceClient();
@@ -19,8 +47,16 @@ export default async function DeploymentsCenterPage() {
 
   const center = await listDeployments(db, { probe: true, limit: 50 });
   const rb = await rollbackCandidates();
+  const compat = await rollbackCompatibility(db);
   const vg = vercelGate();
-  const gg = githubGate();
+  const integrations = await listIntegrationStatus(db);
+  const ghRow = integrations.find((r) => r.id === "github");
+  const vcRow = integrations.find((r) => r.id === "vercel");
+
+  const cards: ProviderCardData[] = [
+    cardData(deployProviderReadiness("vercel"), vcRow),
+    cardData(deployProviderReadiness("github"), ghRow),
+  ];
 
   return (
     <SystemGate perm="system.deployments.view">
@@ -46,34 +82,12 @@ export default async function DeploymentsCenterPage() {
           </div>
         </div>
 
-        {/* Provider configuration banners — honest, no secrets */}
-        <div className="grid gap-3 sm:grid-cols-2">
-          <section className="rounded-2xl border border-white/[0.08] bg-white/[0.05] p-4">
-            <h2 className="eyebrow text-slate-400">Vercel provider</h2>
-            {vg.configured ? (
-              <p className="mt-2 font-mono text-xs text-lime">configured — deployments, events, promote &amp; cancel via API</p>
-            ) : (
-              <div className="mt-2 space-y-1 text-xs text-slate-400">
-                <p><span className="font-mono text-amber-300">requires_credentials</span> — set <code className="font-mono">VERCEL_TOKEN</code> + <code className="font-mono">VERCEL_PROJECT_ID</code> (optional <code className="font-mono">VERCEL_TEAM_ID</code>) to enable API execution.</p>
-                <p className="font-mono text-[11px] text-slate-500">missing: {vg.missing.join(", ")}</p>
-              </div>
-            )}
-          </section>
-          <section className="rounded-2xl border border-white/[0.08] bg-white/[0.05] p-4">
-            <h2 className="eyebrow text-slate-400">GitHub provider</h2>
-            {gg.configured ? (
-              <p className="mt-2 font-mono text-xs text-lime">configured — repo, commits, branches, PRs &amp; checks</p>
-            ) : (
-              <div className="mt-2 space-y-1 text-xs text-slate-400">
-                <p><span className="font-mono text-amber-300">requires_credentials</span> — set <code className="font-mono">GITHUB_TOKEN</code> + <code className="font-mono">GITHUB_REPO=owner/name</code> for commit links and the GitHub view.</p>
-                <p className="font-mono text-[11px] text-slate-500">missing: {gg.missing.join(", ")}</p>
-              </div>
-            )}
-            <p className="mt-2 font-mono text-[11px] text-slate-500">
-              deploy refs allowed: {allowedDeployRefs().join(", ") || "(none)"} · set GITHUB_DEPLOY_REFS to widen
-            </p>
-          </section>
-        </div>
+        {/* Provider connection readiness — env chips, verified badge, live check */}
+        <ProviderReadinessCards providers={cards} />
+
+        <p className="font-mono text-[11px] text-slate-500">
+          deploy refs allowed: {allowedDeployRefs().join(", ") || "(none)"} · branch/tag names only (GITHUB_DEPLOY_REFS; trailing-* patterns allowed, raw SHAs only if listed literally)
+        </p>
 
         {center.vercelError && (
           <p className="rounded-xl border border-red-400/20 bg-red-500/10 px-4 py-2 font-mono text-xs text-red-300">
@@ -92,6 +106,13 @@ export default async function DeploymentsCenterPage() {
           })) : []}
           rollbackProviderConfigured={rb.configured}
           allowedRefs={allowedDeployRefs()}
+          rollbackCompat={{
+            warning: compat.warning,
+            repoMigrationCount: compat.repoMigrationCount,
+            latestMigration: compat.latestMigration,
+            dbMigrationTracking: compat.dbMigrationTracking,
+            appliedCount: compat.appliedCount,
+          }}
         />
       </div>
     </SystemGate>

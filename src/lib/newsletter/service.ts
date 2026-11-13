@@ -9,6 +9,7 @@ import {
   NEWSLETTER_CONSENT_TEXT,
   NEWSLETTER_CONSENT_VERSION,
   decideSubscribe,
+  isNewsletterTestAddressAllowed,
   mergeSegments,
   type NewsletterSegment,
   type NewsletterStatus,
@@ -102,7 +103,7 @@ async function sendNewsletterEmail(to: string, kind: "confirm" | "welcome", link
     const repo = await getRepo();
     if (!repo) {
       recordLog("warning", "newsletter_email_no_repo", { service: "newsletter", attrs: { kind } });
-      return { queued: false, reason: "no_repo" as const };
+      return { queued: false, sent: false, reason: "no_repo" as const };
     }
     const mail = doiEmail(kind, { ...links, year: new Date().getFullYear() });
     const subject = kind === "confirm" ? "Confirm your Zapnivo subscription" : "You're subscribed to Zapnivo";
@@ -133,6 +134,56 @@ async function sendNewsletterEmail(to: string, kind: "confirm" | "welcome", link
       attrs: { kind, message: err instanceof Error ? err.message.slice(0, 200) : "unknown" },
     });
     return { queued: false, sent: false, reason: "error" as const };
+  }
+}
+
+/* ── Delivery status (outbox join — honest, never inferred) ────────────────── */
+
+/**
+ * Latest email_outbox state for a subscriber address. Newsletter mail is queued
+ * with event 'newsletter.confirm' / 'newsletter.welcome' (see sendNewsletterEmail);
+ * the outbox row is the ONLY delivery truth — 'sent' means the provider accepted
+ * the message, NOT that it reached an inbox (no bounce webhook exists yet).
+ */
+export type NewsletterDelivery = {
+  status: "queued" | "sent" | "failed";
+  /** Which newsletter email this row describes. */
+  event: string | null;
+  at: string;
+};
+
+const NEWSLETTER_EVENTS = ["newsletter.confirm", "newsletter.welcome"] as const;
+
+/**
+ * Latest outbox delivery per recipient email, newest first. Bounded (500 rows,
+ * recent-limit emails only). Returns {} on ANY failure — callers render "—",
+ * never a fabricated status.
+ */
+export async function getNewsletterDelivery(
+  db: SupabaseClient | null,
+  emails: string[],
+): Promise<Record<string, NewsletterDelivery>> {
+  const out: Record<string, NewsletterDelivery> = {};
+  const list = [...new Set(emails.map((e) => e.trim().toLowerCase()).filter(Boolean))].slice(0, 100);
+  if (!db || list.length === 0) return out;
+  try {
+    const { data, error } = await db
+      .from("email_outbox")
+      .select("to_email,status,event,created_at")
+      .in("to_email", list)
+      .in("event", [...NEWSLETTER_EVENTS])
+      .order("created_at", { ascending: false })
+      .limit(500);
+    if (error || !Array.isArray(data)) return out;
+    for (const r of data as { to_email: string; status: string; event: string | null; created_at: string }[]) {
+      const key = String(r.to_email).toLowerCase();
+      if (out[key]) continue; // rows are newest-first — first hit is latest
+      if (r.status !== "queued" && r.status !== "sent" && r.status !== "failed") continue;
+      out[key] = { status: r.status, event: r.event ?? null, at: r.created_at };
+    }
+    return out;
+  } catch {
+    return out;
   }
 }
 
@@ -403,11 +454,13 @@ export async function unsubscribeSubscription(rawToken: string): Promise<Unsubsc
 
 /* ── Admin operations ───────────────────────────────────────────────────────── */
 
+export type RecentSubscriber = SubscriberRow & { delivery: NewsletterDelivery | null };
+
 export type NewsletterOverview = {
   totals: Record<NewsletterStatus, number>;
   bySegment: Record<NewsletterSegment, Record<NewsletterStatus, number>>;
   confirmedTotal: number;
-  recent: SubscriberRow[];
+  recent: RecentSubscriber[];
 };
 
 const emptyMatrix = (): Record<NewsletterSegment, Record<NewsletterStatus, number>> => ({
@@ -428,11 +481,14 @@ export async function getNewsletterOverview(db: SupabaseClient | null, recentLim
     totals[r.status] += 1;
     bySegment[r.segment][r.status] += 1;
   }
+  const recentRows = rows.slice(0, recentLimit);
+  // Join the latest outbox delivery per address — honest status or null (never faked).
+  const delivery = await getNewsletterDelivery(db, recentRows.map((r) => r.email));
   return {
     totals,
     bySegment,
     confirmedTotal: totals.confirmed,
-    recent: rows.slice(0, recentLimit),
+    recent: recentRows.map((r) => ({ ...r, delivery: delivery[r.email.toLowerCase()] ?? null })),
   };
 }
 
@@ -459,6 +515,90 @@ export async function resendConfirmation(db: SupabaseClient, id: string): Promis
   });
   recordLog("info", "newsletter_confirm_resent", { service: "newsletter", attrs: { segment: row.segment } });
   return { ok: true };
+}
+
+/* ── Operator test-send (System Control) ───────────────────────────────────── */
+
+export type TestDoiResult =
+  | { ok: true; subscriberId: string; action: "created" | "resent"; queued: boolean; sent: boolean; reason: string | null }
+  | { ok: false; status: number; error: string };
+
+/**
+ * Sends a REAL double-opt-in email to an allowlisted test address, exercising the
+ * exact production path (pending subscriber row → outbox → provider flush).
+ *
+ * Allowlist (see core.ts): *@zapnivo.com or NEWSLETTER_TEST_ADDRESSES entries —
+ * test mail must never reach a real customer. Test rows are identifiable by
+ * source='operator_test' for later cleanup; they still require the emailed
+ * confirm link to become 'confirmed', same as any signup.
+ *
+ * Existing non-pending rows are refused (409): a confirmed test address would
+ * silently merge segments instead of exercising DOI, which defeats the purpose.
+ */
+export async function sendOperatorTestDoi(db: SupabaseClient | null, rawEmail: string): Promise<TestDoiResult> {
+  if (!db) return { ok: false, status: 503, error: "Newsletter backend not configured" };
+  const email = rawEmail.trim().toLowerCase();
+  if (!isNewsletterTestAddressAllowed(email)) {
+    return { ok: false, status: 403, error: "Address is not on the newsletter test allowlist (*@zapnivo.com or NEWSLETTER_TEST_ADDRESSES)." };
+  }
+
+  const existing = await findByEmail(db, email);
+  if (existing && existing.status !== "pending") {
+    return { ok: false, status: 409, error: `Test address already has a ${existing.status} subscription — use a different allowlisted address.` };
+  }
+
+  const confirmTok = newToken();
+  const unsubTok = newToken();
+  const now = new Date().toISOString();
+  const tokenPatch = {
+    confirm_token_hash: hashToken(confirmTok),
+    unsubscribe_token_hash: hashToken(unsubTok),
+    consent_text_version: NEWSLETTER_CONSENT_VERSION,
+    consent_at: now,
+    updated_at: now,
+  };
+
+  let row: SubscriberRow;
+  let action: "created" | "resent";
+  if (existing) {
+    const { data, error } = await db.from("newsletter_subscribers")
+      .update({ ...tokenPatch, source: "operator_test" })
+      .eq("id", existing.id).select(COLS).single();
+    if (error || !data) return { ok: false, status: 500, error: "Update failed" };
+    row = data as SubscriberRow;
+    action = "resent";
+  } else {
+    const { data, error } = await db.from("newsletter_subscribers").insert({
+      email,
+      segment: "customer",
+      status: "pending",
+      source: "operator_test",
+      ...tokenPatch,
+    }).select(COLS).single();
+    if (error || !data) {
+      recordLog("error", "newsletter_test_insert_failed", { service: "newsletter", attrs: { code: error?.code } });
+      return { ok: false, status: 500, error: "Could not create the test subscriber" };
+    }
+    row = data as SubscriberRow;
+    action = "created";
+  }
+
+  const sent = await sendNewsletterEmail(email, "confirm", {
+    confirmUrl: confirmUrl(confirmTok),
+    unsubscribeUrl: unsubscribeUrl(unsubTok),
+  });
+  recordLog("info", "newsletter_test_doi_sent", {
+    service: "newsletter",
+    attrs: { action, queued: sent.queued, delivered: sent.sent, reason: sent.reason ?? "ok" },
+  });
+  return {
+    ok: true,
+    subscriberId: row.id,
+    action,
+    queued: sent.queued,
+    sent: sent.sent,
+    reason: sent.reason,
+  };
 }
 
 export { NEWSLETTER_CONSENT_TEXT };

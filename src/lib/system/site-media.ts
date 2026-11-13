@@ -53,6 +53,79 @@ const MIME_FOR_EXT: Record<string, MediaMime> = {
 /** Same-origin serve path stored as site_media.url — kept unguessable via uuid id. */
 export const mediaServePath = (id: string): string => `/api/system/sites/media/file/${id}`;
 
+/* ── Variants (migration 0063) ────────────────────────────────────────────────
+ * site_media.variants is a jsonb map of variant name → stored object info:
+ *   { "thumb": { "path": "site/<uuid>.thumb.webp", "mime": "image/webp",
+ *                "bytes": 1234, "width": 400, "height": 267 },
+ *     "card":  { ... } }
+ * Variants are regenerable derivatives of the ORIGINAL (always retained for
+ * revisions/rollback). site_media.variant_error records the last processing
+ * failure honestly ("" = none) so the UI can show "original only" instead of
+ * pretending variants exist.
+ */
+export type MediaVariantInfo = {
+  path: string;
+  mime: string;
+  bytes: number | null;
+  width: number | null;
+  height: number | null;
+};
+export type MediaVariants = Partial<Record<"thumb" | "card", MediaVariantInfo>>;
+
+const asVariantInfo = (v: unknown): MediaVariantInfo | null => {
+  const r = v as Partial<MediaVariantInfo> | null;
+  if (!r || typeof r.path !== "string" || r.path.length === 0) return null;
+  return {
+    path: r.path,
+    mime: typeof r.mime === "string" ? r.mime : "image/webp",
+    bytes: typeof r.bytes === "number" ? r.bytes : null,
+    width: typeof r.width === "number" ? r.width : null,
+    height: typeof r.height === "number" ? r.height : null,
+  };
+};
+
+/** Defensive parse of the variants jsonb column — unknown keys dropped. */
+export function parseMediaVariants(v: unknown): MediaVariants {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return {};
+  const out: MediaVariants = {};
+  for (const key of ["thumb", "card"] as const) {
+    const parsed = asVariantInfo((v as Record<string, unknown>)[key]);
+    if (parsed) out[key] = parsed;
+  }
+  return out;
+}
+
+/** All storage paths owned by a media row: original + every variant. */
+export function mediaStoragePaths(item: Pick<SiteMediaItem, "path" | "variants">): string[] {
+  const paths = [item.path];
+  for (const key of ["thumb", "card"] as const) {
+    const p = item.variants?.[key]?.path;
+    if (typeof p === "string" && p.length > 0) paths.push(p);
+  }
+  return paths;
+}
+
+export type MediaServeTarget = { path: string; mime: string | null };
+
+/**
+ * Resolves which storage object a serve request should return.
+ * variant "original"/undefined → the retained original; "thumb"/"card" → the
+ * named variant. Returns null when the requested variant doesn't exist —
+ * callers decide between 404 and redirecting to the original.
+ */
+export function resolveMediaServeTarget(
+  item: Pick<SiteMediaItem, "path" | "mime" | "variants">,
+  variant: string | null | undefined,
+): MediaServeTarget | null {
+  if (!variant || variant === "original") return { path: item.path, mime: item.mime };
+  if (variant === "thumb" || variant === "card") {
+    const v = item.variants?.[variant];
+    if (!v) return null;
+    return { path: v.path, mime: v.mime };
+  }
+  return null; // unknown variant name
+}
+
 /* ── Magic-byte sniffing (pure — unit tested) ──────────────────────────────── */
 
 const startsWith = (b: Uint8Array, sig: number[], offset = 0): boolean =>
@@ -129,17 +202,22 @@ export type SiteMediaItem = {
   archived: boolean;
   width: number | null;
   height: number | null;
+  variants: MediaVariants;
+  variant_error: string | null;
   uploaded_by: string | null;
   created_at: string;
 };
 
 const MEDIA_COLS =
-  "id,site_key,path,url,alt_text,mime,bytes,storage_bucket,category,archived,width,height,uploaded_by,created_at";
+  "id,site_key,path,url,alt_text,mime,bytes,storage_bucket,category,archived,width,height,variants,variant_error,uploaded_by,created_at";
 
 const asItem = (v: unknown): SiteMediaItem | null => {
   const r = v as Partial<SiteMediaItem> | null;
   if (!r || typeof r.id !== "string" || typeof r.path !== "string") return null;
-  return r as SiteMediaItem;
+  const item = r as SiteMediaItem;
+  item.variants = parseMediaVariants((r as { variants?: unknown }).variants);
+  item.variant_error = typeof r.variant_error === "string" && r.variant_error.length > 0 ? r.variant_error : null;
+  return item;
 };
 
 /* ── Reads ─────────────────────────────────────────────────────────────────── */
@@ -238,6 +316,10 @@ export async function registerMedia(
     bytes: number;
     altText: string;
     category: MediaCategory;
+    width?: number | null;
+    height?: number | null;
+    variants?: MediaVariants;
+    variantError?: string | null;
   },
 ): Promise<CmsResult<SiteMediaItem>> {
   if (!isSiteKey(input.siteKey)) return fail(404, "Unknown site");
@@ -254,6 +336,10 @@ export async function registerMedia(
       bytes: input.bytes,
       storage_bucket: MEDIA_BUCKET,
       category: input.category,
+      width: input.width ?? null,
+      height: input.height ?? null,
+      variants: input.variants ?? {},
+      variant_error: input.variantError ?? null,
       uploaded_by: actor.id,
     })
     .select(MEDIA_COLS)
@@ -339,7 +425,9 @@ export async function deleteMedia(
   }
 
   if (item.storage_bucket) {
-    const { error: rmErr } = await db.storage.from(item.storage_bucket).remove([item.path]);
+    // Remove the original AND every variant in one call — variants are
+    // regenerable derivatives but must never be orphaned in the bucket.
+    const { error: rmErr } = await db.storage.from(item.storage_bucket).remove(mediaStoragePaths(item));
     // A missing object is fine (already gone); anything else is a real failure.
     if (rmErr && !/not.?found|does not exist/i.test(rmErr.message)) {
       return { ok: false, status: 500, error: `Storage delete failed: ${rmErr.message}` };

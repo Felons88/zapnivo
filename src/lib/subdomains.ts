@@ -37,6 +37,27 @@ export const apexCookieDomain = (host: string) => {
   return h === b || h.endsWith(`.${b}`) ? b : undefined;
 };
 
+/**
+ * Maps a request Host header to the CMS site_key used by site_redirects /
+ * site_content (SITE_REGISTRY keys in src/lib/system/site-cms.ts).
+ *  - apex/www.<base> and bare <base>      → "apex"
+ *  - <sub>.<base> / <sub>.localhost       → the subdomain key
+ *  - localhost / 127.0.0.1 / *.localhost  → "apex" (local dev mirrors apex)
+ *  - anything else (preview domains, unknown hosts) → null (no site rules apply)
+ */
+export type SiteKey = "apex" | Subdomain;
+export function siteKeyForHost(host: string, base = baseDomain()): SiteKey | null {
+  const hostname = host.split(":")[0].toLowerCase();
+  const local = hostname === "localhost" || hostname === "127.0.0.1" || hostname.endsWith(".localhost");
+  const apexWww = base === DEFAULT_BASE_DOMAIN ? `www.${base}` : base;
+  for (const s of ["support", "internal", "partners", "customer", "system", "api"] as const) {
+    if (hostname === `${s}.${base}` || (local && hostname === `${s}.localhost`)) return s;
+  }
+  if (hostname === base || hostname === apexWww) return "apex";
+  if (local) return "apex";
+  return null;
+}
+
 /** Top-level sections owned by the marketing site — on a subdomain these bounce to apex. */
 export const APEX_SECTIONS = new Set([
   "about", "advertise", "advertiser", "business", "contact", "how-it-works", "legal", "locations",

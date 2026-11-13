@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { SystemGate } from "@/components/SystemGate";
 import { serviceClient } from "@/lib/supabase";
 import { launchReadiness, type LaunchStatus, type LaunchSubsystem } from "@/lib/system/launch";
+import { getOpsStatus, type OpsState, type OpsCard } from "@/lib/system/ops-status";
 
 export const metadata: Metadata = { title: "Launch readiness" };
 
@@ -32,11 +33,33 @@ function Badge({ status }: { status: LaunchStatus }) {
   );
 }
 
+const OPS_STYLE: Record<OpsState, { label: string; cls: string }> = {
+  operational: { label: "operational", cls: "bg-lime/15 text-lime ring-lime/30" },
+  degraded: { label: "degraded", cls: "bg-red-400/10 text-red-300 ring-red-400/25" },
+  not_configured: { label: "not configured", cls: "bg-slate-400/10 text-slate-300 ring-slate-400/25" },
+  blocked: { label: "blocked", cls: "bg-red-400/10 text-red-300 ring-red-400/25" },
+  requires_action: { label: "action needed", cls: "bg-amber-400/10 text-amber-300 ring-amber-400/25" },
+};
+
+const OPS_ORDER: OpsState[] = ["degraded", "blocked", "requires_action", "not_configured", "operational"];
+
+function OpsBadge({ state }: { state: OpsState }) {
+  const s = OPS_STYLE[state];
+  return (
+    <span className={`inline-block rounded-full px-2 py-0.5 font-mono text-[10px] font-bold ring-1 ${s.cls}`}>
+      {s.label}
+    </span>
+  );
+}
+
 export default async function LaunchReadinessPage() {
   const db = serviceClient();
-  const r = await launchReadiness(db);
+  const [r, ops] = await Promise.all([launchReadiness(db), getOpsStatus(db)]);
   const sorted = [...r.subsystems].sort(
     (a, b) => ORDER.indexOf(a.status) - ORDER.indexOf(b.status),
+  );
+  const opsSorted = [...ops.cards].sort(
+    (a, b) => OPS_ORDER.indexOf(a.state) - OPS_ORDER.indexOf(b.state),
   );
 
   return (
@@ -100,6 +123,34 @@ export default async function LaunchReadinessPage() {
             </section>
           ))}
         </div>
+
+        {/* Operations — live integration/subsystem readiness */}
+        <section>
+          <h2 className="eyebrow text-slate-400">Operations</h2>
+          <p className="mt-1 text-xs text-slate-500">
+            Per-subsystem integration state. “Operational” requires a passing live or recorded check —
+            env vars alone never qualify. Checked {new Date(ops.generatedAt).toLocaleTimeString("en-US")}.
+          </p>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {opsSorted.map((c: OpsCard) => (
+              <a
+                key={c.id}
+                href={c.href}
+                className="block rounded-xl border border-white/[0.08] bg-white/[0.04] p-4 transition-colors hover:border-lime/30"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-sm font-semibold text-slate-200">{c.label}</h3>
+                  <OpsBadge state={c.state} />
+                </div>
+                <p className="mt-1.5 text-xs text-slate-500">
+                  {c.verified === true ? "verified" : c.verified === false ? "check failed" : "unverified"}
+                  {" · "}checked {new Date(c.lastChecked).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                </p>
+                {c.nextAction && <p className="mt-1.5 text-xs text-amber-200/80">→ {c.nextAction}</p>}
+              </a>
+            ))}
+          </div>
+        </section>
 
         <p className="text-xs text-slate-600">
           Related: <a className="text-sky-400 hover:underline" href="/system/security/readiness">security readiness</a> ·{" "}

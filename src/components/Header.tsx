@@ -7,8 +7,23 @@ import { Logo } from "./Logo";
 import { btnClass } from "./ui";
 import { SiteSearch } from "./SiteSearch";
 
-export function Header({ heroDark = false, announcement }: { heroDark?: boolean; announcement?: { text: string; href?: string } | null }) {
+type Announcement = { text: string; href?: string } | null;
+
+/**
+ * Pure announcement selection (unit tested): auth paths suppress the strip;
+ * /support/* (the internal path support.zapnivo.com rewrites to) prefers the
+ * support site's banner; everything else uses the apex banner.
+ */
+export function pickAnnouncement(path: string, apex: Announcement, support: Announcement): { show: boolean; announcement: Announcement } {
+  if (path === "/login" || path.startsWith("/login/")) return { show: false, announcement: null };
+  const onSupport = path === "/support" || path.startsWith("/support/");
+  return { show: true, announcement: onSupport && support?.text ? support : apex };
+}
+
+export function Header({ heroDark = false, announcement, supportAnnouncement }: { heroDark?: boolean; announcement?: { text: string; href?: string } | null; supportAnnouncement?: { text: string; href?: string } | null }) {
   const path = usePathname();
+  const picked = pickAnnouncement(path, announcement ?? null, supportAnnouncement ?? null);
+  const active = picked.announcement;
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
   const [menu, setMenu] = useState<"rent" | "venues" | "explore" | null>(null);
@@ -40,13 +55,15 @@ export function Header({ heroDark = false, announcement }: { heroDark?: boolean;
     <>
       <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded-full focus:bg-lime focus:px-5 focus:py-3 focus:font-bold">Skip to content</a>
       <header onMouseLeave={() => setMenu(null)} className={`fixed inset-x-0 top-0 z-50 transition-[background-color,box-shadow,color] duration-300 ${solid ? "bg-paper/95 text-ink shadow-[0_1px_0_#e8ebe6] backdrop-blur-md" : onDark ? "text-white" : "text-ink"}`}>
+        {picked.show ? (
         <div className="section-neon py-2 text-center text-[10px] font-extrabold uppercase tracking-[.13em] text-ink sm:text-xs">
-          {announcement?.text ? (
-            <>{announcement.text}{announcement.href ? <> · <Link href={announcement.href} className="ml-2 underline underline-offset-2">Learn more →</Link></> : null}</>
+          {active?.text ? (
+            <>{active.text}{active.href ? <> · <Link href={active.href} className="ml-2 underline underline-offset-2">Learn more →</Link></> : null}</>
           ) : (
             <>Portable charger rentals · Rolling out across Minnesota <Link href="/locations" className="ml-2 underline underline-offset-2">View locations →</Link></>
           )}
         </div>
+        ) : null}
         <div className="container-z flex h-[72px] items-center justify-between">
           <Link href="/" aria-label="Zapnivo home" className="relative z-[60]"><Logo className={open ? "text-white" : ""} /></Link>
           <nav aria-label="Primary" className="hidden items-center gap-7 lg:flex">

@@ -2,8 +2,9 @@ export const dynamic = "force-dynamic";
 import type { Metadata } from "next";
 import { SystemGate } from "@/components/SystemGate";
 import { serviceClient } from "@/lib/supabase";
-import { getNewsletterOverview } from "@/lib/newsletter/service";
+import { getNewsletterOverview, type NewsletterDelivery } from "@/lib/newsletter/service";
 import { ResendButton } from "./ResendButton";
+import { TestSendForm } from "./TestSendForm";
 
 export const metadata: Metadata = { title: "Newsletter — Subscribers" };
 
@@ -16,6 +17,23 @@ const statusBadge = (s: string) =>
 
 const fmtDate = (iso: string | null) =>
   iso ? new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }) : "—";
+
+/** Outbox delivery badge — 'sent' means provider-accepted only (no bounce webhook yet). */
+const deliveryBadge = (d: NewsletterDelivery | null) => {
+  if (!d) return <span className="text-slate-600">—</span>;
+  const cls =
+    d.status === "sent"
+      ? "bg-lime/15 text-lime ring-lime/30"
+      : d.status === "failed"
+        ? "bg-red-400/10 text-red-300 ring-red-400/30"
+        : "bg-sky-400/10 text-sky-300 ring-sky-400/25";
+  const label = d.status === "sent" ? "sent" : d.status === "failed" ? "delivery failed" : "queued";
+  return (
+    <span title={`${d.event ?? "email"} · ${fmtDate(d.at)}`} className={`rounded-full px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wider ring-1 ${cls}`}>
+      {label}
+    </span>
+  );
+};
 
 /**
  * /system/newsletter — subscriber pipeline overview. Pending rows are shown for
@@ -82,6 +100,16 @@ export default async function NewsletterAdminPage() {
               </table>
             </div>
 
+            <div className="rounded-2xl border border-white/[0.08] bg-white/[0.05] p-5">
+              <h2 className="text-sm font-bold text-white">Send test DOI</h2>
+              <p className="mt-1 text-xs text-slate-400">
+                Sends a real confirmation email through the production pipeline. Allowlisted addresses only
+                (*@zapnivo.com or <code className="font-mono">NEWSLETTER_TEST_ADDRESSES</code>); the row is marked{" "}
+                <code className="font-mono">source=operator_test</code> for cleanup.
+              </p>
+              <div className="mt-3"><TestSendForm /></div>
+            </div>
+
             <div className="overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.05]">
               <div className="border-b border-white/[0.08] px-5 py-4">
                 <h2 className="text-sm font-bold text-white">Recent subscribers</h2>
@@ -96,6 +124,7 @@ export default async function NewsletterAdminPage() {
                         <th className="px-5 py-3 font-bold uppercase tracking-wider">Email</th>
                         <th className="px-3 py-3 font-bold uppercase tracking-wider">Segment</th>
                         <th className="px-3 py-3 font-bold uppercase tracking-wider">Status</th>
+                        <th className="px-3 py-3 font-bold uppercase tracking-wider">Delivery</th>
                         <th className="px-3 py-3 font-bold uppercase tracking-wider">Source</th>
                         <th className="px-3 py-3 font-bold uppercase tracking-wider">Created</th>
                         <th className="px-3 py-3 font-bold uppercase tracking-wider">Confirmed</th>
@@ -110,6 +139,7 @@ export default async function NewsletterAdminPage() {
                           <td className="px-3 py-3">
                             <span className={`rounded-full px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wider ring-1 ${statusBadge(r.status)}`}>{r.status}</span>
                           </td>
+                          <td className="px-3 py-3">{deliveryBadge(r.delivery)}</td>
                           <td className="px-3 py-3 text-slate-400">{r.source}</td>
                           <td className="px-3 py-3 text-slate-400">{fmtDate(r.created_at)}</td>
                           <td className="px-3 py-3 text-slate-400">{fmtDate(r.confirmed_at)}</td>

@@ -2,8 +2,9 @@ import { describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   MEDIA_BUCKET, MEDIA_CATEGORIES, MEDIA_MAX_BYTES, extForMediaMime,
-  isMediaCategory, mediaServePath, mediaUsageRefs, registerMedia,
-  deleteMedia, getMediaItem, listSiteMedia, sniffImageMime, updateMediaMeta,
+  isMediaCategory, mediaServePath, mediaStoragePaths, mediaUsageRefs, parseMediaVariants,
+  registerMedia, resolveMediaServeTarget, deleteMedia, getMediaItem, listSiteMedia,
+  sniffImageMime, updateMediaMeta,
   validateMediaUpload, type SiteMediaItem,
 } from "@/lib/system/site-media";
 import type { SystemActor } from "@/lib/system/audit";
@@ -139,6 +140,8 @@ const item = (over: Partial<SiteMediaItem> = {}): SiteMediaItem => ({
   archived: false,
   width: null,
   height: null,
+  variants: {},
+  variant_error: null,
   uploaded_by: "user-1",
   created_at: "2026-01-01T00:00:00Z",
   ...over,
@@ -319,5 +322,83 @@ describe("getMediaItem", () => {
     const found = await getMediaItem(db, "apex", item().id);
     expect(found?.id).toBe(item().id);
     expect(found?.archived).toBe(false);
+  });
+});
+
+/* ── Variants (migration 0063) ─────────────────────────────────────────────── */
+
+describe("parseMediaVariants / mediaStoragePaths / resolveMediaServeTarget", () => {
+  const withVariants = item({
+    variants: {
+      thumb: { path: "apex/x.thumb.webp", mime: "image/webp", bytes: 100, width: 400, height: 300 },
+      card: { path: "apex/x.card.webp", mime: "image/webp", bytes: 900, width: 800, height: 600 },
+    },
+  });
+
+  it("parses valid variants and drops malformed entries", () => {
+    expect(parseMediaVariants(withVariants.variants)).toEqual(withVariants.variants);
+    expect(parseMediaVariants(null)).toEqual({});
+    expect(parseMediaVariants("nope")).toEqual({});
+    expect(parseMediaVariants([1, 2])).toEqual({});
+    expect(parseMediaVariants({ thumb: { nope: true }, evil: { path: "x" }, card: { path: "apex/c.webp" } }))
+      .toEqual({ card: { path: "apex/c.webp", mime: "image/webp", bytes: null, width: null, height: null } });
+  });
+
+  it("lists original + variant paths for deletion", () => {
+    expect(mediaStoragePaths(withVariants)).toEqual(["apex/abc.png", "apex/x.thumb.webp", "apex/x.card.webp"]);
+    expect(mediaStoragePaths(item())).toEqual(["apex/abc.png"]);
+  });
+
+  it("resolves original/variant targets and rejects unknown names", () => {
+    expect(resolveMediaServeTarget(withVariants, null)).toEqual({ path: "apex/abc.png", mime: "image/png" });
+    expect(resolveMediaServeTarget(withVariants, "original")).toEqual({ path: "apex/abc.png", mime: "image/png" });
+    expect(resolveMediaServeTarget(withVariants, "thumb")).toEqual({ path: "apex/x.thumb.webp", mime: "image/webp" });
+    expect(resolveMediaServeTarget(withVariants, "card")?.path).toBe("apex/x.card.webp");
+    // known-but-missing variant → null (route redirects to original)
+    expect(resolveMediaServeTarget(item(), "thumb")).toBeNull();
+    // unknown variant name → null (route 404s)
+    expect(resolveMediaServeTarget(withVariants, "huge")).toBeNull();
+  });
+});
+
+describe("registerMedia with processing metadata", () => {
+  it("persists width/height/variants/variant_error", async () => {
+    const media = fakeTable();
+    const audit = fakeTable();
+    const { db } = fakeDb({ site_media: media, system_audit_events: audit });
+    stateOf(media).queue.push({ data: item({ width: 800, height: 600, variants: { thumb: { path: "apex/x.thumb.webp", mime: "image/webp", bytes: 1, width: 400, height: 300 } } }), error: null });
+    const res = await registerMedia(db, actor, {
+      siteKey: "apex", storagePath: "apex/x.png", mime: "image/png", bytes: 10,
+      altText: "Alt", category: "general",
+      width: 800, height: 600,
+      variants: { thumb: { path: "apex/x.thumb.webp", mime: "image/webp", bytes: 1, width: 400, height: 300 } },
+      variantError: null,
+    });
+    expect(res.ok).toBe(true);
+    const ins = stateOf(media).inserted[0] as Record<string, unknown>;
+    expect(ins.width).toBe(800);
+    expect(ins.height).toBe(600);
+    expect(ins.variants).toMatchObject({ thumb: { path: "apex/x.thumb.webp" } });
+    expect(ins.variant_error).toBeNull();
+  });
+});
+
+describe("deleteMedia removes variants too", () => {
+  it("storage remove receives original + all variant paths", async () => {
+    const media = fakeTable();
+    const content = fakeTable();
+    const { db, removed } = fakeDb({ site_media: media, site_content: content });
+    const m = item({
+      variants: {
+        thumb: { path: "apex/x.thumb.webp", mime: "image/webp", bytes: 1, width: 400, height: 300 },
+        card: { path: "apex/x.card.webp", mime: "image/webp", bytes: 2, width: 800, height: 600 },
+      },
+    });
+    stateOf(media).queue.push({ data: m, error: null });
+    stateOf(content).queue.push({ data: [], error: null });
+    const res = await deleteMedia(db, actor, "apex", m.id);
+    expect(res.ok).toBe(true);
+    expect(removed).toEqual([["apex/abc.png", "apex/x.thumb.webp", "apex/x.card.webp"]]);
+    expect(stateOf(media).deleted).toHaveLength(1);
   });
 });

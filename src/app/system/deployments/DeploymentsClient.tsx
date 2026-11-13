@@ -36,6 +36,7 @@ export function DeploymentsClient({
   rollbackCandidates,
   rollbackProviderConfigured,
   allowedRefs,
+  rollbackCompat,
 }: {
   deployments: DeploymentRecord[];
   canManage: boolean;
@@ -43,6 +44,13 @@ export function DeploymentsClient({
   rollbackCandidates: { uid: string; createdAt: string | null; commitSha: string | null }[];
   rollbackProviderConfigured: boolean;
   allowedRefs: string[];
+  rollbackCompat: {
+    warning: string;
+    repoMigrationCount: number;
+    latestMigration: { file: string; number: number | null; title: string } | null;
+    dbMigrationTracking: "queryable" | "unavailable";
+    appliedCount: number | null;
+  } | null;
 }) {
   const router = useRouter();
   const [envFilter, setEnvFilter] = useState("all");
@@ -53,6 +61,7 @@ export function DeploymentsClient({
   const [form, setForm] = useState({ ref: allowedRefs[0] ?? "main", env: "preview", justification: "" });
   const [rollbackFor, setRollbackFor] = useState<string | null>(null);
   const [rollbackJustification, setRollbackJustification] = useState("");
+  const [rollbackAck, setRollbackAck] = useState(false);
 
   const filtered = useMemo(
     () => deployments.filter((d) => envFilter === "all" || d.env === envFilter),
@@ -126,10 +135,23 @@ export function DeploymentsClient({
             </div>
           )}
 
-          {/* Rollback candidates */}
+          {/* Rollback candidates — migration-compat warning is ALWAYS shown
+              and must be explicitly acknowledged (never auto-checked). */}
           {rollbackProviderConfigured && rollbackCandidates.length > 0 && (
             <div className="mt-4 rounded-xl border border-white/[0.07] bg-white/[0.02] p-4">
               <h3 className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Rollback candidates (previous READY production deployments)</h3>
+              {rollbackCompat && (
+                <div className="mt-2 rounded-lg border border-amber-400/20 bg-amber-400/[0.06] p-3 text-[11px] leading-relaxed text-amber-200/90">
+                  <p className="font-bold text-amber-300">⚠ {rollbackCompat.warning}</p>
+                  <p className="mt-1 font-mono text-[10px] text-slate-400">
+                    repo manifest: {rollbackCompat.repoMigrationCount} migrations
+                    {rollbackCompat.latestMigration ? ` (latest: ${rollbackCompat.latestMigration.file} — ${rollbackCompat.latestMigration.title})` : ""}
+                    {" · "}db applied-state: {rollbackCompat.dbMigrationTracking === "queryable"
+                      ? `queryable (${rollbackCompat.appliedCount ?? "?"} recorded)`
+                      : "not tracked per-file via PostgREST — manifest is repo truth"}
+                  </p>
+                </div>
+              )}
               <ul className="mt-2 space-y-2">
                 {rollbackCandidates.map((c) => (
                   <li key={c.uid} className="flex flex-wrap items-center gap-2 text-xs">
@@ -138,21 +160,25 @@ export function DeploymentsClient({
                     {c.commitSha && <span className="font-mono text-[10px] text-slate-500">{c.commitSha.slice(0, 7)}</span>}
                     {canManage && (
                       rollbackFor === c.uid ? (
-                        <span className="inline-flex items-center gap-2">
+                        <span className="inline-flex flex-wrap items-center gap-2">
                           <input className="w-64 rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1 text-xs text-slate-200" placeholder="justification (min 10 chars)" value={rollbackJustification} onChange={(e) => setRollbackJustification(e.target.value)} />
-                          <button type="button" disabled={busy !== null || rollbackJustification.trim().length < 10}
-                            onClick={() => post("/api/system/deployments/rollback", { deploymentId: c.uid, justification: rollbackJustification }, `rb-${c.uid}`)}
+                          <label className="inline-flex items-center gap-1.5 font-mono text-[10px] text-amber-300">
+                            <input type="checkbox" checked={rollbackAck} onChange={(e) => setRollbackAck(e.target.checked)} className="accent-amber-400" />
+                            migrations not reverted — verified
+                          </label>
+                          <button type="button" disabled={busy !== null || rollbackJustification.trim().length < 10 || !rollbackAck}
+                            onClick={() => post("/api/system/deployments/rollback", { deploymentId: c.uid, justification: rollbackJustification, acknowledgeMigrationRisk: true }, `rb-${c.uid}`)}
                             className="rounded-full bg-red-500/15 px-2.5 py-1 font-mono text-[10px] font-bold text-red-300 ring-1 ring-red-400/30 hover:bg-red-500/25 disabled:opacity-50">confirm rollback</button>
-                          <button type="button" onClick={() => setRollbackFor(null)} className="font-mono text-[10px] text-slate-500 hover:text-slate-300">cancel</button>
+                          <button type="button" onClick={() => { setRollbackFor(null); setRollbackAck(false); }} className="font-mono text-[10px] text-slate-500 hover:text-slate-300">cancel</button>
                         </span>
                       ) : (
-                        <button type="button" onClick={() => { setRollbackFor(c.uid); setRollbackJustification(""); }} className="rounded-full bg-red-500/10 px-2.5 py-1 font-mono text-[10px] font-bold text-red-300 ring-1 ring-red-400/20 hover:bg-red-500/20">request rollback</button>
+                        <button type="button" onClick={() => { setRollbackFor(c.uid); setRollbackJustification(""); setRollbackAck(false); }} className="rounded-full bg-red-500/10 px-2.5 py-1 font-mono text-[10px] font-bold text-red-300 ring-1 ring-red-400/20 hover:bg-red-500/20">request rollback</button>
                       )
                     )}
                   </li>
                 ))}
               </ul>
-              <p className="mt-2 font-mono text-[10px] text-slate-500">Rollback = promote a previous deployment to production aliases. High-risk: change-request approval + step-up elevation at execute.</p>
+              <p className="mt-2 font-mono text-[10px] text-slate-500">Rollback = promote a previous deployment to production aliases. High-risk: change-request approval + step-up elevation at execute + explicit migration-compat acknowledgement.</p>
             </div>
           )}
           {notice && <p className="mt-3 font-mono text-xs text-lime">{notice}</p>}
@@ -183,7 +209,7 @@ export function DeploymentsClient({
         ) : (
           <table className="w-full min-w-[960px] text-left text-xs">
             <thead className="border-b border-white/10 text-[10px] uppercase tracking-wider text-slate-500">
-              <tr>{["When", "Source", "Env", "State", "Commit", "Branch", "URL", "Reachable"].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr>
+              <tr>{["When", "Source", "Env", "State", "Commit", "Branch", "URL", "Reachable", "Actions"].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr>
             </thead>
             <tbody>
               {filtered.map((d) => (
@@ -221,6 +247,25 @@ export function DeploymentsClient({
                     {d.reachable === true ? <span className="text-lime">up</span>
                       : d.reachable === false ? <span className="text-red-300">down</span>
                       : <span className="text-slate-600">—</span>}
+                  </td>
+                  <td className="px-4 py-3">
+                    {canManage && d.source === "vercel_api" && d.env === "preview" && d.state === "ready" && d.branch ? (
+                      <button
+                        type="button"
+                        disabled={busy !== null}
+                        title={`Create a production deploy request for ref '${d.branch}' (approval + elevation required)`}
+                        onClick={() => post("/api/system/deployments/request-deploy", {
+                          ref: d.branch,
+                          env: "production",
+                          justification: `Promote preview deployment ${d.id} to production`,
+                        }, `promote-${d.id}`)}
+                        className="rounded-full bg-lime/10 px-2.5 py-1 font-mono text-[10px] font-bold text-lime ring-1 ring-lime/30 hover:bg-lime/20 disabled:opacity-50"
+                      >
+                        {busy === `promote-${d.id}` ? "…" : "promote → prod"}
+                      </button>
+                    ) : (
+                      <span className="font-mono text-[10px] text-slate-600">—</span>
+                    )}
                   </td>
                 </tr>
               ))}

@@ -17,7 +17,7 @@ describe("multi-site FIELD_CATALOG", () => {
   });
 
   it("support home exposes hero + meta fields only", () => {
-    expect(catalogPages("support")).toEqual(["home"]);
+    expect(catalogPages("support")).toEqual(["home", "global"]);
     const keys = catalogFields("support", "home").map((f) => f.key);
     expect(keys).toEqual(["hero_eyebrow", "hero_headline", "meta_title", "meta_description"]);
     expect(catalogField("support", "home", "hero_headline")?.maxLength).toBe(120);

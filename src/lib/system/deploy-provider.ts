@@ -352,6 +352,149 @@ export async function promoteVercelDeployment(uid: string): Promise<ApiResult<{ 
   return { configured: true, ok: true, status: r.status, data: { promoted: true } };
 }
 
+/* ── Connection verification (read-only probes) ────────────────────────── */
+
+/**
+ * Result of a live, read-only connectivity probe against a provider. Every
+ * probe is a safe GET (list/read endpoints only — never create/promote/
+ * cancel). `verified` is true ONLY when at least the primary read succeeded;
+ * `capabilities` lists the read operations that actually succeeded, so the UI
+ * never claims a capability that wasn't exercised. Errors are sanitized.
+ */
+export type ProviderConnectionResult = {
+  configured: boolean;
+  missing: string[];
+  verified: boolean;
+  latencyMs: number | null;
+  checkedAt: string;
+  /** Read capabilities proven by this check (e.g. "deployments.list"). */
+  capabilities: string[];
+  /** Sanitized detail — which probes ran and which failed. Never secrets. */
+  detail: string | null;
+};
+
+const connBase = (gate: ProviderGate): Omit<ProviderConnectionResult, "verified" | "latencyMs" | "capabilities" | "detail"> => ({
+  configured: gate.configured,
+  missing: gate.missing,
+  checkedAt: new Date().toISOString(),
+});
+
+/**
+ * Verifies Vercel credentials with bounded read-only calls:
+ *  1. GET /v6/deployments?limit=1  → proves token + project id work.
+ *  2. If a deployment exists: GET /v13/deployments/{uid} and
+ *     GET /v3/deployments/{uid}/events → proves detail/event reads.
+ * Write capabilities (create/promote/cancel) are intentionally NOT probed —
+ * verification must stay read-only.
+ */
+export async function verifyVercelConnection(): Promise<ProviderConnectionResult> {
+  const gate = vercelGate();
+  if (!gate.configured) {
+    return { ...connBase(gate), verified: false, latencyMs: null, capabilities: [], detail: null };
+  }
+  const start = performance.now();
+  const caps: string[] = [];
+  const notes: string[] = [];
+
+  const list = await listVercelDeployments(1);
+  if (!list.configured || !list.ok) {
+    return {
+      ...connBase(gate), verified: false,
+      latencyMs: Math.round(performance.now() - start),
+      capabilities: [],
+      detail: `deployments list failed: ${list.configured ? list.error : "unconfigured mid-flight"}`,
+    };
+  }
+  caps.push("deployments.list");
+  notes.push(`GET /v6/deployments ok (${list.data.length} shown)`);
+
+  const first = list.data[0];
+  if (first) {
+    const dep = await getVercelDeployment(first.uid);
+    if (dep.configured && dep.ok) {
+      caps.push("deployments.get");
+      notes.push(`GET /v13/deployments/${first.uid} ok`);
+    } else {
+      notes.push(`deployment detail probe failed${dep.configured ? `: ${dep.error}` : ""}`);
+    }
+    const ev = await getVercelDeploymentEvents(first.uid, 10);
+    if (ev.configured && ev.ok) {
+      caps.push("deployments.events");
+      notes.push(`GET /v3/deployments/${first.uid}/events ok`);
+    } else {
+      notes.push(`events probe failed${ev.configured ? `: ${ev.error}` : ""}`);
+    }
+  } else {
+    notes.push("project has no deployments yet — detail/events probes skipped");
+  }
+
+  return {
+    ...connBase(gate), verified: true,
+    latencyMs: Math.round(performance.now() - start),
+    capabilities: caps,
+    detail: notes.join(" · ").slice(0, 400),
+  };
+}
+
+/**
+ * Verifies GitHub credentials with bounded read-only calls:
+ *  1. GET /repos/{owner}/{repo}        → proves token + repo access.
+ *  2. GET /pulls?state=open&per_page=1 → pull-request read.
+ *  3. GET /commits?per_page=1          → commit read.
+ *  4. GET /branches?per_page=5         → branch read.
+ * A repo-read failure fails the whole check; secondary probe failures are
+ * reported in `detail` with reduced capabilities (partial-scope tokens are
+ * common with fine-grained PATs).
+ */
+export async function verifyGithubConnection(): Promise<ProviderConnectionResult> {
+  const gate = githubGate();
+  if (!gate.configured) {
+    return { ...connBase(gate), verified: false, latencyMs: null, capabilities: [], detail: null };
+  }
+  const start = performance.now();
+  const caps: string[] = [];
+  const notes: string[] = [];
+
+  const repo = await getGithubRepo();
+  if (!repo.configured || !repo.ok) {
+    return {
+      ...connBase(gate), verified: false,
+      latencyMs: Math.round(performance.now() - start),
+      capabilities: [],
+      detail: `repo read failed: ${repo.configured ? repo.error : "unconfigured mid-flight"}`,
+    };
+  }
+  caps.push("repo.read");
+  notes.push(`GET /repos/${repo.data.fullName ?? githubRepoLabelSafe()} ok`);
+
+  const probes: [string, () => Promise<{ configured: boolean; ok?: boolean; error?: string }>, string][] = [
+    ["pull_requests.read", () => listGithubPullRequests("open", 1), "GET /pulls"],
+    ["commits.read", () => listGithubCommits(undefined, 1), "GET /commits"],
+    ["branches.read", () => listGithubBranches(5), "GET /branches"],
+  ];
+  for (const [cap, fn, label] of probes) {
+    const r = await fn();
+    if (r.configured && r.ok) {
+      caps.push(cap);
+      notes.push(`${label} ok`);
+    } else {
+      notes.push(`${label} failed${r.configured ? `: ${r.error ?? "error"}` : " (unconfigured)"}`);
+    }
+  }
+
+  return {
+    ...connBase(gate), verified: true,
+    latencyMs: Math.round(performance.now() - start),
+    capabilities: caps,
+    detail: notes.join(" · ").slice(0, 400),
+  };
+}
+
+function githubRepoLabelSafe(): string {
+  const r = parseGithubRepo();
+  return r ? `${r.owner}/${r.repo}` : "repo";
+}
+
 /* ── GitHub API ────────────────────────────────────────────────────────── */
 
 const GH_HEADERS = { "X-GitHub-Api-Version": "2022-11-28" };

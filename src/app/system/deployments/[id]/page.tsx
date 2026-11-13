@@ -4,8 +4,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { SystemGate } from "@/components/SystemGate";
 import { serviceClient } from "@/lib/supabase";
-import { getDeploymentDetail, githubCommitUrl, manualDeployInstructions } from "@/lib/system/deploy-center";
+import { getDeploymentDetail, githubCommitUrl, manualDeployInstructions, type DeploymentHealth } from "@/lib/system/deploy-center";
 import { vercelGate } from "@/lib/system/deploy-provider";
+import { DeploymentMonitor } from "./DeploymentMonitor";
 
 export const metadata: Metadata = { title: "Deployment detail" };
 
@@ -22,6 +23,8 @@ export default async function DeploymentDetailPage({ params }: { params: Promise
   const req = detail.request;
   const vg = vercelGate();
   const commitUrl = d?.commitSha ? githubCommitUrl(d.commitSha) : null;
+  const reqResult = (typeof req?.result === "object" && req?.result ? req.result : {}) as Record<string, unknown>;
+  const initialHealth = (typeof reqResult.health === "object" && reqResult.health ? reqResult.health : null) as DeploymentHealth | null;
 
   return (
     <SystemGate perm="system.deployments.view">
@@ -94,6 +97,9 @@ export default async function DeploymentDetailPage({ params }: { params: Promise
             </p>
           </section>
         )}
+
+        {/* Live status poll — 15s interval, stops on terminal provider state */}
+        <DeploymentMonitor id={id} initialHealth={initialHealth} />
 
         {/* Build events / logs — only when a provider deployment exists */}
         {(d || detail.eventsStatus !== "unavailable") && (

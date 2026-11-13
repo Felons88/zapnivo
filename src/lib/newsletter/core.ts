@@ -147,6 +147,38 @@ export function newsletterConfigFromContent(content: PublishedContent): Newslett
   };
 }
 
+/* ── Operator test-send allowlist (pure — unit tested) ──────────────────────── */
+
+/**
+ * Addresses the System Control "send test DOI" workflow may target.
+ *
+ * Allowed when EITHER:
+ *  - the address is explicitly listed in NEWSLETTER_TEST_ADDRESSES
+ *    (comma-separated, case-insensitive), OR
+ *  - it sits on the company domain *@zapnivo.com.
+ *
+ * Rationale: DOI test emails carry a live confirm link, so they must never be
+ * pointed at real customers. The default domain rule covers staff mailboxes
+ * without extra env config; the env list exists for staging/test inboxes on
+ * other domains. Anything else is rejected before a subscriber row is created.
+ */
+export const NEWSLETTER_TEST_DOMAIN = "zapnivo.com";
+
+export function newsletterTestAddressesFromEnv(raw: string | undefined): string[] {
+  return (raw ?? "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter((s) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s));
+}
+
+export function isNewsletterTestAddressAllowed(email: string, envList?: string): boolean {
+  const addr = email.trim().toLowerCase();
+  if (!addr) return false;
+  const domain = addr.slice(addr.lastIndexOf("@") + 1);
+  if (domain === NEWSLETTER_TEST_DOMAIN) return true;
+  return newsletterTestAddressesFromEnv(envList ?? process.env.NEWSLETTER_TEST_ADDRESSES).includes(addr);
+}
+
 /** Path-segment-boundary match: "/account" excludes "/account/x" but not "/accounting". */
 export function isExcludedRoute(pathname: string, excluded: readonly string[]): boolean {
   const path = pathname.split(/[?#]/)[0] || "/";
