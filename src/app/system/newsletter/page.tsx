@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { SystemGate } from "@/components/SystemGate";
 import { serviceClient } from "@/lib/supabase";
 import { getNewsletterOverview, type NewsletterDelivery } from "@/lib/newsletter/service";
+import { getEmailDeliveryWebhookStatus } from "@/lib/newsletter/delivery-events";
 import { ResendButton } from "./ResendButton";
 import { TestSendForm } from "./TestSendForm";
 
@@ -18,8 +19,23 @@ const statusBadge = (s: string) =>
 const fmtDate = (iso: string | null) =>
   iso ? new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }) : "—";
 
-/** Outbox delivery badge — 'sent' means provider-accepted only (no bounce webhook yet). */
-const deliveryBadge = (d: NewsletterDelivery | null) => {
+/** Outbox delivery badge — 'sent' means provider-accepted only until a webhook event confirms more. */
+const deliveryBadge = (d: NewsletterDelivery | null, ev: { eventType: string; occurredAt: string; provider: string } | null = null) => {
+  // Webhook-confirmed terminal states outrank the outbox badge.
+  if (ev?.eventType === "delivered") {
+    return (
+      <span title={`${ev.provider} · delivered ${fmtDate(ev.occurredAt)}`} className="rounded-full bg-emerald-400/10 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wider text-emerald-300 ring-1 ring-emerald-400/30">
+        delivered
+      </span>
+    );
+  }
+  if (ev && ["hard_bounce", "complaint", "failed"].includes(ev.eventType)) {
+    return (
+      <span title={`${ev.provider} · ${ev.eventType} ${fmtDate(ev.occurredAt)}`} className="rounded-full bg-red-400/10 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wider text-red-300 ring-1 ring-red-400/30">
+        {ev.eventType === "complaint" ? "complaint" : "bounced"}
+      </span>
+    );
+  }
   if (!d) return <span className="text-slate-600">—</span>;
   const cls =
     d.status === "sent"
@@ -42,7 +58,10 @@ const deliveryBadge = (d: NewsletterDelivery | null) => {
  */
 export default async function NewsletterAdminPage() {
   const db = serviceClient();
-  const overview = db ? await getNewsletterOverview(db) : null;
+  const [overview, webhook] = await Promise.all([
+    db ? getNewsletterOverview(db) : null,
+    getEmailDeliveryWebhookStatus(db),
+  ]);
 
   return (
     <SystemGate perm="system.dashboard.view">
@@ -101,6 +120,40 @@ export default async function NewsletterAdminPage() {
             </div>
 
             <div className="rounded-2xl border border-white/[0.08] bg-white/[0.05] p-5">
+              <h2 className="text-sm font-bold text-white">Delivery webhook status</h2>
+              <p className="mt-1 text-xs text-slate-400">
+                Provider events arrive at <code className="font-mono">/api/webhooks/email/delivery</code>.
+                Setup: <span className="text-slate-300">Resend</span> — dashboard → Webhooks → add the endpoint,
+                subscribe to sent/delivered/delivery_delayed/bounced/complained, set{" "}
+                <code className="font-mono">RESEND_WEBHOOK_SECRET</code> to the signing secret (svix-verified).
+                <span className="text-slate-300"> Brevo</span> — Transactional → Settings → Webhooks → add the
+                endpoint with delivered/bounce/spam/unsubscribe events, set <code className="font-mono">BREVO_WEBHOOK_SECRET</code>{" "}
+                and inject it as the <code className="font-mono">X-Zapnivo-Delivery-Key</code> header or{" "}
+                <code className="font-mono">?key=</code> param. No secret configured → the endpoint answers 503 and processes nothing.
+              </p>
+              <dl className="mt-3 grid gap-2 text-xs sm:grid-cols-3">
+                <div className="rounded-xl border border-white/5 bg-black/20 px-3 py-2">
+                  <dt className="text-slate-500">Secrets configured</dt>
+                  <dd className="mt-0.5 font-mono text-slate-200">
+                    {webhook.resendConfigured || webhook.brevoConfigured
+                      ? [webhook.resendConfigured && "resend", webhook.brevoConfigured && "brevo"].filter(Boolean).join(" + ")
+                      : "none — webhook disabled"}
+                  </dd>
+                </div>
+                <div className="rounded-xl border border-white/5 bg-black/20 px-3 py-2">
+                  <dt className="text-slate-500">Last event</dt>
+                  <dd className="mt-0.5 font-mono text-slate-200">
+                    {webhook.lastEventAt ? `${webhook.lastEventType ?? "?"} · ${webhook.lastEventProvider ?? "?"} · ${fmtDate(webhook.lastEventAt)}` : "none received"}
+                  </dd>
+                </div>
+                <div className="rounded-xl border border-white/5 bg-black/20 px-3 py-2">
+                  <dt className="text-slate-500">Events stored</dt>
+                  <dd className="mt-0.5 font-mono text-slate-200">{webhook.totalEvents == null ? "—" : webhook.totalEvents.toLocaleString()}</dd>
+                </div>
+              </dl>
+            </div>
+
+            <div className="rounded-2xl border border-white/[0.08] bg-white/[0.05] p-5">
               <h2 className="text-sm font-bold text-white">Send test DOI</h2>
               <p className="mt-1 text-xs text-slate-400">
                 Sends a real confirmation email through the production pipeline. Allowlisted addresses only
@@ -139,7 +192,7 @@ export default async function NewsletterAdminPage() {
                           <td className="px-3 py-3">
                             <span className={`rounded-full px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wider ring-1 ${statusBadge(r.status)}`}>{r.status}</span>
                           </td>
-                          <td className="px-3 py-3">{deliveryBadge(r.delivery)}</td>
+                          <td className="px-3 py-3">{deliveryBadge(r.delivery, r.deliveryEvent)}</td>
                           <td className="px-3 py-3 text-slate-400">{r.source}</td>
                           <td className="px-3 py-3 text-slate-400">{fmtDate(r.created_at)}</td>
                           <td className="px-3 py-3 text-slate-400">{fmtDate(r.confirmed_at)}</td>

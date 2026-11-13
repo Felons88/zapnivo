@@ -24,6 +24,10 @@ import {
   type VercelDeploymentEvent,
 } from "./deploy-provider";
 import { MIGRATIONS } from "./database";
+import {
+  runAndRecordHealthProfile,
+  type HealthProfileResult,
+} from "./deploy-health";
 
 /**
  * Deployment center — merges provider-live data (Vercel API when configured)
@@ -629,10 +633,15 @@ export type MonitorOutcome = {
   /** True when the provider reports a terminal state (ready/error/canceled). */
   terminal: boolean;
   health: DeploymentHealth | null;
+  /** Latest app health-profile result stored on the request (www profile after READY+production). */
+  healthProfile: HealthProfileResult | null;
   error: string | null;
 };
 
 const TERMINAL_STATES: ReadonlySet<DeploymentState> = new Set(["ready", "error", "canceled"]);
+
+/** Min interval between app health-profile runs during monitor polling. */
+const HEALTH_PROFILE_REFRESH_MS = 120_000;
 
 /**
  * Bounded HTTP probe for post-deploy health. Only ever fetches URLs that pass
@@ -739,7 +748,7 @@ async function monitorRequest(
   const pid = typeof meta.provider_deployment_id === "string" ? meta.provider_deployment_id : null;
   const out = (patch: Partial<MonitorOutcome>): MonitorOutcome => ({
     ok: true, requestId: req.id, found: true, requestStatus: req.status,
-    state: null, providerStateRaw: null, terminal: false, health: null, error: null, ...patch,
+    state: null, providerStateRaw: null, terminal: false, health: null, healthProfile: null, error: null, ...patch,
   });
 
   if (!pid) {
@@ -764,6 +773,8 @@ async function monitorRequest(
   // Persist the latest provider state on the request row.
   const priorHealth = (typeof meta.health === "object" && meta.health ? meta.health : null) as DeploymentHealth | null;
   let health = priorHealth;
+  let healthProfile = (typeof meta.healthProfile === "object" && meta.healthProfile
+    ? meta.healthProfile : null) as HealthProfileResult | null;
   let nextMeta: Record<string, unknown> = {
     ...meta,
     provider_monitor: { state, raw: dep.data.readyState, checked_at: checkedAt },
@@ -773,6 +784,28 @@ async function monitorRequest(
     health = await applyDeploymentHealth(db, actor, req, nextMeta, providerUrl);
     nextMeta = { ...nextMeta, health };
     await auditHealth(db, actor, req.id, health, priorHealth?.status ?? null);
+
+    // In addition to the single-URL probe, run the www app health profile —
+    // but at most once per HEALTH_PROFILE_REFRESH_MS so the 15s UI poll
+    // doesn't fan out ~6 fetches every tick. A degraded profile is audited
+    // ('deployment.health_degraded') and stored on the request; it NEVER
+    // triggers an automatic rollback.
+    const prevProfile = (typeof meta.healthProfile === "object" && meta.healthProfile
+      ? meta.healthProfile : null) as HealthProfileResult | null;
+    const ranAtMs = prevProfile?.ranAt ? Date.parse(prevProfile.ranAt) : 0;
+    if (!ranAtMs || Date.now() - ranAtMs > HEALTH_PROFILE_REFRESH_MS) {
+      try {
+        const profile = await runAndRecordHealthProfile(db, actor, "www", {
+          prevStatus: prevProfile?.status ?? null,
+        });
+        nextMeta = { ...nextMeta, healthProfile: profile };
+        healthProfile = profile;
+      } catch {
+        /* profile failure must never break the monitor pass */
+      }
+    } else {
+      healthProfile = prevProfile;
+    }
   }
 
   await db.from("system_deployment_requests").update({ result: nextMeta }).eq("id", req.id);
@@ -782,6 +815,7 @@ async function monitorRequest(
     providerStateRaw: dep.data.readyState,
     terminal: TERMINAL_STATES.has(state),
     health,
+    healthProfile,
   });
 }
 
@@ -796,10 +830,10 @@ export async function monitorDeployment(
 ): Promise<MonitorOutcome> {
   const { request, error } = await getDeploymentRequest(db, requestId);
   if (error) {
-    return { ok: false, requestId, found: false, requestStatus: null, state: null, providerStateRaw: null, terminal: false, health: null, error };
+    return { ok: false, requestId, found: false, requestStatus: null, state: null, providerStateRaw: null, terminal: false, health: null, healthProfile: null, error };
   }
   if (!request) {
-    return { ok: false, requestId, found: false, requestStatus: null, state: null, providerStateRaw: null, terminal: false, health: null, error: "Deployment request not found" };
+    return { ok: false, requestId, found: false, requestStatus: null, state: null, providerStateRaw: null, terminal: false, health: null, healthProfile: null, error: "Deployment request not found" };
   }
   return monitorRequest(db, actor, request);
 }
@@ -847,6 +881,31 @@ export async function checkDeploymentHealthNow(
  */
 export const ROLLBACK_MIGRATION_WARNING =
   "Rollback does NOT revert database migrations. Supabase migrations are forward-only — rolling back code to an older deployment can leave the schema ahead of (or incompatible with) that code. Verify schema compatibility between the target deployment and the current database manually before approving.";
+
+/**
+ * Per-candidate rollback annotation. We cannot prove schema compatibility —
+ * the manifest tracks repo files, not per-file applied state, and deployment
+ * timestamps don't map to migration dates — so this is honest metadata only:
+ * candidate age plus the standing "migrations are never reverted" note with
+ * the latest repo migration for reference. Never marks a candidate
+ * 'rollback_ineligible' on schema grounds; eligibility stays with
+ * rollbackCandidates() (previous READY production deployments only).
+ */
+export function migrationCompatNote(candidate: { createdAt: number | null }): {
+  ageDays: number | null;
+  latestMigrationFile: string | null;
+  note: string;
+} {
+  const latest = MIGRATIONS.length ? MIGRATIONS[MIGRATIONS.length - 1] : null;
+  const ageDays = typeof candidate.createdAt === "number" && Number.isFinite(candidate.createdAt)
+    ? Math.max(0, Math.floor((Date.now() - candidate.createdAt) / 86_400_000))
+    : null;
+  return {
+    ageDays,
+    latestMigrationFile: latest?.file ?? null,
+    note: `Rollback never reverts migrations${latest ? ` — repo latest is ${latest.file}` : ""}. Verify this deployment's code is compatible with the CURRENT database schema before approving.`,
+  };
+}
 
 export type RollbackCompatibility = {
   /** Repo truth: migrations defined in supabase/migrations (manifest). */

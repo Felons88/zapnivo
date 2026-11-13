@@ -205,6 +205,47 @@ export default async function SecurityReadinessPage() {
           </Card>
         </div>
 
+        {/* First administrator setup — per-item evidence, nothing auto-passes */}
+        <Card title="First administrator setup">
+          <p className="mb-3 text-[11px] text-slate-500">
+            Ordered checklist for bringing up the first system administrator. Statuses:{" "}
+            <code className="font-mono">verified_by_code</code> = real env/code/DB evidence ·{" "}
+            <code className="font-mono">pending_manual</code> = requires a human (never auto-passes) ·{" "}
+            <code className="font-mono">blocked</code> = prerequisite missing or probe failed.
+          </p>
+          {r.admin_checklist.length === 0 ? (
+            <p className="text-xs text-slate-500">Checklist unavailable.</p>
+          ) : (
+            <ol className="space-y-2">
+              {r.admin_checklist.map((item, i) => (
+                <li key={item.id} className="rounded-xl border border-white/5 bg-black/20 px-3 py-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-bold text-slate-200">
+                      <span className="mr-1.5 font-mono text-slate-500">{i + 1}.</span>
+                      {item.label}
+                    </p>
+                    <span className={`shrink-0 rounded-full px-2 py-0.5 font-mono text-[10px] font-bold ring-1 ${
+                      item.status === "verified_by_code"
+                        ? "bg-lime/15 text-lime ring-lime/30"
+                        : item.status === "blocked"
+                          ? "bg-red-400/10 text-red-300 ring-red-400/25"
+                          : "bg-amber-400/10 text-amber-300 ring-amber-400/25"
+                    }`}>
+                      {item.status === "verified_by_code" ? "verified (code)" : item.status === "blocked" ? "blocked" : "manual check"}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-[11px] leading-snug text-slate-500">{item.evidence}</p>
+                  {item.status !== "verified_by_code" && (
+                    <p className="mt-1 text-[11px] leading-snug text-slate-400">
+                      <span className="font-bold text-slate-300">Action: </span>{item.action}
+                    </p>
+                  )}
+                </li>
+              ))}
+            </ol>
+          )}
+        </Card>
+
         {/* Lifecycle status per section — honest vocabulary, no hardware claims */}
         <Card title="Lifecycle status">
           <p className="mb-3 text-[11px] text-slate-500">

@@ -27,7 +27,7 @@ const MAX_BODY_CHARS = 512 * 1024;
 /* ── Shared fetch plumbing ─────────────────────────────────────────────── */
 
 export type ApiResult<T> =
-  | { configured: true; ok: true; data: T; status: number }
+  | { configured: true; ok: true; data: T; status: number; headers?: Headers }
   | { configured: true; ok: false; status: number; error: string }
   | { configured: false };
 
@@ -46,7 +46,7 @@ function sanitizeError(err: unknown): string {
 async function apiFetch<T>(
   url: string,
   init: { token: string; method?: string; body?: unknown; extraHeaders?: Record<string, string> },
-): Promise<{ ok: true; status: number; json: T | null } | { ok: false; status: number; error: string }> {
+): Promise<{ ok: true; status: number; json: T | null; headers: Headers } | { ok: false; status: number; error: string }> {
   let res: Response;
   try {
     res = await fetch(url, {
@@ -94,7 +94,7 @@ async function apiFetch<T>(
         : "";
     return { ok: false, status: res.status, error: `provider HTTP ${res.status}${detail ? `: ${sanitizeError(detail)}` : ""}` };
   }
-  return { ok: true, status: res.status, json };
+  return { ok: true, status: res.status, json, headers: res.headers };
 }
 
 function qs(params: Record<string, string | number | undefined>): string {
@@ -371,7 +371,145 @@ export type ProviderConnectionResult = {
   capabilities: string[];
   /** Sanitized detail — which probes ran and which failed. Never secrets. */
   detail: string | null;
+  /**
+   * Permission/scope metadata discovered from provider RESPONSES (headers,
+   * identity endpoints). Scopes and ids are not secrets; token values never
+   * appear here. Absent when the provider exposes no introspection or the
+   * check failed before any response arrived.
+   */
+  permissions?: ProviderPermissions;
+  /**
+   * Write-path honesty for THIS integration:
+   *  - "proven"     — a write was exercised (never happens: verification is
+   *                   read-only by design).
+   *  - "unverified" — a write path exists (Vercel create/promote/cancel) but
+   *                   was intentionally not probed; first real use confirms.
+   *  - "none"       — this integration performs no writes against the
+   *                   provider (GitHub is read-only here).
+   */
+  writeCapability?: "proven" | "unverified" | "none";
 };
+
+/* ── Permission / scope introspection (additive, read-only) ────────────── */
+
+/**
+ * Granted/accepted permission metadata for a provider token. Every field is
+ * derived from provider RESPONSE metadata — never from the token itself.
+ */
+export type ProviderPermissions = {
+  /** Scopes the token was GRANTED (GitHub `x-oauth-scopes`; empty when the
+   *  token type exposes none, e.g. fine-grained PATs / GitHub Apps). */
+  grantedScopes: string[];
+  /** Scopes the provider reports the called endpoint REQUIRES
+   *  (GitHub `x-accepted-oauth-scopes`). */
+  acceptedScopes: string[];
+  /** Human labels for the granted scopes (see githubScopeLabels). */
+  scopeLabels: string[];
+  /** Account/team identity for account-scoped tokens (Vercel). Id + slug
+   *  only — the token itself is never exposed. */
+  identity: { kind: string; id: string | null; label: string | null; count?: number } | null;
+  /** Honest caveat about what could NOT be introspected. */
+  note: string | null;
+};
+
+/** Parses a comma-separated scope header ("repo, read:org") into a clean list. */
+export function parseScopeHeader(value: string | null | undefined): string[] {
+  if (!value) return [];
+  return [...new Set(value.split(",").map((s) => s.trim()).filter(Boolean))].slice(0, 50);
+}
+
+/** OAuth scope → capability label for the scopes GitHub actually issues. */
+const GITHUB_SCOPE_LABELS: Record<string, string> = {
+  repo: "full repository access — contents/PRs/checks read+write (private repos)",
+  public_repo: "public repositories — read+write",
+  "read:org": "organization membership (read)",
+  "read:user": "user profile (read)",
+  user: "user profile (read+write)",
+  "user:email": "user email addresses (read)",
+  workflow: "GitHub Actions workflow files (write)",
+  "admin:repo_hook": "repository webhooks (admin)",
+  notifications: "notifications (read+write)",
+  gist: "gists (read+write)",
+  delete_repo: "repository deletion",
+  "write:packages": "packages (write)",
+  "read:packages": "packages (read)",
+  "admin:gpg_key": "GPG keys (admin)",
+  "write:gpg_key": "GPG keys (write)",
+  "read:gpg_key": "GPG keys (read)",
+};
+
+/**
+ * Maps granted OAuth scopes to human capability labels. Unknown scopes pass
+ * through verbatim (they are scope NAMES, not secrets). Fine-grained PAT
+ * permissions are NOT OAuth scopes and never appear here — callers must show
+ * ProviderPermissions.note instead of implying coverage.
+ */
+export function githubScopeLabels(scopes: readonly string[]): string[] {
+  return scopes.map((s) => GITHUB_SCOPE_LABELS[s] ?? s).slice(0, 50);
+}
+
+export type VercelTokenIdentity = {
+  kind: "user" | "team" | "teams";
+  id: string | null;
+  label: string | null;
+  /** Number of teams visible (kind='teams' only). */
+  teamCount?: number;
+};
+
+/**
+ * Identifies what a Vercel token authenticates as — GET /v2/user first, then
+ * /v2/teams (team-scoped tokens often cannot resolve a user). Bounded to 3
+ * read-only calls; returns null when neither probe succeeds. Ids and slugs
+ * only — the token is never returned, logged, or stored.
+ *
+ * Vercel's REST API has NO permission/scope introspection endpoint, so this
+ * identifies the token's account/team but cannot prove deploy write access.
+ */
+export async function probeVercelTokenIdentity(): Promise<VercelTokenIdentity | null> {
+  const c = vercelCreds();
+  if (!c) return null;
+
+  const user = await apiFetch<Record<string, unknown>>(`${VERCEL_API}/v2/user`, { token: c.token });
+  if (user.ok) {
+    const j = user.json ?? {};
+    const u = (j.user && typeof j.user === "object" ? (j.user as Record<string, unknown>) : j) as Record<string, unknown>;
+    const id = str(u.id);
+    const label = str(u.username) ?? str(u.name);
+    if (id || label) return { kind: "user", id, label };
+  }
+
+  if (c.teamId) {
+    const team = await apiFetch<Record<string, unknown>>(
+      `${VERCEL_API}/v2/teams/${encodeURIComponent(c.teamId)}`,
+      { token: c.token },
+    );
+    if (team.ok) {
+      const j = (team.json ?? {}) as Record<string, unknown>;
+      const t = (j.team && typeof j.team === "object" ? (j.team as Record<string, unknown>) : j) as Record<string, unknown>;
+      const id = str(t.id);
+      const label = str(t.slug) ?? str(t.name);
+      if (id || label) return { kind: "team", id, label };
+    }
+  }
+
+  const teams = await apiFetch<{ teams?: unknown[] }>(`${VERCEL_API}/v2/teams`, { token: c.token });
+  if (teams.ok && Array.isArray(teams.json?.teams)) {
+    const list = teams.json.teams.slice(0, 20).map((x) => {
+      const o = (x && typeof x === "object" ? (x as Record<string, unknown>) : {}) as Record<string, unknown>;
+      return { id: str(o.id), label: str(o.slug) ?? str(o.name) };
+    }).filter((x) => x.id !== null || x.label !== null);
+    if (list.length > 0) {
+      const first = list[0];
+      return {
+        kind: list.length === 1 ? "team" : "teams",
+        id: first.id,
+        label: first.label,
+        teamCount: list.length,
+      };
+    }
+  }
+  return null;
+}
 
 const connBase = (gate: ProviderGate): Omit<ProviderConnectionResult, "verified" | "latencyMs" | "capabilities" | "detail"> => ({
   configured: gate.configured,
@@ -428,11 +566,33 @@ export async function verifyVercelConnection(): Promise<ProviderConnectionResult
     notes.push("project has no deployments yet — detail/events probes skipped");
   }
 
+  // Token identity (user/team) — bounded extra read; Vercel exposes NO
+  // permission introspection, so write capability stays honestly 'unverified'.
+  const identity = await probeVercelTokenIdentity();
+  if (identity) {
+    notes.push(
+      `token identity: ${identity.kind}${identity.label ? ` ${identity.label}` : ""}${identity.teamCount ? ` (${identity.teamCount} teams)` : ""}`,
+    );
+  } else {
+    notes.push("token identity probe inconclusive (no /v2/user or /v2/teams access)");
+  }
+
   return {
     ...connBase(gate), verified: true,
     latencyMs: Math.round(performance.now() - start),
     capabilities: caps,
     detail: notes.join(" · ").slice(0, 400),
+    permissions: {
+      grantedScopes: [],
+      acceptedScopes: [],
+      scopeLabels: [],
+      identity: identity
+        ? { kind: identity.kind, id: identity.id, label: identity.label, count: identity.teamCount }
+        : null,
+      note:
+        "Vercel tokens are account/team-scoped and the REST API exposes no permission introspection — deploy write capability (create/promote/cancel) is UNVERIFIED until the first real deployment. Read probes above prove read access only.",
+    },
+    writeCapability: "unverified",
   };
 }
 
@@ -467,6 +627,18 @@ export async function verifyGithubConnection(): Promise<ProviderConnectionResult
   caps.push("repo.read");
   notes.push(`GET /repos/${repo.data.fullName ?? githubRepoLabelSafe()} ok`);
 
+  // Permission introspection from response headers (not secrets — scope names).
+  const grantedScopes = parseScopeHeader(repo.headers?.get("x-oauth-scopes"));
+  const acceptedScopes = parseScopeHeader(repo.headers?.get("x-accepted-oauth-scopes"));
+  if (grantedScopes.length > 0) {
+    notes.push(`granted scopes: ${grantedScopes.join(", ")}`.slice(0, 200));
+  } else {
+    notes.push("no x-oauth-scopes header (fine-grained PAT / GitHub App expose no scope list via API)");
+  }
+  if (acceptedScopes.length > 0) {
+    notes.push(`endpoint requires: ${acceptedScopes.join(", ")}`.slice(0, 200));
+  }
+
   const probes: [string, () => Promise<{ configured: boolean; ok?: boolean; error?: string }>, string][] = [
     ["pull_requests.read", () => listGithubPullRequests("open", 1), "GET /pulls"],
     ["commits.read", () => listGithubCommits(undefined, 1), "GET /commits"],
@@ -487,6 +659,19 @@ export async function verifyGithubConnection(): Promise<ProviderConnectionResult
     latencyMs: Math.round(performance.now() - start),
     capabilities: caps,
     detail: notes.join(" · ").slice(0, 400),
+    permissions: {
+      grantedScopes,
+      acceptedScopes,
+      scopeLabels: githubScopeLabels(grantedScopes),
+      identity: null,
+      note:
+        grantedScopes.length === 0
+          ? "Fine-grained PATs and GitHub Apps do not expose granted permissions via API headers — verify repository permissions in GitHub → Settings → Developer settings. Probe success proves ONLY the reads listed in capabilities."
+          : null,
+    },
+    // GitHub is read-only in this integration — deploys are triggered through
+    // Vercel's git integration, never by writing to GitHub.
+    writeCapability: "none",
   };
 }
 
@@ -526,6 +711,9 @@ export async function getGithubRepo(): Promise<ApiResult<GithubRepo>> {
       private: typeof j.private === "boolean" ? j.private : null,
       htmlUrl: str(j.html_url),
     },
+    // Response headers carry x-oauth-scopes / x-accepted-oauth-scopes used by
+    // verifyGithubConnection for permission introspection.
+    headers: r.headers,
   };
 }
 

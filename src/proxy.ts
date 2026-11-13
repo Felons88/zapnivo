@@ -19,12 +19,13 @@ import { getRedirectFor } from "@/lib/site-redirects";
 export async function proxy(req: NextRequest) {
   const host = req.headers.get("host") ?? "";
   const pathname = req.nextUrl.pathname;
+  const hasAuthCode = req.nextUrl.searchParams.has("code");
   const d = planRoute({
     host,
     path: pathname,
     protocol: req.nextUrl.protocol,
     base: baseDomain(),
-    hasAuthCode: req.nextUrl.searchParams.has("code"),
+    hasAuthCode,
   });
   const tag = (r: NextResponse, noindex?: boolean) => {
     if (noindex) r.headers.set("x-robots-tag", "noindex, nofollow");
@@ -32,8 +33,11 @@ export async function proxy(req: NextRequest) {
   };
 
   // Operator-managed redirects (site_redirects). Only for requests that would
-  // otherwise proceed; the lookup is cached ~60s and fails open (null).
-  if (d.kind === "next" || d.kind === "rewrite") {
+  // otherwise proceed; the lookup is cached ~60s and fails closed (null).
+  // NEVER applied while an OAuth ?code= is in flight — planRoute rewrites
+  // '/?code=…' to /api/auth/callback and a redirect here would strand the
+  // login (the code is single-use and host-bound).
+  if ((d.kind === "next" || d.kind === "rewrite") && !hasAuthCode) {
     const target = await getRedirectFor(host, pathname);
     if (target) {
       const url = target.startsWith("/") ? new URL(target, req.url) : new URL(target);

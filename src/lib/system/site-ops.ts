@@ -42,13 +42,16 @@ export function isAllowedRedirectHost(hostname: string): boolean {
 
 export type PathCheck = { ok: true; value: string } | { ok: false; error: string };
 
-/** from_path: a site-relative path. Must start with exactly one '/', no scheme, no '..'. */
+/** from_path: a site-relative path. Must start with exactly one '/', no scheme, no '..'.
+ *  '%' is rejected: the runtime normalizes by percent-decoding, so the canonical
+ *  stored form is the DECODED path (e.g. store the literal path, never %20).
+ *  This keeps write-side and read-side normalization identical. */
 export function validateFromPath(input: unknown): PathCheck {
   const v = typeof input === "string" ? input.trim() : "";
   if (!v || v.length > MAX_PATH) return { ok: false, error: "from_path is required (≤500 chars)" };
   if (!v.startsWith("/") || v.startsWith("//")) return { ok: false, error: "from_path must start with a single '/'" };
-  if (/\s/.test(v) || v.includes("://") || v.includes("..")) {
-    return { ok: false, error: "from_path must be a clean relative path (no whitespace, scheme, or '..')" };
+  if (/\s/.test(v) || v.includes("://") || v.includes("..") || v.includes("%") || v.includes("\\")) {
+    return { ok: false, error: "from_path must be a clean decoded relative path (no whitespace, scheme, '..', '%', or '\\')" };
   }
   if (!FROM_PATH_RE.test(v)) return { ok: false, error: "from_path contains disallowed characters" };
   return { ok: true, value: v };
@@ -62,6 +65,10 @@ export function validateFromPath(input: unknown): PathCheck {
 export function validateToPath(input: unknown): PathCheck {
   const v = typeof input === "string" ? input.trim() : "";
   if (!v || v.length > 2000) return { ok: false, error: "to_path is required (≤2000 chars)" };
+  // Protocol-relative / backslash-leading forms are never valid targets.
+  if (v.startsWith("\\") || v.startsWith("/\\")) {
+    return { ok: false, error: "to_path must be a relative path or an absolute https URL" };
+  }
   if (v.startsWith("/")) {
     const rel = validateFromPath(v);
     if (!rel.ok) return rel;
@@ -73,9 +80,15 @@ export function validateToPath(input: unknown): PathCheck {
   } catch {
     return { ok: false, error: "to_path must be a relative path or an absolute https URL" };
   }
-  const local = url.hostname === "localhost" || url.hostname.endsWith(".localhost");
-  if (url.protocol !== "https:" && !(local && url.protocol === "http:")) {
+  if (url.protocol !== "https:" && url.protocol !== "http:") {
     return { ok: false, error: "to_path must use https:// (http only allowed for localhost dev hosts)" };
+  }
+  const local = url.hostname === "localhost" || url.hostname.endsWith(".localhost");
+  if (url.protocol === "http:" && !local) {
+    return { ok: false, error: "to_path must use https:// (http only allowed for localhost dev hosts)" };
+  }
+  if (url.username || url.password) {
+    return { ok: false, error: "to_path must not contain credentials" };
   }
   if (!isAllowedRedirectHost(url.hostname)) {
     return { ok: false, error: `to_path host '${url.hostname}' is not an approved Zapnivo host — arbitrary external redirects are not allowed` };
@@ -199,6 +212,11 @@ export async function createRedirect(
   if (!user) return fail(401, "Unauthenticated");
   const site = validateSiteKey(input.site_key);
   if (!site.ok) return fail(400, site.error);
+  // Runtime never applies redirects on console/API hosts (src/lib/site-redirects.ts
+  // REDIRECT_DISABLED_SITES) — reject at write time so operators aren't misled.
+  if (site.value === "system" || site.value === "api") {
+    return fail(400, `site_key '${site.value}' is a console/API host — redirects are disabled there by design`);
+  }
   const from = validateFromPath(input.from_path);
   if (!from.ok) return fail(400, from.error);
   const to = validateToPath(input.to_path);

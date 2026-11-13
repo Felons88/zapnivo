@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { DEVICE_AUTH_METHODS } from "./device-auth";
 import { kekStatus } from "./device-auth";
 import { kioskAdapterName } from "./kiosks";
+import { bootstrapConfigured } from "./identity";
 
 /**
  * Security readiness aggregate for /system/security/readiness.
@@ -47,6 +48,171 @@ export type ReadinessSection = {
   status: ReadinessStatus;
   detail: string;
 };
+
+/* ─── First-administrator readiness checklist ─────────────────────────────
+ *
+ * Per-item honesty vocabulary (deliberately separate from ReadinessStatus):
+ *  - verified_by_code   — real evidence exists in env, code, or DB rows.
+ *  - pending_manual     — requires a human to perform/attest; NEVER auto-passes.
+ *  - blocked            — a prerequisite is missing or a probe failed.
+ *
+ * Manual items may flip to verified_by_code ONLY when recorded evidence
+ * exists (e.g. mfa.totp.verified audit rows prove a live TOTP verify ran).
+ * Absence of evidence always renders pending_manual — nothing is faked.
+ */
+export type AdminCheckStatus = "verified_by_code" | "pending_manual" | "blocked";
+
+export type AdminChecklistItem = {
+  id: string;
+  label: string;
+  status: AdminCheckStatus;
+  /** What was actually observed — counts/env names/timestamps, never secrets. */
+  evidence: string;
+  /** Exact action for a human when the item is not verified. */
+  action: string;
+};
+
+export type AdminChecklistInput = {
+  bootstrapTokenConfigured: boolean;
+  /** profiles rows with system_role IS NOT NULL. */
+  systemRoleProfiles: ReadinessCount;
+  bootstrapGrants: ReadinessCount;
+  /** Audit rows proving enrollment was STARTED (not proof of a verified factor). */
+  mfaEnrollAudits: ReadinessCount;
+  /** Audit rows 'mfa.totp.verified' — written only after GoTrue verify succeeds. */
+  mfaVerifyAudits: ReadinessCount;
+  /** system_elevations rows with method='totp' (granted on successful verify). */
+  totpElevations: ReadinessCount;
+  /** Audit rows 'session.revoked'/'session.revoked_all' — informational only. */
+  sessionRevocations: ReadinessCount;
+};
+
+const pos = (v: ReadinessCount): v is number => typeof v === "number" && v > 0;
+
+/**
+ * Pure derivation of the first-admin checklist — exported for tests.
+ * Order is the recommended operator sequence.
+ */
+export function buildAdminChecklist(input: AdminChecklistInput): AdminChecklistItem[] {
+  const items: AdminChecklistItem[] = [];
+
+  // 1 ── Bootstrap token env presence (value never read).
+  items.push({
+    id: "bootstrap_token",
+    label: "Bootstrap token configured (SYSTEM_BOOTSTRAP_TOKEN)",
+    status: input.bootstrapTokenConfigured ? "verified_by_code" : "blocked",
+    evidence: input.bootstrapTokenConfigured
+      ? "SYSTEM_BOOTSTRAP_TOKEN env var is set (presence only — value never read)."
+      : "SYSTEM_BOOTSTRAP_TOKEN is not set — the bootstrap endpoint fails closed with bootstrap_not_configured.",
+    action: input.bootstrapTokenConfigured
+      ? "None — token present. Remove or rotate it after first-admin activation if policy requires."
+      : "Generate a random token (≥32 bytes), set SYSTEM_BOOTSTRAP_TOKEN in the deployment environment, redeploy, then complete bootstrap at /system/security/bootstrap.",
+  });
+
+  // 2 ── Supabase redirect URL — dashboard-side, never verifiable from code.
+  items.push({
+    id: "supabase_redirect_url",
+    label: "Supabase redirect URL registered",
+    status: "pending_manual",
+    evidence:
+      "Cannot be verified from application code — redirect URLs are a Supabase Auth dashboard setting. The app serves /api/auth/callback on the system host.",
+    action:
+      "Supabase Dashboard → project → Authentication → URL Configuration → add https://system.zapnivo.com/api/auth/callback to Redirect URLs (plus any preview/deploy host equivalents in use), then confirm an email/OAuth sign-in completes on system.zapnivo.com.",
+  });
+
+  // 3 ── First system_role grant (profiles.system_role IS NOT NULL).
+  const rolesKnown = input.systemRoleProfiles !== null && input.bootstrapGrants !== null;
+  const hasAdmin = pos(input.systemRoleProfiles) || pos(input.bootstrapGrants);
+  items.push({
+    id: "first_admin_role",
+    label: "First administrator granted (profiles.system_role)",
+    status: hasAdmin ? "verified_by_code" : !rolesKnown ? "blocked" : input.bootstrapTokenConfigured ? "pending_manual" : "blocked",
+    evidence: !rolesKnown
+      ? "profiles / system_bootstrap_grants counts unavailable — grant state unknown."
+      : hasAdmin
+        ? `${input.systemRoleProfiles ?? 0} profile(s) hold a system_role; ${input.bootstrapGrants ?? 0} bootstrap grant(s) on record (single-grant index caps bootstrap at ONE).`
+        : `0 profiles with system_role; 0 bootstrap grants — no administrator exists yet.`,
+    action: hasAdmin
+      ? "None — an administrator role exists."
+      : input.bootstrapTokenConfigured
+        ? "Sign in on system.zapnivo.com, open /system/security/bootstrap, submit the token + confirm email + verified TOTP to grant sysadmin."
+        : "Blocked until SYSTEM_BOOTSTRAP_TOKEN is configured (item above), then run the bootstrap flow.",
+  });
+
+  // 4 ── TOTP factor enrolled — inferred ONLY from a recorded successful verify
+  // (a verified factor must exist for mfa.totp.verified to have been written).
+  const mfaProof = pos(input.mfaVerifyAudits) || pos(input.totpElevations);
+  items.push({
+    id: "totp_enrolled",
+    label: "TOTP factor enrolled (Supabase Auth MFA)",
+    status: mfaProof ? "verified_by_code" : input.mfaVerifyAudits === null || input.totpElevations === null ? "blocked" : "pending_manual",
+    evidence: mfaProof
+      ? `${input.mfaVerifyAudits ?? 0} 'mfa.totp.verified' audit event(s), ${input.totpElevations ?? 0} totp elevation row(s) — a verified TOTP factor necessarily exists (factors live in Supabase auth.mfa_factors, not queryable via PostgREST).`
+      : `No recorded TOTP verify/elevation${pos(input.mfaEnrollAudits) ? ` (${input.mfaEnrollAudits} enrollment started, never completed)` : ""} — enrollment unproven.`,
+    action: mfaProof
+      ? "None — verified factor on record."
+      : "Enroll a TOTP factor at /system/security/mfa and complete challenge + verify (this also grants the first step-up elevation).",
+  });
+
+  // 5 ── MFA challenge + verify exercised — direct audit evidence only.
+  items.push({
+    id: "mfa_verify_tested",
+    label: "MFA challenge + verify tested live",
+    status: pos(input.mfaVerifyAudits) ? "verified_by_code" : input.mfaVerifyAudits === null ? "blocked" : "pending_manual",
+    evidence: pos(input.mfaVerifyAudits)
+      ? `${input.mfaVerifyAudits} 'mfa.totp.verified' audit event(s) — GoTrue challenge+verify succeeded against live Supabase Auth.`
+      : "0 'mfa.totp.verified' audit events — the verify path is unit-tested but has not been exercised live.",
+    action: pos(input.mfaVerifyAudits)
+      ? "None — live verify on record."
+      : "Perform a real TOTP challenge + verify at /system/security/mfa and confirm a 15-minute system_elevations row (method='totp') appears.",
+  });
+
+  // 6 ── Step-up elevation works — elevation rows are the recorded grants.
+  items.push({
+    id: "step_up_elevation",
+    label: "Step-up elevation grants on sensitive actions",
+    status: pos(input.totpElevations) ? "verified_by_code" : input.totpElevations === null ? "blocked" : "pending_manual",
+    evidence: pos(input.totpElevations)
+      ? `${input.totpElevations} system_elevations row(s) (method='totp') — elevation grants are recorded on successful verify.`
+      : "0 system_elevations rows — no live step-up grant on record.",
+    action: pos(input.totpElevations)
+      ? "None — elevation grants on record."
+      : "Trigger a privileged action requiring step-up and confirm verify → elevation → action succeeds, then expires (~15 min).",
+  });
+
+  // 7 ── Session expiration — enforced in CODE, always verifiable statically.
+  items.push({
+    id: "session_expiration",
+    label: "Session expiration enforced (absolute 24h ceiling)",
+    status: "verified_by_code",
+    evidence:
+      "Code-enforced: SESSION_MAX_AGE_MS = 24h (src/lib/auth.ts) — auth_sessions registry expiry is checked on every request and refresh never extends the absolute deadline.",
+    action: "None required — enforced in code. Optional spot-check: let a session pass 24h and confirm 401.",
+  });
+
+  // 8 ── Session revocation tested — manual attestation ONLY. Audit rows show
+  // the mechanism ran, not that access actually ended.
+  items.push({
+    id: "session_revocation_tested",
+    label: "Session revocation tested end-to-end",
+    status: "pending_manual",
+    evidence: pos(input.sessionRevocations)
+      ? `${input.sessionRevocations} session.revoked* audit event(s) on record — revocations have run, but a live 'access ends' confirmation is still required.`
+      : "No session.revoked* audit events — revocation path (identity.revokeUserSessions → auth_sessions delete) is implemented and audited but untested live.",
+    action: "Revoke a test session (DELETE auth_sessions row via /system/security/sessions or identity.revokeUserSessions) and confirm the session cookie stops working immediately; an active elevation must not resurrect it.",
+  });
+
+  // 9 ── Access-control tests — manual attestation ONLY.
+  items.push({
+    id: "access_control_tests",
+    label: "Access-control / RBAC tests against live deployment",
+    status: "pending_manual",
+    evidence: "RBAC rules are unit-tested (tests/system-rbac.test.ts) but no live role/permission matrix check is on record.",
+    action: "Exercise the system.* permission matrix as each role (sysadmin, engineer, security, hardware, breakglass) on the live deployment — denied actions must return 403 — and record results.",
+  });
+
+  return items;
+}
 
 /* ─── Backup / recovery state machine (Phase 2.4) ────────────────────────────
  *
@@ -186,6 +352,8 @@ export type SecurityReadiness = {
   };
   /** Per-section lifecycle statuses — see ReadinessStatus docs above. */
   sections: ReadinessSection[];
+  /** First-administrator setup checklist — see AdminChecklistItem docs above. */
+  admin_checklist: AdminChecklistItem[];
   kek: { configured: boolean; current_version: string; previous_configured: boolean };
   notes: string[];
 };
@@ -232,6 +400,17 @@ export async function securityReadiness(
     backup: { state: "no_verified_backup", provider_snapshot: null },
     hardware: { adapter: kioskAdapterName(), profiles: null },
     sections: [],
+    // Env-based items still evaluate without a DB; DB-derived items show
+    // blocked/pending honestly rather than disappearing.
+    admin_checklist: buildAdminChecklist({
+      bootstrapTokenConfigured: bootstrapConfigured(),
+      systemRoleProfiles: null,
+      bootstrapGrants: null,
+      mfaEnrollAudits: null,
+      mfaVerifyAudits: null,
+      totpElevations: null,
+      sessionRevocations: null,
+    }),
     kek: kekStatus(),
     notes: ["Backend not configured — all counts unavailable."],
   };
@@ -269,6 +448,13 @@ export async function securityReadiness(
   // ── Elevations / bootstrap / retention / recovery ───────────────────────
   const activeElevations = await countWhere(db, "system_elevations", (q) => q.gt("expires_at", nowIso));
   const bootstrapGrants = await countWhere(db, "system_bootstrap_grants");
+  // First-admin checklist probes (all count-only, no credential material).
+  const systemRoleProfiles = await countWhere(db, "profiles", (q) => q.not("system_role", "is", null));
+  const totpElevations = await countWhere(db, "system_elevations", (q) => q.eq("method", "totp"));
+  const mfaEnrollAudits = await countWhere(db, "system_audit_events", (q) => q.eq("action", "mfa.enroll.started"));
+  const mfaVerifyAudits = await countWhere(db, "system_audit_events", (q) => q.eq("action", "mfa.totp.verified"));
+  const sessionRevocations = await countWhere(db, "system_audit_events", (q) =>
+    q.in("action", ["session.revoked", "session.revoked_all"]));
   const recoveryTests = await countWhere(db, "system_recovery_tests");
   const recoveryPassedCount = await countWhere(db, "system_recovery_tests", (q) => q.eq("result", "passed"));
   const hardwareProfiles = await countWhere(db, "system_hardware_profiles");
@@ -312,6 +498,8 @@ export async function securityReadiness(
   if (devicesTotal == null) notes.push("system_devices counts unavailable (table missing or query failed).");
   if (rejected24h == null) notes.push("system_device_messages unavailable — auth-failure counts unknown.");
   if (bootstrapGrants == null) notes.push("system_bootstrap_grants unavailable.");
+  if (systemRoleProfiles == null) notes.push("profiles.system_role count unavailable — first-admin checklist degraded.");
+  if (mfaVerifyAudits == null || totpElevations == null) notes.push("MFA/elevation probes unavailable — admin checklist items stay pending/blocked.");
   if (pendingRetentionApprovals == null) notes.push("system_change_requests unavailable — pending retention approvals unknown.");
   if (hardwareProfiles == null) notes.push("system_hardware_profiles unavailable — certification registry unknown.");
 
@@ -473,6 +661,15 @@ export async function securityReadiness(
     backup: { state: backupState, provider_snapshot: providerSnapshot },
     hardware: { adapter, profiles: hardwareProfiles },
     sections,
+    admin_checklist: buildAdminChecklist({
+      bootstrapTokenConfigured: bootstrapConfigured(),
+      systemRoleProfiles,
+      bootstrapGrants,
+      mfaEnrollAudits,
+      mfaVerifyAudits,
+      totpElevations,
+      sessionRevocations,
+    }),
     kek,
     notes,
   };

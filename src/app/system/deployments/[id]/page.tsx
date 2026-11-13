@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { SystemGate } from "@/components/SystemGate";
 import { serviceClient } from "@/lib/supabase";
 import { getDeploymentDetail, githubCommitUrl, manualDeployInstructions, type DeploymentHealth } from "@/lib/system/deploy-center";
+import type { HealthProfileResult } from "@/lib/system/deploy-health";
 import { vercelGate } from "@/lib/system/deploy-provider";
 import { DeploymentMonitor } from "./DeploymentMonitor";
 
@@ -25,6 +26,12 @@ export default async function DeploymentDetailPage({ params }: { params: Promise
   const commitUrl = d?.commitSha ? githubCommitUrl(d.commitSha) : null;
   const reqResult = (typeof req?.result === "object" && req?.result ? req.result : {}) as Record<string, unknown>;
   const initialHealth = (typeof reqResult.health === "object" && reqResult.health ? reqResult.health : null) as DeploymentHealth | null;
+  const healthProfile = (typeof reqResult.healthProfile === "object" && reqResult.healthProfile ? reqResult.healthProfile : null) as HealthProfileResult | null;
+  const PROFILE_TONE: Record<string, string> = {
+    healthy: "bg-lime/15 text-lime ring-lime/30",
+    degraded: "bg-amber-400/15 text-amber-300 ring-amber-400/30",
+    unreachable: "bg-red-500/15 text-red-300 ring-red-400/30",
+  };
 
   return (
     <SystemGate perm="system.deployments.view">
@@ -100,6 +107,42 @@ export default async function DeploymentDetailPage({ params }: { params: Promise
 
         {/* Live status poll — 15s interval, stops on terminal provider state */}
         <DeploymentMonitor id={id} initialHealth={initialHealth} />
+
+        {/* App health profile — stored on the request after READY+production */}
+        {healthProfile && (
+          <section className="rounded-2xl border border-white/[0.08] bg-white/[0.05] p-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className="eyebrow text-slate-400">App health profile — {healthProfile.app} ({healthProfile.host})</h2>
+              <span className={`rounded-full px-2.5 py-1 font-mono text-[10px] font-bold ring-1 ${PROFILE_TONE[healthProfile.status] ?? PROFILE_TONE.degraded}`}>
+                {healthProfile.status} · {healthProfile.checksOk}/{healthProfile.checksTotal} checks
+              </span>
+            </div>
+            <p className="mt-1 font-mono text-[10px] text-slate-500">
+              ran {when(healthProfile.ranAt)} · read-only probes · degraded ≠ auto-rollback
+              {healthProfile.criticalFailures.length > 0 && <> · critical failures: <span className="text-red-300">{healthProfile.criticalFailures.join(", ")}</span></>}
+            </p>
+            <table className="mt-3 w-full text-left text-xs">
+              <thead className="border-b border-white/10 text-[10px] uppercase tracking-wider text-slate-500">
+                <tr>{["Check", "Kind", "Result", "HTTP", "Latency", "Detail"].map((h) => <th key={h} className="px-3 py-2 font-extrabold">{h}</th>)}</tr>
+              </thead>
+              <tbody>
+                {healthProfile.checks.map((c) => (
+                  <tr key={c.id} className="border-b border-white/5 last:border-0">
+                    <td className="px-3 py-2 font-mono text-[11px]">
+                      {c.id}
+                      {c.critical ? <span className="ml-1.5 rounded bg-red-500/10 px-1 py-0.5 text-[9px] font-bold text-red-300 ring-1 ring-red-400/20">critical</span> : <span className="ml-1.5 text-[9px] text-slate-500">info</span>}
+                    </td>
+                    <td className="px-3 py-2 font-mono text-[10px] text-slate-400">{c.kind}</td>
+                    <td className="px-3 py-2 font-mono text-[10px] font-bold">{c.ok ? <span className="text-lime">ok</span> : <span className="text-red-300">fail</span>}</td>
+                    <td className="px-3 py-2 font-mono text-[10px] text-slate-300">{c.status ?? "—"}</td>
+                    <td className="px-3 py-2 font-mono text-[10px] text-slate-400">{c.latencyMs != null ? `${c.latencyMs}ms` : "—"}</td>
+                    <td className="max-w-[320px] truncate px-3 py-2 font-mono text-[10px] text-slate-500" title={c.detail}>{c.detail}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
+        )}
 
         {/* Build events / logs — only when a provider deployment exists */}
         {(d || detail.eventsStatus !== "unavailable") && (

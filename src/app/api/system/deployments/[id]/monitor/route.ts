@@ -38,7 +38,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   if (!vercelConfigured()) {
     return NextResponse.json({
       ok: true, requestId: null, found: true, requestStatus: null,
-      state: "unknown", providerStateRaw: null, terminal: false, health: null,
+      state: "unknown", providerStateRaw: null, terminal: false, health: null, healthProfile: null,
       error: "vercel provider not configured",
     });
   }
@@ -46,7 +46,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   if (!dep.configured || !dep.ok) {
     return NextResponse.json({
       ok: true, requestId: null, found: true, requestStatus: null,
-      state: "unknown", providerStateRaw: null, terminal: false, health: null,
+      state: "unknown", providerStateRaw: null, terminal: false, health: null, healthProfile: null,
       error: dep.configured ? dep.error : "vercel provider not configured",
     });
   }
@@ -60,6 +60,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     providerStateRaw: dep.data.readyState,
     terminal: ["ready", "error", "canceled"].includes(state),
     health: null,
+    healthProfile: null,
     url: dep.data.url ? `https://${dep.data.url}` : null,
     error: null,
   });

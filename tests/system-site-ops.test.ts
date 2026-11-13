@@ -55,6 +55,12 @@ describe("redirect path validation", () => {
     expect(validateFromPath(42).ok).toBe(false);
   });
 
+  it("rejects encoded/backslash from_paths — stored form must be decoded-canonical", () => {
+    for (const p of ["/old%20page", "/old%2Fpage", "/api%5Cx", "/a\\b", "/100%25"]) {
+      expect(validateFromPath(p).ok, JSON.stringify(p)).toBe(false);
+    }
+  });
+
   it("to_path accepts relative paths and same-host https URLs", () => {
     expect(validateToPath("/new-place")).toEqual({ ok: true, value: "/new-place" });
     expect(validateToPath("https://zapnivo.com/pricing").ok).toBe(true);
@@ -74,6 +80,10 @@ describe("redirect path validation", () => {
       "ftp://zapnivo.com/x",
       "data:text/html,x",
       "not a url at all",
+      "//zapnivo.com/x", // protocol-relative rejected even for approved host
+      "\\\\evil.com",
+      "https://user:pass@zapnivo.com/x", // credential-bearing URL
+      "https://user@zapnivo.com/x",
     ]) {
       expect(validateToPath(p).ok, p).toBe(false);
     }
@@ -100,6 +110,18 @@ describe("redirect CRUD", () => {
     expect(await createRedirect(db, user(), actor, { ...valid, to_path: "https://evil.com" }, "reason long enough")).toMatchObject({ ok: false, status: 400 });
     expect(await createRedirect(db, user(), actor, { ...valid, to_path: "/old" }, "reason long enough")).toMatchObject({ ok: false, status: 400 });
     expect(await createRedirect(db, null, actor, valid, "reason long enough")).toMatchObject({ ok: false, status: 401 });
+  });
+
+  it("rejects console/API site_keys — runtime disables redirects there", async () => {
+    const redirects = fakeTable({ singles: [{ data: { id: ID }, error: null }] });
+    const { db } = fakeDb({ site_redirects: redirects });
+    for (const sk of ["system", "api"]) {
+      const res = await createRedirect(db, user(), actor, { ...valid, site_key: sk }, "reason long enough");
+      expect(res, sk).toMatchObject({ ok: false, status: 400 });
+    }
+    // internal/partners/customer remain allowed
+    const ok = await createRedirect(db, user(), actor, { ...valid, site_key: "internal" }, "reason long enough");
+    expect(ok.ok).toBe(true);
   });
 
   it("creates a redirect and audits siteops.redirect_created", async () => {

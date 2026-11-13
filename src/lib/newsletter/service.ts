@@ -5,6 +5,7 @@ import { serviceClient } from "../supabase";
 import { SITE } from "../site";
 import { getRepo } from "../helpdesk/repo";
 import { flushOutbox, getMailer } from "../helpdesk/mailer";
+import { getLatestDeliveryEvents } from "./delivery-events";
 import {
   NEWSLETTER_CONSENT_TEXT,
   NEWSLETTER_CONSENT_VERSION,
@@ -454,7 +455,18 @@ export async function unsubscribeSubscription(rawToken: string): Promise<Unsubsc
 
 /* ── Admin operations ───────────────────────────────────────────────────────── */
 
-export type RecentSubscriber = SubscriberRow & { delivery: NewsletterDelivery | null };
+/** Latest provider webhook event for a subscriber (email_delivery_events, 0064). */
+export type DeliveryEventSummary = {
+  provider: string;
+  eventType: string;
+  occurredAt: string;
+};
+
+export type RecentSubscriber = SubscriberRow & {
+  delivery: NewsletterDelivery | null;
+  /** Webhook-confirmed delivery event — null until the provider reports one. */
+  deliveryEvent: DeliveryEventSummary | null;
+};
 
 export type NewsletterOverview = {
   totals: Record<NewsletterStatus, number>;
@@ -484,11 +496,17 @@ export async function getNewsletterOverview(db: SupabaseClient | null, recentLim
   const recentRows = rows.slice(0, recentLimit);
   // Join the latest outbox delivery per address — honest status or null (never faked).
   const delivery = await getNewsletterDelivery(db, recentRows.map((r) => r.email));
+  // Join the latest provider webhook event per subscriber (bounded; {} on failure).
+  const deliveryEvents = await getLatestDeliveryEvents(db, recentRows.map((r) => r.id));
   return {
     totals,
     bySegment,
     confirmedTotal: totals.confirmed,
-    recent: recentRows.map((r) => ({ ...r, delivery: delivery[r.email.toLowerCase()] ?? null })),
+    recent: recentRows.map((r) => ({
+      ...r,
+      delivery: delivery[r.email.toLowerCase()] ?? null,
+      deliveryEvent: deliveryEvents[r.id] ?? null,
+    })),
   };
 }
 

@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { DeploymentRecord } from "@/lib/system/deploy-center";
+import type { HealthProfileResult } from "@/lib/system/deploy-health";
 
 const when = (iso: string | null) =>
   iso ? new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "UTC" }) + "Z" : "—";
@@ -37,13 +38,15 @@ export function DeploymentsClient({
   rollbackProviderConfigured,
   allowedRefs,
   rollbackCompat,
+  healthApps,
 }: {
   deployments: DeploymentRecord[];
   canManage: boolean;
   vercelConfigured: boolean;
-  rollbackCandidates: { uid: string; createdAt: string | null; commitSha: string | null }[];
+  rollbackCandidates: { uid: string; createdAt: string | null; commitSha: string | null; ageDays?: number | null; compatNote?: string }[];
   rollbackProviderConfigured: boolean;
   allowedRefs: string[];
+  healthApps: { app: string; label: string; host: string; checks: number }[];
   rollbackCompat: {
     warning: string;
     repoMigrationCount: number;
@@ -62,6 +65,10 @@ export function DeploymentsClient({
   const [rollbackFor, setRollbackFor] = useState<string | null>(null);
   const [rollbackJustification, setRollbackJustification] = useState("");
   const [rollbackAck, setRollbackAck] = useState(false);
+  const [healthApp, setHealthApp] = useState(healthApps[0]?.app ?? "");
+  const [healthBusy, setHealthBusy] = useState(false);
+  const [healthResult, setHealthResult] = useState<HealthProfileResult | null>(null);
+  const [healthError, setHealthError] = useState<string | null>(null);
 
   const filtered = useMemo(
     () => deployments.filter((d) => envFilter === "all" || d.env === envFilter),
@@ -85,6 +92,24 @@ export function DeploymentsClient({
   };
 
   const input = "w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-slate-200 focus:border-lime/40 focus:outline-none";
+
+  const runHealthProfile = async () => {
+    if (!healthApp) return;
+    setHealthBusy(true); setHealthError(null);
+    try {
+      const res = await fetch("/api/system/deployments/health-profile", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ app: healthApp }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) setHealthError((j as { error?: string }).error ?? `HTTP ${res.status}`);
+      else setHealthResult(j as HealthProfileResult);
+    } catch {
+      setHealthError("request failed — try again");
+    } finally {
+      setHealthBusy(false);
+    }
+  };
 
   return (
     <>
@@ -157,6 +182,7 @@ export function DeploymentsClient({
                   <li key={c.uid} className="flex flex-wrap items-center gap-2 text-xs">
                     <span className="font-mono text-slate-300">{c.uid}</span>
                     <span className="font-mono text-[10px] text-slate-500">{when(c.createdAt)}</span>
+                    {c.ageDays != null && <span className="font-mono text-[10px] text-slate-500">({c.ageDays}d old)</span>}
                     {c.commitSha && <span className="font-mono text-[10px] text-slate-500">{c.commitSha.slice(0, 7)}</span>}
                     {canManage && (
                       rollbackFor === c.uid ? (
@@ -178,9 +204,56 @@ export function DeploymentsClient({
                   </li>
                 ))}
               </ul>
-              <p className="mt-2 font-mono text-[10px] text-slate-500">Rollback = promote a previous deployment to production aliases. High-risk: change-request approval + step-up elevation at execute + explicit migration-compat acknowledgement.</p>
+              <p className="mt-2 font-mono text-[10px] text-slate-500">Rollback = promote a previous deployment to production aliases. High-risk: change-request approval + step-up elevation at execute + explicit migration-compat acknowledgement.{rollbackCandidates[0]?.compatNote ? ` ${rollbackCandidates[0].compatNote}` : ""}</p>
             </div>
           )}
+
+          {/* On-demand app health profiles — read-only probes, manage perm */}
+          <div className="mt-4 rounded-xl border border-white/[0.07] bg-white/[0.02] p-4">
+            <h3 className="text-[11px] font-bold uppercase tracking-wider text-slate-400">App health profiles</h3>
+            <p className="mt-1 text-[11px] text-slate-500">
+              Read-only unauthenticated probes per production host (status gates, login redirects, API auth enforcement).
+              A degraded result is audited — it never triggers an automatic rollback.
+            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <select className={input + " w-auto"} value={healthApp} onChange={(e) => setHealthApp(e.target.value)}>
+                {healthApps.map((a) => <option key={a.app} value={a.app}>{a.label} — {a.host} ({a.checks} checks)</option>)}
+              </select>
+              <button type="button" disabled={healthBusy || !healthApp} onClick={runHealthProfile}
+                className="rounded-full bg-white/10 px-4 py-2 text-xs font-bold text-slate-200 ring-1 ring-white/15 hover:bg-white/15 disabled:opacity-50">
+                {healthBusy ? "running…" : "Run health profile"}
+              </button>
+              {healthError && <span className="font-mono text-[11px] text-red-300">{healthError}</span>}
+            </div>
+            {healthResult && (
+              <div className="mt-3">
+                <p className="font-mono text-[11px]">
+                  <span className={healthResult.status === "healthy" ? "text-lime" : healthResult.status === "degraded" ? "text-amber-300" : "text-red-300"}>
+                    {healthResult.status}
+                  </span>
+                  <span className="text-slate-500"> · {healthResult.app} ({healthResult.host}) · {healthResult.checksOk}/{healthResult.checksTotal} ok · ran {when(healthResult.ranAt)}</span>
+                </p>
+                <table className="mt-2 w-full text-left text-[11px]">
+                  <thead className="border-b border-white/10 text-[9px] uppercase tracking-wider text-slate-500">
+                    <tr>{["Check", "Kind", "Result", "HTTP", "ms", "Detail"].map((h) => <th key={h} className="px-2 py-1.5 font-extrabold">{h}</th>)}</tr>
+                  </thead>
+                  <tbody>
+                    {healthResult.checks.map((c) => (
+                      <tr key={c.id} className="border-b border-white/5 last:border-0">
+                        <td className="px-2 py-1.5 font-mono">{c.id}{c.critical ? <span className="ml-1 text-red-300">*</span> : null}</td>
+                        <td className="px-2 py-1.5 font-mono text-slate-400">{c.kind}</td>
+                        <td className="px-2 py-1.5 font-mono font-bold">{c.ok ? <span className="text-lime">ok</span> : <span className="text-red-300">fail</span>}</td>
+                        <td className="px-2 py-1.5 font-mono text-slate-300">{c.status ?? "—"}</td>
+                        <td className="px-2 py-1.5 font-mono text-slate-400">{c.latencyMs ?? "—"}</td>
+                        <td className="max-w-[280px] truncate px-2 py-1.5 font-mono text-slate-500" title={c.detail}>{c.detail}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <p className="mt-1 font-mono text-[9px] text-slate-600">* = critical check · results also written to uptime_checks + audit</p>
+              </div>
+            )}
+          </div>
           {notice && <p className="mt-3 font-mono text-xs text-lime">{notice}</p>}
         </section>
       )}

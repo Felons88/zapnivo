@@ -5,6 +5,7 @@ import { serviceClient } from "@/lib/supabase";
 import { getSystemOverview } from "@/lib/system/overview";
 import { listIntegrationStatus } from "@/lib/system/integrations";
 import { HealthButtons } from "./HealthButtons";
+import { ProviderSetup } from "./ProviderSetup";
 
 export const metadata: Metadata = { title: "Integrations" };
 
@@ -96,9 +97,12 @@ export default async function IntegrationsPage() {
           </table>
         </div>
 
+        <ProviderSetup />
+
         <p className="text-xs text-slate-500">
           API: <code className="font-mono">GET /api/system/integrations</code> ·{" "}
           <code className="font-mono">GET /api/system/integrations/{"{id}"}/health</code> — both audited.
+          Deploy providers (github, vercel) additionally return scope/permission detail on health checks.
         </p>
       </div>
     </SystemGate>

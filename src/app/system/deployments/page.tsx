@@ -5,7 +5,8 @@ import { SystemGate } from "@/components/SystemGate";
 import { serviceClient } from "@/lib/supabase";
 import { getSessionUser } from "@/lib/auth";
 import { roleCan, systemRole } from "@/lib/system/rbac";
-import { listDeployments, rollbackCandidates, rollbackCompatibility } from "@/lib/system/deploy-center";
+import { listDeployments, migrationCompatNote, rollbackCandidates, rollbackCompatibility } from "@/lib/system/deploy-center";
+import { healthProfileApps } from "@/lib/system/deploy-health";
 import { vercelGate, allowedDeployRefs } from "@/lib/system/deploy-provider";
 import { deployProviderReadiness, type ProviderReadiness } from "@/lib/system/deploy-verify";
 import { listIntegrationStatus, type IntegrationRow } from "@/lib/system/integrations";
@@ -103,6 +104,7 @@ export default async function DeploymentsCenterPage() {
             uid: d.uid,
             createdAt: d.createdAt ? new Date(d.createdAt).toISOString() : null,
             commitSha: d.commitSha,
+            ...migrationCompatNote(d),
           })) : []}
           rollbackProviderConfigured={rb.configured}
           allowedRefs={allowedDeployRefs()}
@@ -113,6 +115,7 @@ export default async function DeploymentsCenterPage() {
             dbMigrationTracking: compat.dbMigrationTracking,
             appliedCount: compat.appliedCount,
           }}
+          healthApps={healthProfileApps()}
         />
       </div>
     </SystemGate>
