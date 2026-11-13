@@ -13,11 +13,11 @@ const withCode = (host: string, path: string) =>
 
 describe("stray *.zapnivo.com hosts canonicalize to the apex", () => {
   it("redirects any unrecognized subdomain to the bare apex, preserving the path", () => {
-    expect(r("foo.zapnivo.com", "/")).toEqual({ kind: "redirect", to: "https://zapnivo.com/" });
-    expect(r("foo.zapnivo.com", "/support/new")).toEqual({ kind: "redirect", to: "https://zapnivo.com/support/new" });
-    expect(r("staging.zapnivo.com", "/admin/fleet")).toEqual({ kind: "redirect", to: "https://zapnivo.com/admin/fleet" });
+    expect(r("foo.zapnivo.com", "/")).toEqual({ kind: "redirect", to: "https://www.zapnivo.com/" });
+    expect(r("foo.zapnivo.com", "/support/new")).toEqual({ kind: "redirect", to: "https://www.zapnivo.com/support/new" });
+    expect(r("staging.zapnivo.com", "/admin/fleet")).toEqual({ kind: "redirect", to: "https://www.zapnivo.com/admin/fleet" });
     // Deep/unknown paths are preserved verbatim — never rendered on the stray host.
-    expect(r("foo.zapnivo.com", "/some/page")).toEqual({ kind: "redirect", to: "https://zapnivo.com/some/page" });
+    expect(r("foo.zapnivo.com", "/some/page")).toEqual({ kind: "redirect", to: "https://www.zapnivo.com/some/page" });
   });
 
   it("does not treat lookalike hosts as stray (www/apex DO redirect — to the subdomain)", () => {
@@ -30,7 +30,7 @@ describe("stray *.zapnivo.com hosts canonicalize to the apex", () => {
   });
 
   it("stray redirect keeps the request protocol (http in local prod-mirror, https in prod)", () => {
-    expect(r("foo.zapnivo.com", "/about", "http:")).toEqual({ kind: "redirect", to: "http://zapnivo.com/about" });
+    expect(r("foo.zapnivo.com", "/about", "http:")).toEqual({ kind: "redirect", to: "http://www.zapnivo.com/about" });
   });
 
   it("unknown *.localhost hosts are local apex traffic, not stray domains", () => {
@@ -58,8 +58,8 @@ describe("customer.* subdomain edges", () => {
   });
 
   it("bounces apex-owned marketing sections back to the apex", () => {
-    expect(r("customer.zapnivo.com", "/legal/privacy")).toEqual({ kind: "redirect", to: "https://zapnivo.com/legal/privacy" });
-    expect(r("customer.zapnivo.com", "/r/REF123")).toEqual({ kind: "redirect", to: "https://zapnivo.com/r/REF123" });
+    expect(r("customer.zapnivo.com", "/legal/privacy")).toEqual({ kind: "redirect", to: "https://www.zapnivo.com/legal/privacy" });
+    expect(r("customer.zapnivo.com", "/r/REF123")).toEqual({ kind: "redirect", to: "https://www.zapnivo.com/r/REF123" });
     // …but files pass through untouched (llms.txt is served on every host).
     expect(r("customer.zapnivo.com", "/llms.txt")).toEqual({ kind: "next", noindex: true });
   });
@@ -88,9 +88,10 @@ describe("api.* subdomain edges", () => {
 
 describe("apex canonical redirect boundaries", () => {
   it("requires an exact segment boundary — /supportx is not /support", () => {
-    expect(r("zapnivo.com", "/supportx")).toEqual({ kind: "next" });
-    expect(r("zapnivo.com", "/administer")).toEqual({ kind: "next" });
-    expect(r("zapnivo.com", "/partners-foo")).toEqual({ kind: "next" });
+    // www is the serving apex host; the bare apex would 308 to www first.
+    expect(r("www.zapnivo.com", "/supportx")).toEqual({ kind: "next" });
+    expect(r("www.zapnivo.com", "/administer")).toEqual({ kind: "next" });
+    expect(r("www.zapnivo.com", "/partners-foo")).toEqual({ kind: "next" });
   });
 
   it("handles trailing slashes and deep account paths", () => {
@@ -99,16 +100,17 @@ describe("apex canonical redirect boundaries", () => {
   });
 
   it("/r referral links stay on the apex (they are marketing, not a portal)", () => {
-    expect(r("zapnivo.com", "/r/ABC123")).toEqual({ kind: "next" });
+    // Bare apex canonicalizes to www; www serves the page directly.
+    expect(r("zapnivo.com", "/r/ABC123")).toEqual({ kind: "redirect", to: "https://www.zapnivo.com/r/ABC123" });
     expect(r("www.zapnivo.com", "/r/ABC123")).toEqual({ kind: "next" });
-    // …but a subdomain bounces them back to the apex.
-    expect(r("support.zapnivo.com", "/r/ABC123")).toEqual({ kind: "redirect", to: "https://zapnivo.com/r/ABC123" });
+    // …but a subdomain bounces them back to the canonical apex.
+    expect(r("support.zapnivo.com", "/r/ABC123")).toEqual({ kind: "redirect", to: "https://www.zapnivo.com/r/ABC123" });
   });
 });
 
 describe("OAuth ?code fallback boundaries", () => {
   it("only fires on the root path — deep links and prefixed paths are untouched", () => {
-    expect(withCode("zapnivo.com", "/about")).toEqual({ kind: "next" });
+    expect(withCode("www.zapnivo.com", "/about")).toEqual({ kind: "next" });
     expect(withCode("zapnivo.com", "/support/new")).toEqual({ kind: "redirect", to: "https://support.zapnivo.com/new" });
     expect(withCode("support.zapnivo.com", "/new")).toEqual({ kind: "rewrite", to: "/support/new", noindex: false });
     expect(withCode("api.zapnivo.com", "/")).toEqual({ kind: "rewrite", to: "/api/auth/callback" });
@@ -122,7 +124,7 @@ describe("ports and custom base domains", () => {
     expect(r("support.localhost:3100", "/", "http:")).toEqual({ kind: "rewrite", to: "/support", noindex: false });
     // Canonical redirects on non-local hosts ignore the port (real DNS has none).
     const d = r("foo.zapnivo.com:443", "/x");
-    expect(d).toEqual({ kind: "redirect", to: "https://zapnivo.com/x" });
+    expect(d).toEqual({ kind: "redirect", to: "https://www.zapnivo.com/x" });
   });
 
   it("honours a custom BASE_DOMAIN for sub + stray detection", () => {

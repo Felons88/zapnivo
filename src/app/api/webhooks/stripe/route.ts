@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { triggerPaymentReceipt } from "@/lib/email-triggers";
 import { triggerPaymentDispute, triggerPaymentFailedHtml } from "@/lib/email-extra-triggers";
 import { fmt } from "@/lib/pricing";
+import { nonReturnDeadlineIso } from "@/lib/payments/nonreturn-deadline";
+import { reconcileNonReturnFeeRefund, reconcileRentalPaymentRefund } from "@/lib/payments/refund";
 import { verifyStripeSignature } from "@/lib/stripe";
 import { handleAdChargeRefunded, handleAdCheckoutCompleted, handleAdPaymentIntent } from "@/lib/ads/billing";
 import { handleMonetizationDispute, handleMonetizationEvent, handleMonetizationRefund } from "@/lib/monetization/webhook";
@@ -180,13 +182,19 @@ async function handleEvent(db: Db, event: StripeEvent): Promise<boolean> {
       if (!piId) return true;
       // Monetization products reconcile by their own rows (gift/package/group/
       // event pass/membership); skip the Stripe PI lookup when it's a rental.
-      const { data: rentalPay } = await db.from("payments").select("id").eq("stripe_payment_intent_id", piId).limit(1).maybeSingle();
+      const { data: rentalPay } = await db.from("payments").select("id,rental_id,state").eq("stripe_payment_intent_id", piId).limit(1).maybeSingle();
       if (!rentalPay && (await handleMonetizationRefund(db, o))) return true;
+      // The non-return fee is a separate PI with no payments row — reconcile it
+      // against its billing_ledger row or the refund drops silently.
+      if (!rentalPay && (await reconcileNonReturnFeeRefund(db, o, piId))) return true;
       const refunded = typeof o.amount_refunded === "number" ? o.amount_refunded : 0;
       const captured = typeof o.amount_captured === "number" ? o.amount_captured : typeof o.amount === "number" ? o.amount : 0;
       await requireWrite(db.from("payments").update({
         amount_refunded_cents: refunded, state: refunded > 0 && refunded >= captured ? "refunded" : "partially_refunded",
       }).eq("stripe_payment_intent_id", piId));
+      // Rental payments get ledger delta + credit release + external-refund
+      // flagging — Stripe-dashboard refunds no longer bypass reconciliation.
+      if (rentalPay) await reconcileRentalPaymentRefund(db, rentalPay as { id: string; rental_id: string; state?: string }, o, piId);
       return true;
     }
     default:

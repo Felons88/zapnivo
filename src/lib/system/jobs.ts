@@ -13,8 +13,9 @@ import { assertApprovedOrRequest, systemAudit, type SystemActor } from "./audit"
 export const CRON_ROUTES: readonly { path: string; schedule: string; jobs: readonly string[]; recordsCronRuns: boolean }[] = [
   { path: "/api/cron/rentals", schedule: "0 12 * * *", jobs: ["rentals", "sms", "fleet", "entitlements", "ledgers"], recordsCronRuns: true },
   { path: "/api/cron/inbound", schedule: "0 13 * * *", jobs: ["inbound"], recordsCronRuns: true },
-  { path: "/api/cron/uptime", schedule: "0 14 * * *", jobs: ["uptime"], recordsCronRuns: false }, // writes uptime_checks/incidents, not cron_runs
-  { path: "/api/cron/analytics", schedule: "30 14 * * *", jobs: ["analytics"], recordsCronRuns: false }, // runAggregation only
+  { path: "/api/cron/uptime", schedule: "0 14 * * *", jobs: ["uptime"], recordsCronRuns: true }, // recordCron since Phase 2.7
+  { path: "/api/cron/analytics", schedule: "30 14 * * *", jobs: ["analytics"], recordsCronRuns: true }, // recordCron since Phase 2.7
+  { path: "/api/cron/retention", schedule: "0 4 * * *", jobs: ["retention"], recordsCronRuns: true }, // recordCron since Phase 2.7
 ];
 
 export type QueueSummary = {
@@ -91,7 +92,7 @@ export async function getSystemJobs(db: SupabaseClient | null): Promise<SystemJo
   const since = sinceIso();
   const [
     outQueued, outSent, outFailed, outOldest,
-    jobQueued, jobProcessing, jobDone, jobFailed, jobDead, jobOldest,
+    jobQueued, jobProcessing, jobDone, jobDead, jobOldest,
     notifQueued, notifSending, notifSent, notifFailed, notifCancelled, notifOldest,
     cronRows, errEvents24, openIssues,
   ] = await Promise.all([
@@ -102,7 +103,8 @@ export async function getSystemJobs(db: SupabaseClient | null): Promise<SystemJo
     headCount(db, "inbound_jobs", (q) => q.eq("status", "queued")),
     headCount(db, "inbound_jobs", (q) => q.eq("status", "processing")),
     headCount(db, "inbound_jobs", (q) => q.eq("status", "done")),
-    headCount(db, "inbound_jobs", (q) => q.eq("status", "failed")),
+    // NOTE: the worker only ever writes queued/processing/done/dead — 'failed'
+    // is in the CHECK constraint but never set, so it is not counted (D15).
     headCount(db, "inbound_jobs", (q) => q.eq("status", "dead")),
     oldestAt(db, "inbound_jobs", "run_after", (q) => q.eq("status", "queued")),
     headCount(db, "notification_jobs", (q) => q.eq("status", "queued")),
@@ -169,9 +171,9 @@ export async function getSystemJobs(db: SupabaseClient | null): Promise<SystemJo
       {
         name: "inbound_jobs", table: "inbound_jobs",
         description: "Durable inbound-email job queue — claimed by /api/cron/inbound with backoff + dead-letter.",
-        counts: { queued: num(jobQueued), processing: num(jobProcessing), done: num(jobDone), failed: num(jobFailed), dead: num(jobDead) },
+        counts: { queued: num(jobQueued), processing: num(jobProcessing), done: num(jobDone), dead: num(jobDead) },
         pending: (jobQueued ?? 0) + (jobProcessing ?? 0), oldestPendingAt: jobOldest,
-        failures24h: num(jobFailed) + num(jobDead),
+        failures24h: num(jobDead),
       },
       {
         name: "notification_jobs", table: "notification_jobs",

@@ -4,6 +4,7 @@ import { serviceClient } from "@/lib/supabase";
 import { runRetention } from "@/lib/system/retention";
 import { sweepExpiredRotations } from "@/lib/system/device-auth";
 import { runAlertSweep } from "@/lib/system/alert-sweep";
+import { recordCron } from "@/lib/fleet-sweep";
 import { recordLog, traced } from "@/lib/observability";
 
 /**
@@ -37,35 +38,42 @@ export async function GET(req: Request) {
   const table = params.get("table") ?? undefined;
   const limit = params.get("limit") ? parseInt(params.get("limit")!, 10) : undefined;
 
-  const report = await traced("cron.retention", null, () =>
-    runRetention(db, { dryRun, table, limit, actor: null }),
-  { dryRun, table: table ?? "all" });
+  // recordCron writes the cron_runs row AND emails staff when the job throws —
+  // a broken sweep is never silent (D1/D2). Partial failures (report.ok ===
+  // false, e.g. per-table errors) are re-thrown inside the job so they also
+  // alert; the thrown message stays short because the full report is returned
+  // in the response and persisted in system_retention_runs.
+  let report: Awaited<ReturnType<typeof runRetention>> | undefined;
+  let rotationSweep: { ok: boolean; swept: number; skipped?: string; error?: string } | undefined;
+  let alertSweep: { ok: boolean; emitted: number; checks: Record<string, unknown>; skipped?: string; error?: string } | undefined;
+  const cron = await recordCron(db, "retention", async () => {
+    report = await traced("cron.retention", null, () =>
+      runRetention(db, { dryRun, table, limit, actor: null }),
+    { dryRun, table: table ?? "all" });
 
-  // Credential-rotation safety sweep — NOT part of runRetention (that sweep is
-  // approval-gated destructive deletion; this only clears dead staged next-slot
-  // fields on system_devices and audits each clear). Skipped on dry runs.
-  const rotationSweep = dryRun
-    ? { ok: true, swept: 0, skipped: "dry_run" as const }
-    : await sweepExpiredRotations(db);
+    // Credential-rotation safety sweep — NOT part of runRetention (that sweep is
+    // approval-gated destructive deletion; this only clears dead staged next-slot
+    // fields on system_devices and audits each clear). Skipped on dry runs.
+    rotationSweep = dryRun
+      ? { ok: true, swept: 0, skipped: "dry_run" }
+      : await sweepExpiredRotations(db);
 
-  // Phase 2.5 alert sweep — emits reportError warnings for unresolved rental
-  // exceptions, stuck device commands, pending settlements and stale device
-  // heartbeats (ALERT_POLICY rules). Read-only probes; skipped on dry runs and
-  // internally fault-tolerant (missing tables → 'skipped', never throws).
-  const alertSweep = dryRun
-    ? { ok: true, emitted: 0, skipped: "dry_run" as const }
-    : await runAlertSweep(db).catch((e) => ({
-        ok: false,
-        emitted: 0,
-        checks: {},
-        error: e instanceof Error ? e.message : "alert sweep failed",
-      }));
+    // Phase 2.5 alert sweep — emits reportError warnings for unresolved rental
+    // exceptions, stuck device commands, pending settlements, stale device
+    // heartbeats and degraded integrations (ALERT_POLICY rules). Read-only
+    // probes; skipped on dry runs and internally fault-tolerant (missing tables
+    // → 'skipped', never throws).
+    alertSweep = dryRun
+      ? { ok: true, emitted: 0, checks: {}, skipped: "dry_run" }
+      : await runAlertSweep(db).catch((e) => ({
+          ok: false,
+          emitted: 0,
+          checks: {},
+          error: e instanceof Error ? e.message : "alert sweep failed",
+        }));
 
-  // Record the outcome in cron_runs so Jobs & workers / status surfaces see it.
-  await db.from("cron_runs").insert({
-    job: "retention",
-    ok: report.ok,
-    detail: {
+    const ok = report.ok && rotationSweep.ok !== false;
+    const detail = {
       mode: dryRun ? "dry_run" : "execute",
       deleted: report.results.reduce((a, r) => a + r.deleted, 0),
       matched: report.results.reduce((a, r) => a + r.matched, 0),
@@ -73,14 +81,24 @@ export async function GET(req: Request) {
       run_id: report.runId,
       credential_rotation_sweep: rotationSweep,
       alert_sweep: alertSweep,
-      error: report.error ?? undefined,
-    },
-  }).then(() => undefined, () => undefined);
-
-  recordLog(report.ok ? "info" : "warning", `cron.retention ${dryRun ? "dry_run" : "execute"}`, {
-    service: "cron",
-    attrs: { deleted: report.results.reduce((a, r) => a + r.deleted, 0), ok: report.ok },
+    };
+    if (!ok) {
+      const errs = report.results.filter((r) => r.error && !r.skipped).map((r) => `${r.table}: ${r.error}`).join("; ").slice(0, 300);
+      throw new Error(`retention ${dryRun ? "dry_run" : "execute"} failed — ${report.error ?? errs ?? "unknown"}`);
+    }
+    return detail;
   });
 
-  return NextResponse.json({ ok: report.ok && rotationSweep.ok !== false, report, credential_rotation_sweep: rotationSweep, alert_sweep: alertSweep }, { status: report.ok ? 200 : 207 });
+  recordLog(cron.ok ? "info" : "warning", `cron.retention ${dryRun ? "dry_run" : "execute"}`, {
+    service: "cron",
+    attrs: { deleted: report?.results.reduce((a, r) => a + r.deleted, 0) ?? 0, ok: cron.ok },
+  });
+
+  return NextResponse.json({
+    ok: cron.ok,
+    report,
+    credential_rotation_sweep: rotationSweep,
+    alert_sweep: alertSweep,
+    cron: cron.detail,
+  }, { status: cron.ok ? 200 : 207 });
 }

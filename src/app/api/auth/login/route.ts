@@ -13,7 +13,10 @@ const cookieDomain = (req: Request) => apexCookieDomain(req.headers.get("host") 
 
 export async function POST(req: Request) {
   const origin = req.headers.get("origin");
-  if (origin && new URL(origin).host !== req.headers.get("host")) return NextResponse.json({ error: "Rejected." }, { status: 403 });
+  if (origin) {
+    try { if (new URL(origin).host !== req.headers.get("host")) return NextResponse.json({ error: "Rejected." }, { status: 403 }); }
+    catch { return NextResponse.json({ error: "Rejected." }, { status: 403 }); }
+  }
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0].trim() || "unknown";
   if (!rateLimit(`login:${ip}`, 8, 10 * 60_000).ok) return NextResponse.json({ error: "Too many attempts." }, { status: 429 });
 
@@ -44,6 +47,11 @@ export async function POST(req: Request) {
 }
 
 export async function DELETE(req: Request) {
+  const origin = req.headers.get("origin");
+  if (origin) {
+    try { if (new URL(origin).host !== req.headers.get("host")) return NextResponse.json({ error: "Rejected." }, { status: 403 }); }
+    catch { return NextResponse.json({ error: "Rejected." }, { status: 403 }); }
+  }
   await revokeCurrentSession();
   const res = NextResponse.json({ ok: true });
   const domain = cookieDomain(req);

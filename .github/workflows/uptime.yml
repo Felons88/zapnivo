@@ -77,6 +77,28 @@ jobs:
             gh issue create --repo "${{ github.repository }}" --title "$TITLE" --body "$BODY" --label "incident"
           fi
 
+      - name: Push external alert webhook
+        if: steps.probe.outputs.has_failures == 'true'
+        env:
+          # Same webhook contract as src/lib/alerts.ts externalAlert — set either
+          # UPTIME_ALERT_WEBHOOK_URL (preferred) or ALERT_WEBHOOK_URL as a repo secret.
+          ALERT_WEBHOOK_URL: ${{ secrets.UPTIME_ALERT_WEBHOOK_URL || secrets.ALERT_WEBHOOK_URL }}
+          FAILURES: ${{ steps.probe.outputs.failures }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -z "${ALERT_WEBHOOK_URL:-}" ]; then
+            echo "No alert webhook secret configured — issue-based alerting only."
+            exit 0
+          fi
+          PAYLOAD=$(jq -n \
+            --arg text "*CRITICAL* — Zapnivo uptime probe FAILED
+          External monitor (GitHub Actions) detected failures at $(date -u +%FT%TZ):
+          ${FAILURES}
+          Run: ${RUN_URL}" \
+            '{ text: $text, zapnivo: { severity: "critical", key: "github-uptime", title: "Zapnivo uptime probe failed", body: $text, ts: (now | todate) } }')
+          curl -sS -m 10 -o /dev/null -w 'webhook_http=%{http_code}\n' \
+            -X POST "$ALERT_WEBHOOK_URL" -H 'Content-Type: application/json' -d "$PAYLOAD" || true
+
       - name: Resolve incident on recovery
         if: steps.probe.outputs.has_failures == 'false'
         env:

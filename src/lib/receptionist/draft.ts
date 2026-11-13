@@ -1,4 +1,4 @@
-import { sendToCustomer } from "../email-triggers";
+import { sendToCustomerOutcome } from "../email-triggers";
 import type { ReceptionistCategory } from "./types";
 
 /**
@@ -62,23 +62,32 @@ export function defaultAutonomyLevel(): number {
 
 export const RECEPTIONIST_SENDER = "general" as const;
 
-export type OutboundResult = { ok: boolean; error?: string };
+export type OutboundResult = {
+  /** Message was accepted into the outbox (queued or sent). */
+  ok: boolean;
+  /** Provider confirmed delivery during this call — false means "queued, unconfirmed". */
+  sent: boolean;
+  error?: string;
+  reason?: "no_repo" | "no_provider" | "send_failed" | null;
+};
 
 /**
  * Queues an outbound email to the general correspondent via the existing
  * helpdesk outbox (sender id "general" → hello@zapnivo.com identity) and
- * flushes it. Returns ok:false when the mail backend isn't configured — the
- * caller records the failure honestly; nothing is claimed as sent.
+ * flushes it. ok:false only when there is no outbox at all. When ok:true but
+ * sent:false the row sits queued (no provider configured, or the send failed
+ * and will be retried) — callers must NOT mark the conversation answered.
  */
 export async function queueReceptionistEmail(
   to: string,
   subject: string,
   body: string,
 ): Promise<OutboundResult> {
-  const ok = await sendToCustomer(to, subject, body, null, null, {
+  const res = await sendToCustomerOutcome(to, subject, body, null, null, {
     sender: RECEPTIONIST_SENDER,
     template: "receptionist_reply",
     event: "receptionist.reply",
   });
-  return ok ? { ok: true } : { ok: false, error: "mail_backend_unavailable" };
+  if (!res.queued) return { ok: false, sent: false, error: "mail_backend_unavailable", reason: res.reason };
+  return { ok: true, sent: res.sent, reason: res.reason };
 }

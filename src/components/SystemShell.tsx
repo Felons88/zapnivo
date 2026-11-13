@@ -20,6 +20,7 @@ const NAV: NavGroup[] = [
     name: "Command Center",
     items: [
       { href: "/system", label: "Overview" },
+      { href: "/system/launch", label: "Launch readiness" },
       { href: "/system/incidents", label: "Incidents" },
       { href: "/system/status", label: "Status page" },
     ],

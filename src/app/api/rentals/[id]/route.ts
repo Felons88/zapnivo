@@ -4,8 +4,8 @@ import { flag } from "@/lib/notifications";
 import { triggerRentalReturned, triggerRentalStarted } from "@/lib/email-triggers";
 import { auditLog } from "@/lib/audit";
 import { applyPromo, holdCents, PRICING_SELECT, pricingFromRow, proportionalTaxCents, rentalChargeCents, type PricingRow } from "@/lib/billing";
-import { PRICING_V1 } from "@/lib/pricing";
 import { lookupPromo } from "@/lib/promos";
+import { nonReturnDeadlineIso } from "@/lib/payments/nonreturn-deadline";
 import { cancelPaymentIntent, capturePaymentIntent, PAYMENTS_UNCONFIGURED, stripeConfigured, taxEnabled } from "@/lib/stripe";
 import { chargeNonReturnFee } from "@/lib/payments/nonreturn";
 import { notifyFeeCharged } from "@/lib/notifications";
@@ -33,8 +33,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const now = new Date();
 
   if (action === "dispense") {
-    const deadline = new Date(now.getTime() + PRICING_V1.nonReturnAfterHours * 3600_000);
-    const { error } = await db.from("rentals").update({ state: "active", dispensed_at: now.toISOString(), non_return_deadline: deadline.toISOString() }).eq("id", id).eq("state", "dispense_pending");
+    // Deadline hours come from the rental's LOCKED pricing_versions row
+    // (non_return_after_hours), shared with the kiosk dispense-ack path.
+    const deadline = await nonReturnDeadlineIso(db, id, now);
+    const { error } = await db.from("rentals").update({ state: "active", dispensed_at: now.toISOString(), non_return_deadline: deadline }).eq("id", id).eq("state", "dispense_pending");
     if (error) return NextResponse.json({ error: "Couldn't confirm dispense." }, { status: 500 });
     await triggerRentalStarted(id);
     return done("active");

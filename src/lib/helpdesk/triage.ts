@@ -1,5 +1,6 @@
 import { buildSystemPrompt } from "../ai/knowledge";
 import type { ChatFn } from "../ai/openrouter";
+import { helpdeskAgentId, isAgentEnabled, type AgentEnabledFn } from "../ai/agent-gate";
 import { looksLikeCardNumber } from "../validation";
 import type { AiState, Message, Priority, Queue, RequesterType, Ticket } from "./types";
 
@@ -93,22 +94,46 @@ export async function askModel(chat: ChatFn, ticket: Pick<Ticket, "number" | "re
 
 export type TriageDecision = { reply: string; kind: "ai" | "system"; aiState: AiState; summary: string | null };
 
+/**
+ * Operator flag HELPDESK_AI_AUTOSEND (default on): when "0", the model may still
+ * triage/summarize/draft, but its reply is NEVER sent to the customer — the ticket
+ * falls back to the acknowledgement + needs_human and the draft is kept as an
+ * internal note for staff. Injectable `autosend` dep for tests.
+ */
+const autosendOn = (deps: { autosend?: boolean }): boolean =>
+  deps.autosend !== undefined ? deps.autosend : process.env.HELPDESK_AI_AUTOSEND !== "0";
+
+/** Kill-switch check against ai_agents.enabled; fails open (isAgentEnabled logs lookup errors). */
+async function agentOn(ticket: Pick<Ticket, "requesterType">, deps: { agentEnabled?: AgentEnabledFn }): Promise<boolean> {
+  const fn = deps.agentEnabled ?? ((id: string) => isAgentEnabled(id));
+  try { return await fn(helpdeskAgentId(ticket.requesterType)); } catch { return true; }
+}
+
 /** Decides what (if anything) is sent automatically for a brand-new ticket. */
-export async function triage(ticket: Ticket, firstMessage: string, c: Classification, deps: { chat: ChatFn | null; link: string }): Promise<TriageDecision> {
+export async function triage(ticket: Ticket, firstMessage: string, c: Classification, deps: { chat: ChatFn | null; link: string; agentEnabled?: AgentEnabledFn; autosend?: boolean }): Promise<TriageDecision> {
   const ack = ackMessage(ticket.name, ticket.number, deps.link);
   if (c.safety) return { reply: SAFETY_MESSAGE, kind: "system", aiState: "needs_human", summary: "SAFETY REPORT: possible battery hazard. Contact the customer and arrange retrieval of the unit." };
   if (!deps.chat) return { reply: ack, kind: "system", aiState: "needs_human", summary: null };
+  if (!(await agentOn(ticket, deps))) return { reply: ack, kind: "system", aiState: "needs_human", summary: null };
 
   const a = await askModel(deps.chat, ticket, [{ authorType: ticket.requesterType, body: firstMessage, internal: false }]);
   if (!a) return { reply: ack, kind: "system", aiState: "needs_human", summary: null };
   const confident = a.confidence >= (c.forceHuman ? 0.6 : 0.75);
   if (!confident || !replyIsSafe(a.reply)) return { reply: ack, kind: "system", aiState: "needs_human", summary: a.summary };
+  if (!autosendOn(deps)) {
+    // AI may draft, but nothing AI-written reaches the customer: ack + human owns it.
+    // The held draft rides along in the internal summary note so staff can use it.
+    const held = `AI draft held (HELPDESK_AI_AUTOSEND=0, not sent):\n${a.reply.slice(0, 1500)}${a.summary ? `\n\nTriage summary: ${a.summary}` : ""}`;
+    return { reply: ack, kind: "system", aiState: "needs_human", summary: held };
+  }
   return { reply: a.reply, kind: "ai", aiState: c.forceHuman || a.needsHuman ? "needs_human" : "ai_active", summary: a.summary };
 }
 
 /** Follow-up when a customer replies to an AI-handled ticket. */
-export async function followUp(ticket: Ticket, thread: Message[], deps: { chat: ChatFn | null }): Promise<{ reply: string; kind: "ai" | "system"; aiState: AiState }> {
+export async function followUp(ticket: Ticket, thread: Message[], deps: { chat: ChatFn | null; agentEnabled?: AgentEnabledFn; autosend?: boolean }): Promise<{ reply: string; kind: "ai" | "system"; aiState: AiState }> {
   if (!deps.chat) return { reply: HANDOFF_MESSAGE, kind: "system", aiState: "needs_human" };
+  // Autosend off or agent killed → a human takes over; don't spend a model call.
+  if (!autosendOn(deps) || !(await agentOn(ticket, deps))) return { reply: HANDOFF_MESSAGE, kind: "system", aiState: "needs_human" };
   const a = await askModel(deps.chat, ticket, thread);
   if (!a || a.confidence < 0.75 || a.needsHuman || !replyIsSafe(a.reply)) return { reply: HANDOFF_MESSAGE, kind: "system", aiState: "needs_human" };
   return { reply: a.reply, kind: "ai", aiState: "ai_active" };

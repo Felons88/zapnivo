@@ -7,12 +7,17 @@ import { contextFor, retrieve, buildSystemPrompt } from "./knowledge";
 import { ACCOUNT_SYSTEM_NOTE, ACCOUNT_TOOLS, ACCOUNT_TOOL_NAMES, runAccountTool } from "./account-tools";
 import { openrouterChat, type ChatFn, type ChatMessage, type ToolDef } from "./openrouter";
 import { newTraceId, recordLog, traced } from "../observability";
+import { assistantAgentId, isAgentEnabled, type AgentEnabledFn } from "./agent-gate";
+import { scanInjection } from "../receptionist/injection";
 
 export type UserTurn = { role: "user" | "assistant"; content: string };
 export type AssistantResult = { reply: string; rentals: RentalResult[]; sources: { id: string; title: string }[] };
 
 export const CARD_WARNING = "For your security, please don't share card numbers, CVV codes or passwords here. I never need them. Tell me what happened with your rental instead, and I'll help.";
 const FALLBACK = "I'm having trouble answering that right now. You can search the help center above or open a ticket at /support/new and our team will take a look.";
+const INJECTION_REFUSAL = "I can't help with that request. If you need help with a rental, a charge or your account, tell me what happened in plain words and I'll do my best — or open a ticket at /support/new and our team will take a look.";
+/** Exact-match email extraction: the model may only look up an address the customer actually typed. */
+const EMAIL_IN_TEXT = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/g;
 
 const TOOLS: ToolDef[] = [
   { type: "function", function: { name: "search_help_articles", description: "Search Zapnivo help articles for renters or venue partners.", parameters: { type: "object", properties: { query: { type: "string" }, audience: { type: "string", enum: ["renter", "venue"] } }, required: ["query"] } } },
@@ -32,9 +37,9 @@ export function chicagoToUtc(date: string, time: string): Date {
   return new Date(guess - (asUtc - guess));
 }
 
-type Deps = { chat?: ChatFn; lookup?: (q: Parameters<typeof realLookup>[0], ip: string) => Promise<LookupOutcome> };
+type Deps = { chat?: ChatFn; lookup?: (q: Parameters<typeof realLookup>[0], ip: string) => Promise<LookupOutcome>; agentEnabled?: AgentEnabledFn };
 
-export async function runAssistant({ messages, ip, chat = openrouterChat, lookup = realLookup, actor = null }: { messages: UserTurn[]; ip: string; actor?: SessionUser | null } & Deps): Promise<AssistantResult> {
+export async function runAssistant({ messages, ip, chat = openrouterChat, lookup = realLookup, actor = null, agentEnabled = isAgentEnabled }: { messages: UserTurn[]; ip: string; actor?: SessionUser | null } & Deps): Promise<AssistantResult> {
   const traceId = newTraceId();
   const log = (message: string, attrs?: Record<string, unknown>) =>
     recordLog("info", message, { service: "ai-assistant", route: "support/assistant", traceId, attrs });
@@ -67,8 +72,10 @@ export async function runAssistant({ messages, ip, chat = openrouterChat, lookup
 
     if (name === "lookup_rental") {
       const email = String(args.email ?? "").trim().toLowerCase();
-      // The model may only use an email the customer actually typed in this conversation.
-      if (!email || !userText.includes(email)) return JSON.stringify({ error: "Ask the customer to type the email they used at checkout." });
+      // The model may only use an email the customer actually typed in this conversation —
+      // matched as a whole address, so near-misses like "pat@example.co" can't ride on "pat@example.com".
+      const typedEmails = new Set(userText.match(EMAIL_IN_TEXT) ?? []);
+      if (!email || !typedEmails.has(email)) return JSON.stringify({ error: "Ask the customer to type the email they used at checkout." });
       const input: Record<string, unknown> = { email };
       if (args.reference) input.reference = args.reference;
       else if (/^\d{4}-\d{2}-\d{2}$/.test(args.date ?? "")) {
@@ -103,6 +110,24 @@ export async function runAssistant({ messages, ip, chat = openrouterChat, lookup
     log("assistant_reply", { replyLength: reply.length, rentalCount: rentals.length, sourceCount: out.sources.length, fallback: reply === FALLBACK });
     return out;
   };
+
+  // Prompt-injection screen on user turns: a flag means we never call the model.
+  // Flag names are logged; the triggering text never is.
+  const injection = scanInjection("", messages.filter((m) => m.role === "user").map((m) => m.content).join("\n"));
+  if (injection.flagged) {
+    log("assistant_injection_blocked", { flags: injection.flags });
+    return finish(INJECTION_REFUSAL);
+  }
+
+  // Kill switch: a disabled ai_agents row for this audience means no model call.
+  // isAgentEnabled fails open on lookup errors (logged inside); a thrown stub also fails open.
+  const agentId = assistantAgentId(actor);
+  let agentOn = true;
+  try { agentOn = await agentEnabled(agentId); } catch { agentOn = true; }
+  if (!agentOn) {
+    log("assistant_agent_disabled", { agentId });
+    return finish(FALLBACK);
+  }
 
   for (let i = 0; i < 4; i++) {
     const res = await traced("ai.assistant.turn", traceId, () => chat({ messages: convo, tools }), { iteration: i });

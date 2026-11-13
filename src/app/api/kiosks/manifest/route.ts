@@ -3,6 +3,7 @@ import { timingSafeEqual } from "node:crypto";
 import { serviceClient } from "@/lib/supabase";
 import { isCampaignDeliverable, campaignTargetsKiosk } from "@/lib/ads/eligibility";
 import { reportError, recordLog } from "@/lib/observability";
+import { rateLimit } from "@/lib/rate-limit";
 
 /**
  * Ad manifest for a kiosk — GET /api/kiosks/manifest?station_id=XXX
@@ -12,8 +13,13 @@ import { reportError, recordLog } from "@/lib/observability";
  */
 const safeEq = (a: string, b: string) => { const x = Buffer.from(a), y = Buffer.from(b); return x.length === y.length && timingSafeEqual(x, y); };
 const MAX_CREATIVES = 20;
+const clientIp = (req: Request) => req.headers.get("x-forwarded-for")?.split(",")[0].trim() || "unknown";
 
 export async function GET(req: Request) {
+  // Bearer endpoints still do multi-query work per call — bound per-IP abuse (D10).
+  if (!rateLimit(`kiosk-manifest:${clientIp(req)}`, 60, 60_000).ok) {
+    return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+  }
   const secret = process.env.KIOSK_INGEST_SECRET;
   if (!secret) return NextResponse.json({ error: "Device ingest not configured" }, { status: 503 });
   const bearer = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");

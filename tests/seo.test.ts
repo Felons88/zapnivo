@@ -24,7 +24,7 @@ const starRule = (r: { rules?: Rule | Rule[] }) =>
 const disallows = (r: { rules?: Rule | Rule[] }) => asList(starRule(r)?.disallow);
 
 describe("robots.txt — private portal hosts", () => {
-  it.each(["internal.zapnivo.com", "partners.zapnivo.com", "customer.zapnivo.com", "api.zapnivo.com"])(
+  it.each(["internal.zapnivo.com", "partners.zapnivo.com", "customer.zapnivo.com", "api.zapnivo.com", "system.zapnivo.com"])(
     "disallows everything on %s",
     async (host) => {
       h.host = host;

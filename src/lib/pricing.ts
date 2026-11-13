@@ -40,6 +40,14 @@ export function rentalChargeCents(minutes: number, p: PricingVersion = PRICING_V
   return Math.min(p.first24hCapCents + extraDays * p.additionalDayCents, p.nonReturnMaxCents);
 }
 
+/**
+ * Advisory gate — intentionally NOT enforced at checkout (audit 2.7 decision).
+ * Checkout already 503s without an APPROVED pricing version, and
+ * additionalDayCents=null is a legitimate configuration meaning "no automatic
+ * post-24h charge": captureOnReturn flags >24h rentals for manual review
+ * instead of capturing. Treating null as a hard block would break that safe
+ * manual-review path, so this stays a display/planning helper only.
+ */
 export function canChargeCustomers(p: PricingVersion = PRICING_V1) {
   return p.approved && p.additionalDayCents !== null;
 }

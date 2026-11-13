@@ -73,7 +73,7 @@ describe("sitemap — support host", () => {
 });
 
 describe("sitemap — private hosts", () => {
-  it.each(["internal.zapnivo.com", "partners.zapnivo.com", "customer.zapnivo.com", "api.zapnivo.com"])(
+  it.each(["internal.zapnivo.com", "partners.zapnivo.com", "customer.zapnivo.com", "api.zapnivo.com", "system.zapnivo.com"])(
     "returns an empty sitemap on %s",
     async (host) => {
       h.host = host;

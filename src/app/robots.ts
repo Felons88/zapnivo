@@ -14,7 +14,7 @@ export default async function robots(): Promise<MetadataRoute.Robots> {
   const is = (s: string) => host === `${s}.${base}` || host === `${s}.localhost`;
 
   // Private portals and the API host are not for crawlers at all.
-  if (is("customer") || is("internal") || is("partners") || is("api")) {
+  if (is("customer") || is("internal") || is("partners") || is("api") || is("system")) {
     return { rules: [{ userAgent: "*", disallow: "/" }] };
   }
   if (is("support")) {

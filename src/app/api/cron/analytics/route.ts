@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { serviceClient } from "@/lib/supabase";
 import { runAggregation } from "@/lib/analytics-aggregates";
+import { recordCron } from "@/lib/fleet-sweep";
 import { recordLog, traced } from "@/lib/observability";
 
 /**
@@ -24,11 +25,15 @@ export async function GET(req: Request) {
   if (!(await authorized(req)) && !staff) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const days = Math.min(Math.max(parseInt(new URL(req.url).searchParams.get("days") ?? "2", 10) || 2, 1), 30);
-  try {
+  // recordCron writes cron_runs and emails staff on failure — a broken
+  // aggregation is never silent (D3).
+  const cron = await recordCron(db, "analytics", async () => {
     const results = await traced("cron.analytics", null, () => runAggregation(db, days), { days });
-    return NextResponse.json({ ok: true, days: results });
-  } catch (e) {
-    recordLog("error", "analytics_aggregate_failed", { service: "analytics", attrs: { err: e instanceof Error ? e.message.slice(0, 200) : "unknown" } });
+    return { days: results };
+  });
+  if (!cron.ok) {
+    recordLog("error", "analytics_aggregate_failed", { service: "analytics", attrs: { err: String((cron.detail as { error?: string }).error ?? "unknown").slice(0, 200) } });
     return NextResponse.json({ error: "Aggregation failed" }, { status: 500 });
   }
+  return NextResponse.json({ ok: true, days: (cron.detail as { days: unknown }).days });
 }

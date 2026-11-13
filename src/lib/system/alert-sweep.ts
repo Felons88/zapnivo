@@ -221,6 +221,41 @@ export async function runAlertSweep(
     }
   }
 
+  /* ── integrations.health — daily provider probe (D14) ──────────────────
+     Runs the same bounded checkIntegrationHealth used by the admin console.
+     Only 'degraded' emits an alert — 'unconfigured'/'requires_credentials' are
+     config state, not failures, and 'unknown' means "could not verify" (e.g.
+     idle kiosk gateway), which would be noisy. Dynamic import keeps the heavy
+     provider clients out of the sweep's static graph; the whole probe is
+     try/catch — it can never break the cron. */
+  {
+    const name = "integration_health";
+    try {
+      const { checkIntegrationHealth, INTEGRATION_PROVIDERS } = await import("@/lib/system/integrations");
+      const results = await Promise.all(
+        INTEGRATION_PROVIDERS.map((p) => checkIntegrationHealth(p.id, db).catch(() => null)),
+      );
+      const degraded = results.filter((r) => r?.status === "degraded");
+      // Nothing configured anywhere → the probe is a no-op, report 'skipped'
+      // (same contract as the table probes on missing schemas).
+      const anyConfigured = results.some((r) => r && r.status !== "unconfigured" && r.status !== "requires_credentials");
+      if (!anyConfigured) {
+        checks[name] = { status: "skipped", reason: "no providers configured" };
+      } else {
+        let n = 0;
+        for (const r of degraded.slice(0, ALERT_SWEEP_ROW_CAP)) {
+          // Stable per-provider message — fingerprint dedupes repeat sweeps.
+          emit(`integrations.health provider=${r!.provider} status=degraded`);
+          n += 1;
+          bump();
+        }
+        checks[name] = { status: "ok", matched: degraded.length, emitted: n };
+      }
+    } catch (e) {
+      checks[name] = { status: "skipped", reason: e instanceof Error ? e.message : "integration probe failed" };
+    }
+  }
+
   return { ok: true, emitted, checks };
 }
 

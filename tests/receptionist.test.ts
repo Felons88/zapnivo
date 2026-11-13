@@ -280,12 +280,24 @@ describe("inbound routing", () => {
     expect((db as never as { tables: Record<string, Row[]> }).tables.receptionist_threads).toHaveLength(1);
   });
 
-  it("still ignores support-destined mail without a ticket reference", async () => {
+  it("routes support@ mail without a ticket credential to the receptionist (monitored registry address)", async () => {
     const db = fakeDb({});
     const ctx = { repo: { getTicketByNumber: vi.fn(async () => null) } } as never;
     const out = await processInboundMail(ctx, db as never, {
       from: "person@example.com", subject: "no reference here", text: "hello",
       messageId: "<sup@x>", inReplyTo: null, recipients: ["support@zapnivo.com"], dmarc: null, spf: null, dkim: null,
+    });
+    // support@ is a monitored registry address — no longer silently dropped.
+    expect(out.status).toBe("accepted");
+    expect((db as never as { tables: Record<string, Row[]> }).tables.receptionist_threads).toHaveLength(1);
+  });
+
+  it("still ignores mail to addresses outside the monitored registry", async () => {
+    const db = fakeDb({});
+    const ctx = { repo: { getTicketByNumber: vi.fn(async () => null) } } as never;
+    const out = await processInboundMail(ctx, db as never, {
+      from: "person@example.com", subject: "no reference here", text: "hello",
+      messageId: "<unk@x>", inReplyTo: null, recipients: ["random@zapnivo.com"], dmarc: null, spf: null, dkim: null,
     });
     expect(out).toMatchObject({ status: "ignored", reason: "no_ticket_reference" });
     expect((db as never as { tables: Record<string, Row[]> }).tables.receptionist_threads ?? []).toHaveLength(0);

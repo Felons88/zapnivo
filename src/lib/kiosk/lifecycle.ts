@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { triggerRentalReturned, triggerRentalStarted } from "../email-triggers";
 import { notifyReturnFailed } from "../notifications";
-import { PRICING_V1 } from "../pricing";
+import { nonReturnDeadlineIso } from "../payments/nonreturn-deadline";
 import { assertTransition, type RentalState } from "../rental-state";
 import { trackServer } from "../analytics";
 import {
@@ -369,12 +369,14 @@ async function handleDeviceAck(
         return done({ result: "exception_raised", kind: "illegal_transition" });
       }
       // Hardware clock wins for dispensed_at; server UTC when absent. Deadline mirrors
-      // the staff dispense action (PRICING_V1.nonReturnAfterHours from server now).
+      // the staff dispense action — both resolve hours from the rental's locked
+      // pricing_versions.non_return_after_hours (PRICING_V1 fallback) via
+      // nonReturnDeadlineIso, from server now.
       const hwMs = ev.hwTimestamp ? Date.parse(ev.hwTimestamp) : NaN;
       const devMs = ev.deviceAt ? Date.parse(ev.deviceAt) : NaN;
       const dispensedAt = Number.isFinite(hwMs) ? new Date(hwMs).toISOString()
         : Number.isFinite(devMs) ? new Date(devMs).toISOString() : nowIso;
-      const deadline = new Date(now.getTime() + PRICING_V1.nonReturnAfterHours * 3600_000).toISOString();
+      const deadline = await nonReturnDeadlineIso(db, rental.id, now);
       const { error: upErr } = await db.from("rentals").update({
         state: "active", dispensed_at: dispensedAt, non_return_deadline: deadline,
         // Reconciliation: the hardware told us WHICH bank it released. Record it when the

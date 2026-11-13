@@ -125,7 +125,9 @@ export async function getThreadDetail(db: ReceptionistDb, id: string) {
 
 /* ── Mutations ───────────────────────────────────────────────────────────── */
 
-export type ActionResult = { ok: true } | { ok: false; error: string; status?: number };
+export type ActionResult =
+  | { ok: true; delivery?: "sent" | "queued" }
+  | { ok: false; error: string; status?: number };
 
 const touch = () => ({ updated_at: new Date().toISOString() });
 
@@ -144,6 +146,15 @@ export async function replyToThread(
 
   const sent = await queueReceptionistEmail(thread.sender_email, subject, text);
   if (!sent.ok) return { ok: false, error: sent.error ?? "send_failed", status: 503 };
+  if (!sent.sent) {
+    // Queued in the outbox but NOT confirmed delivered (no provider configured,
+    // or the send failed and will be retried). The thread must not claim the
+    // customer was answered — no outbound message, no "waiting" status.
+    await auditEvent(db, threadId, staff.email || staff.id, "reply.queued", {
+      reason: sent.reason ?? "unconfirmed", chars: text.length,
+    });
+    return { ok: true, delivery: "queued" };
+  }
 
   await db.from("receptionist_messages").insert({
     thread_id: threadId, direction: "outbound", from_addr: "hello@zapnivo.com",
@@ -153,7 +164,7 @@ export async function replyToThread(
     ...touch(), status: "waiting", last_message_at: new Date().toISOString(),
   }).eq("id", threadId);
   await auditEvent(db, threadId, staff.email || staff.id, "reply.sent", { chars: text.length });
-  return { ok: true };
+  return { ok: true, delivery: "sent" };
 }
 
 /** Internal note — never leaves the building. */
@@ -217,6 +228,14 @@ export async function approveDraft(
 
   const sent = await queueReceptionistEmail(thread.sender_email, subject, body);
   if (!sent.ok) return { ok: false, error: sent.error ?? "send_failed", status: 503 };
+  if (!sent.sent) {
+    // Same honesty rule as replyToThread: queued ≠ delivered. Keep the draft
+    // pending and the thread out of "waiting" until a provider confirms.
+    await auditEvent(db, threadId, staff.email || staff.id, "draft.queued", {
+      draft_id: draft.id, reason: sent.reason ?? "unconfirmed",
+    });
+    return { ok: true, delivery: "queued" };
+  }
 
   await db.from("receptionist_messages").insert({
     thread_id: threadId, direction: "outbound", from_addr: "hello@zapnivo.com",
@@ -228,7 +247,7 @@ export async function approveDraft(
   await auditEvent(db, threadId, staff.email || staff.id, "draft.approved", {
     draft_id: draft.id, edited: editedBody !== undefined && editedBody.trim() !== draft.body_text.trim(),
   });
-  return { ok: true };
+  return { ok: true, delivery: "sent" };
 }
 
 export type { ReceptionistCategory };

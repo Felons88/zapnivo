@@ -1,5 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { externalAlert } from "../alerts";
+import { CONTACTS } from "../contacts";
+import { alertStaff } from "../email-triggers";
 import { recordLog } from "../observability";
+import { subUrl } from "../site";
 import { ALWAYS_ESCALATE, classifyByRules, classifyWithModel } from "./classify";
 import { decideDraftAction, defaultAutonomyLevel, queueReceptionistEmail } from "./draft";
 import { scanInjection } from "./injection";
@@ -43,6 +47,31 @@ export function generalInboxAddresses(): string[] {
 export function isGeneralInboxMail(mail: { recipients: string[] }): boolean {
   const inbox = generalInboxAddresses();
   return mail.recipients.some((r) => inbox.includes(r.toLowerCase()));
+}
+
+/* ── Monitored contact addresses ────────────────────────────────────────────
+ * The verified public registry (contacts.ts) marks which addresses a human
+ * team actually reads. Mail addressed to one of these that carries no valid
+ * ticket credential is routed here by the inbound processor instead of being
+ * silently dropped — unknown addresses keep the old ignore behavior.
+ */
+export function monitoredContactAddresses(): string[] {
+  return Object.values(CONTACTS).filter((c) => c.monitored).map((c) => c.email.toLowerCase());
+}
+
+const ADDR_RE = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i;
+
+/** First recipient matching a monitored contact address (plus-tags ignored), or null. */
+export function monitoredRecipient(mail: { recipients: string[] }): string | null {
+  const known = new Set(monitoredContactAddresses());
+  for (const raw of mail.recipients) {
+    const addr = raw.toLowerCase().match(ADDR_RE)?.[0];
+    if (!addr) continue;
+    const [local, domain] = addr.split("@");
+    const base = `${local.split("+")[0]}@${domain}`;
+    if (known.has(base)) return addr;
+  }
+  return null;
 }
 
 const stripQuoted = (text: string) => {
@@ -246,22 +275,36 @@ export async function ingestGeneralMail(db: ReceptionistDb, mail: InboundMail): 
     await auditEvent(db, threadId, "ai", "draft.created", { chars: draft.length });
   } else if (decision.action === "auto_send" && draft) {
     const subject = mail.subject ? `Re: ${mail.subject.replace(/^re:\s*/i, "").slice(0, 400)}` : "Re: your message to Zapnivo";
-    const sent = await queueReceptionistEmail(mail.from, subject, draft);
-    if (sent.ok) {
+    const res = await queueReceptionistEmail(mail.from, subject, draft);
+    if (res.ok && res.sent) {
       await db.from("receptionist_messages").insert({
         thread_id: threadId, direction: "outbound", from_addr: "hello@zapnivo.com",
         to_addr: mail.from, subject, body_text: draft, sender_kind: "ai",
       });
       await auditEvent(db, threadId, "ai", "email.auto_sent", { category, confidence });
       status = "waiting";
+    } else if (res.ok) {
+      // Queued in the outbox but unconfirmed (no provider / send failed). Keep
+      // the draft for staff review and stay OUT of "waiting" — the customer
+      // has not been answered yet.
+      status = "awaiting_approval";
+      await db.from("receptionist_messages").insert({
+        thread_id: threadId, direction: "draft", from_addr: "hello@zapnivo.com",
+        to_addr: mail.from, subject: `Re: ${mail.subject.slice(0, 400)}`,
+        body_text: draft, sender_kind: "ai",
+      });
+      await auditEvent(db, threadId, "ai", "email.queued", { reason: res.reason ?? "unconfirmed", category });
     } else {
       status = "awaiting_approval";
-      await auditEvent(db, threadId, "ai", "email.auto_send_failed", { error: sent.error ?? "unknown" });
+      await auditEvent(db, threadId, "ai", "email.auto_send_failed", { error: res.error ?? "unknown" });
     }
   }
   if (decision.action === "escalate" || isAuto) {
     await auditEvent(db, threadId, "system", isAuto ? "thread.quarantined" : "thread.escalated", {
       reason: escalationReason, category,
+    });
+    await alertStaffEscalation(db, threadId, mail, {
+      kind: isAuto ? "quarantined" : "escalated", category, priority, reason: escalationReason,
     });
   }
 
@@ -282,4 +325,55 @@ export async function ingestGeneralMail(db: ReceptionistDb, mail: InboundMail): 
     reason: isAuto ? escalationReason : null,
     threadId,
   };
+}
+
+/* ── Staff alerting on escalation / quarantine ──────────────────────────────
+ * Only NEW threads reach classification, but a spam burst still creates many
+ * threads — the per-(kind,category) cooldown keeps a flood from becoming a
+ * flood of staff emails. externalAlert adds the webhook path (own cooldown,
+ * no-op when ALERT_WEBHOOK_URL is unset).
+ */
+const staffAlertCooldown = new Map<string, number>();
+const staffAlertCooldownMs = () => {
+  const n = Number(process.env.RECEPTIONIST_ALERT_COOLDOWN_MS);
+  return Number.isFinite(n) && n > 0 ? n : 30 * 60_000;
+};
+/** Test hook: clears the in-process alert cooldown. */
+export const resetStaffAlertCooldowns = () => staffAlertCooldown.clear();
+
+async function alertStaffEscalation(
+  db: ReceptionistDb,
+  threadId: string,
+  mail: InboundMail,
+  info: { kind: "escalated" | "quarantined"; category: ReceptionistCategory; priority: ReceptionistPriority; reason: string | null },
+): Promise<void> {
+  const key = `${info.kind}:${info.category}`;
+  const now = Date.now();
+  if (now - (staffAlertCooldown.get(key) ?? 0) < staffAlertCooldownMs()) return;
+  staffAlertCooldown.set(key, now);
+
+  const inboxUrl = subUrl("internal", `/receptionist?thread=${threadId}`);
+  externalAlert(
+    `receptionist:${key}`,
+    `Receptionist thread ${info.kind}`,
+    `category=${info.category} priority=${info.priority} reason=${info.reason ?? "—"} thread=${threadId} inbox=${inboxUrl}`,
+    info.kind === "quarantined" ? "warning" : "critical",
+  );
+  await alertStaff({
+    subject: `Receptionist ${info.kind}: ${info.category} — ${mail.from}`.slice(0, 200),
+    body: [
+      `A new general-inbox thread was ${info.kind}.`,
+      ``,
+      `Thread: ${threadId}`,
+      `Inbox: ${inboxUrl}`,
+      `From: ${mail.from}`,
+      `Subject: ${mail.subject}`,
+      `Category: ${info.category} · Priority: ${info.priority}`,
+      `Reason: ${info.reason ?? "—"}`,
+      ``,
+      `— Zapnivo receptionist`,
+    ].join("\n"),
+    sender: "admin",
+    event: "receptionist.escalation",
+  }, db);
 }

@@ -49,10 +49,12 @@ describe("routing helpers", () => {
   });
   it("serves /r on the apex and routes /account to the customer subdomain", () => {
     const r = (host: string, path: string) => planRoute({ host, path, protocol: "https:", base: "zapnivo.com" });
-    expect(r("zapnivo.com", "/r/ST-1")).toEqual({ kind: "next" });
+    // Bare apex 308s to the canonical www host, which serves /r directly.
+    expect(r("zapnivo.com", "/r/ST-1")).toEqual({ kind: "redirect", to: "https://www.zapnivo.com/r/ST-1" });
+    expect(r("www.zapnivo.com", "/r/ST-1")).toEqual({ kind: "next" });
     expect(r("www.zapnivo.com", "/account")).toEqual({ kind: "redirect", to: "https://customer.zapnivo.com/" });
     expect(r("customer.zapnivo.com", "/account")).toEqual({ kind: "next", noindex: true });
-    expect(r("support.zapnivo.com", "/r/ST-1")).toEqual({ kind: "redirect", to: "https://zapnivo.com/r/ST-1" });
+    expect(r("support.zapnivo.com", "/r/ST-1")).toEqual({ kind: "redirect", to: "https://www.zapnivo.com/r/ST-1" });
     expect(r("partners.zapnivo.com", "/account/incident")).toEqual({ kind: "redirect", to: "https://customer.zapnivo.com/incident" });
   });
 });

@@ -38,9 +38,9 @@ export const apexCookieDomain = (host: string) => {
 };
 
 /** Top-level sections owned by the marketing site — on a subdomain these bounce to apex. */
-const APEX_SECTIONS = new Set([
-  "about", "advertise", "business", "contact", "how-it-works", "legal", "locations",
-  "llms.txt", "llms-full.txt", "opengraph-image", "r", "account",
+export const APEX_SECTIONS = new Set([
+  "about", "advertise", "advertiser", "business", "contact", "how-it-works", "legal", "locations",
+  "llms.txt", "llms-full.txt", "opengraph-image", "r", "account", "scam-awareness",
 ]);
 
 export type RouteDecision =
@@ -72,13 +72,19 @@ export function planRoute({
     if (hostname === `${s}.${base}` || (local && hostname === `${s}.localhost`)) { sub = s; break; }
   }
 
+  // Canonical marketing host is www on the production domain (SITE.url / metadataBase).
+  // Custom BASE_DOMAIN setups (staging mirrors) keep serving the bare apex — a www
+  // record may not exist there. Bare apex 308s to www; portal paths still
+  // canonicalize straight to their subdomain (one hop).
+  const apexWww = base === DEFAULT_BASE_DOMAIN ? `www.${base}` : base;
+
   // Stray *.zapnivo.com hosts (typos, stale DNS) canonicalize to the apex — portal paths must
   // never render on an unrecognized subdomain.
-  if (!sub && !local && hostname !== base && hostname !== `www.${base}` && hostname.endsWith(`.${base}`)) {
-    return { kind: "redirect", to: `${protocol}//${base}${path}` };
+  if (!sub && !local && hostname !== base && hostname !== apexWww && hostname.endsWith(`.${base}`)) {
+    return { kind: "redirect", to: `${protocol}//${apexWww}${path}` };
   }
 
-  const apexHost = local ? `localhost${port}` : base;
+  const apexHost = local ? `localhost${port}` : apexWww;
   const subHost = (s: Subdomain) => (local ? `${s}.localhost${port}` : `${s}.${base}`);
   const abs = (h: string, p: string) => `${protocol}//${h}${p}`;
 
@@ -116,12 +122,16 @@ export function planRoute({
     return { kind: "rewrite", to: path === "/" ? prefix : `${prefix}${path}`, noindex };
   }
 
-  // apex production domain: portal paths canonicalize onto their subdomain
-  if (hostname === base || hostname === `www.${base}`) {
+  // apex domain: portal paths canonicalize onto their subdomain; everything else on the
+  // bare apex canonicalizes onto www (the SITE.url host).
+  if (hostname === base || hostname === apexWww) {
     for (const [s, p] of Object.entries(SUB_PREFIX)) {
       if (path === p || path.startsWith(`${p}/`)) {
         return { kind: "redirect", to: abs(subHost(s as Subdomain), path.slice(p.length) || "/") };
       }
+    }
+    if (hostname === base && apexWww !== base) {
+      return { kind: "redirect", to: `${protocol}//${apexWww}${path}` };
     }
   }
   return { kind: "next" };

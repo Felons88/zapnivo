@@ -314,6 +314,11 @@ export async function handleMonetizationEvent(db: SupabaseClient, event: { type:
       }
       return true;
     }
+    // NOTE: no invoice.payment_succeeded handler by design. Subscription
+    // renewals already extend benefits via customer.subscription.updated →
+    // grantPeriodBenefits (guarded by last_granted_period_end). A second grant
+    // path keyed on invoice.payment_succeeded would be redundant — and without
+    // the period-end guard it could double-extend the same period.
     case "invoice.payment_failed": {
       // Subscription renewal failure → past_due (access continues per Stripe's retry window).
       const subId = str((o.subscription_details as Obj | undefined)?.subscription ?? o.subscription);
@@ -510,7 +515,15 @@ export async function handleMonetizationDispute(db: SupabaseClient, o: Obj): Pro
   const piId = str(o.payment_intent);
   if (!piId) return false;
   const ref = await resolveChargeProduct(db, piId);
-  if (!ref) return false;
+  if (!ref) {
+    // Unresolved includes ad_campaign PIs and charges whose product row/metadata
+    // can't be found — log so the drop is visible instead of silently ignored.
+    recordLog("warning", "monetization_dispute_unresolved", {
+      service: "monetization",
+      attrs: { dispute: str(o.id), pi: piId.slice(0, 14), reason: str(o.reason), status: str(o.status), amount: typeof o.amount === "number" ? o.amount : null },
+    });
+    return false;
+  }
   const detail = {
     kind: ref.kind,
     ref: refLabel(ref).slice(0, 40),

@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { after, NextResponse } from "next/server";
 import { serviceClient } from "@/lib/supabase";
 import { runInboundWorker } from "@/lib/inbound/worker";
+import { recordLog, reportError } from "@/lib/observability";
 import type { Parsed } from "@/lib/inbound/processor";
 
 /**
@@ -218,7 +219,7 @@ export async function POST(req: Request) {
 
   // Stage A: durable persistence only. Each message becomes a job; the
   // message_id unique index makes redelivery idempotent at enqueue time.
-  let queued = 0, duplicates = 0;
+  let queued = 0, duplicates = 0, enqueueFailed = 0;
   if (db) {
     for (const mail of mails) {
       const { error } = await db.from("inbound_jobs").insert({
@@ -227,8 +228,32 @@ export async function POST(req: Request) {
         message_id: mail.messageId,
         dedupe_hash: null,
       });
-      if (error?.code === "23505") duplicates++;
-      else if (!error) queued++;
+      if (error?.code === "23505") {
+        duplicates++;
+      } else if (!error) {
+        queued++;
+      } else {
+        // D7: a non-duplicate insert failure used to vanish silently while the
+        // webhook still answered ok — the mail was lost with no trace. Now we
+        // audit it in inbound_emails (status 'error' — allowed by 0022), log +
+        // report it, and answer 500 so the provider retries the delivery.
+        // Retried messages that DID enqueue dedupe via 23505 → 'duplicates'.
+        enqueueFailed++;
+        const reason = `enqueue_failed: ${String(error.message ?? "unknown").slice(0, 200)}`;
+        recordLog("error", "inbound_enqueue_failed", {
+          service: "inbound",
+          attrs: { message_id: mail.messageId ?? null, code: error.code ?? null },
+        });
+        reportError(new Error(reason), { route: "webhooks/email/inbound", severity: "error", attrs: { message_id: mail.messageId ?? null } });
+        await db.from("inbound_emails").insert({
+          message_id: mail.messageId,
+          from_email: mail.from,
+          subject: mail.subject.slice(0, 500),
+          status: "error",
+          reason,
+          processed_ms: Date.now() - started,
+        }).then(() => undefined, () => undefined); // audit insert is best-effort (message_id may already exist)
+      }
     }
   } else {
     // No DB: process inline as a dev fallback so local flows still work.
@@ -249,6 +274,11 @@ export async function POST(req: Request) {
     });
   } catch { /* no request scope */ }
 
+  if (enqueueFailed > 0) {
+    // Partial enqueue failure: tell the provider to retry. Already-queued
+    // messages dedupe on redelivery; failed ones get another chance.
+    return NextResponse.json({ ok: false, error: "enqueue_failed", queued, duplicates, failed: enqueueFailed }, { status: 500 });
+  }
   return NextResponse.json({ ok: true, queued, duplicates, processed: 0 });
 }
 

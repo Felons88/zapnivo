@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { rateLimit } from "@/lib/rate-limit";
 import { serviceClient } from "@/lib/supabase";
-import { fingerprint, scrub, scrubAttrs } from "@/lib/observability";
+import { alertNewIssue, fingerprint, scrub, scrubAttrs } from "@/lib/observability";
 
 const ip = (req: Request) => req.headers.get("x-forwarded-for")?.split(",")[0].trim() || "unknown";
 
@@ -51,6 +51,9 @@ export async function POST(req: NextRequest) {
   const t = parsed.data;
 
   if (t.type === "error") {
+    // Client-submitted severity is untrusted: cap at 'warning' — a browser can
+    // never mint a 'critical' issue or page staff as critical (D11).
+    const severity = t.severity === "critical" ? "warning" : t.severity;
     const fp = fingerprint({ name: t.name, message: t.message, stack: t.stack, route: t.route });
     await db.from("error_events").insert({
       fingerprint: fp,
@@ -61,7 +64,7 @@ export async function POST(req: NextRequest) {
       release: t.release ?? null,
       environment: "production",
       runtime: "browser",
-      severity: t.severity,
+      severity,
       user_agent: scrub(t.user_agent, 300) || null,
     });
     const { data: existing } = await db.from("error_issues").select("id,status,event_count").eq("fingerprint", fp).maybeSingle();
@@ -73,10 +76,14 @@ export async function POST(req: NextRequest) {
         ...(ex.status === "resolved" ? { status: "regressed", resolved_at: null } : {}),
       }).eq("fingerprint", fp);
     } else {
-      await db.from("error_issues").insert({
+      const { data: issue } = await db.from("error_issues").insert({
         fingerprint: fp, title: `${t.name}: ${scrub(t.message, 160)}`, culprit: t.route ?? null,
-        severity: t.severity, first_seen: now, last_seen: now, event_count: 1,
-      });
+        severity, first_seen: now, last_seen: now, event_count: 1,
+      }).select("id").single();
+      // Same alert path as reportError: NEW warning fingerprints notify staff
+      // (email + external webhook); 'error' stays dashboard-only. Repeats of an
+      // existing fingerprint update above and never re-alert.
+      if (severity === "warning" && issue) void alertNewIssue(db, issue.id as string, fp);
     }
     return NextResponse.json({ ok: true });
   }

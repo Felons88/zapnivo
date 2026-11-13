@@ -17,7 +17,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const host = ((await headers()).get("host") ?? "").split(":")[0].toLowerCase();
   const base = baseDomain();
   const support = host === `support.${base}` || host === "support.localhost";
-  const privateHost = ["customer", "internal", "partners", "api"].some(
+  const privateHost = ["customer", "internal", "partners", "api", "system"].some(
     (sub) => host === `${sub}.${base}` || host === `${sub}.localhost`,
   );
 

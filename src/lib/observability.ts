@@ -102,21 +102,32 @@ export function reportError(err: unknown, ctx: { route?: string; severity?: Seve
         fingerprint: fp, title: `${e.name}: ${scrub(e.message, 160)}`, culprit: ctx.route ?? null,
         severity: ctx.severity ?? "error", first_seen: now, last_seen: now, event_count: 1,
       }).select("id").single();
-      if (ctx.severity === "critical" && issue) void alertNewIssue(db, issue.id as string, fp);
+      // Notify on NEW fingerprints only — repeats update the existing issue above
+      // and never re-alert. 'error' stays dashboard-only (too noisy as a default);
+      // 'warning' and 'critical' page staff via email + external webhook (D4).
+      const sev = ctx.severity ?? "error";
+      if ((sev === "critical" || sev === "warning") && issue) void alertNewIssue(db, issue.id as string, fp);
     }).then(() => undefined, () => undefined);
   } catch { /* fail-open */ }
 }
 
-async function alertNewIssue(db: NonNullable<ReturnType<typeof serviceClient>>, issueId: string, fp: string) {
+/**
+ * Staff + external notification for a brand-new error_issues row. Exported so
+ * the telemetry ingest route can reuse the exact same alert path (D11) instead
+ * of duplicating it. Dedup is the caller's job: only call this for NEW issues.
+ */
+export async function alertNewIssue(db: NonNullable<ReturnType<typeof serviceClient>>, issueId: string, fp: string) {
   try {
-    const { data: issue } = await db.from("error_issues").select("title,culprit").eq("id", issueId).maybeSingle();
-    const i = issue as { title?: string; culprit?: string } | null;
+    const { data: issue } = await db.from("error_issues").select("title,culprit,severity").eq("id", issueId).maybeSingle();
+    const i = issue as { title?: string; culprit?: string; severity?: string } | null;
+    const sev = i?.severity === "critical" ? "critical" : "warning";
+    const label = sev === "critical" ? "Critical error" : "New warning";
     // Reuse the staff alert pipeline (email outbox → Brevo).
     const { alertStaff } = await import("./fleet-sweep");
-    await alertStaff(db, "offline_alerts", `Critical error: ${i?.title ?? fp}`, `A new critical error was captured.\n\n${i?.title ?? ""}\nRoute: ${i?.culprit ?? "unknown"}\nFingerprint: ${fp}\n\nReview in Admin → Observability.`, null, { sender: "operations", event: "ops.critical_error" });
+    await alertStaff(db, "offline_alerts", `${label}: ${i?.title ?? fp}`, `A new ${sev === "critical" ? "critical" : "warning-severity"} issue was captured.\n\n${i?.title ?? ""}\nRoute: ${i?.culprit ?? "unknown"}\nFingerprint: ${fp}\n\nReview in Admin → Observability.`, null, { sender: "operations", event: sev === "critical" ? "ops.critical_error" : "ops.warning_error" });
     // External fallback — survives Brevo/API outages (ALERT_WEBHOOK_URL).
     const { externalAlert } = await import("./alerts");
-    externalAlert(`issue:${fp}`, `Critical error: ${i?.title ?? fp}`, `Route: ${i?.culprit ?? "unknown"}\nFingerprint: ${fp}`, "critical");
+    externalAlert(`issue:${fp}`, `${label}: ${i?.title ?? fp}`, `Route: ${i?.culprit ?? "unknown"}\nFingerprint: ${fp}`, sev);
   } catch { /* alerting is best-effort */ }
 }
 

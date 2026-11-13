@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { serviceClient } from "@/lib/supabase";
+import { rateLimit } from "@/lib/rate-limit";
 import { ingestBodySchema, ingestKioskEvents } from "@/lib/kiosk/ingest";
 import { resolveDeviceCapabilities, type DeviceCapabilitySource } from "@/lib/kiosk/capabilities";
 import {
@@ -33,6 +34,7 @@ import {
  * through the rental lifecycle processor.
  */
 const safeEq = (a: string, b: string) => { const x = Buffer.from(a), y = Buffer.from(b); return x.length === y.length && timingSafeEqual(x, y); };
+const clientIp = (req: Request) => req.headers.get("x-forwarded-for")?.split(",")[0].trim() || "unknown";
 
 /** system_devices row as needed by auth + Phase 2.5 capability resolution. */
 type StationDeviceRow = DeviceAuthRow & {
@@ -96,6 +98,12 @@ export async function POST(req: Request) {
     // ── Path 2: legacy shared secret (flag-gated) ────────────────────────
     if (!legacyIngestEnabled()) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    // The shared secret is a fleet-wide credential — bound per-IP request rate
+    // on this legacy path only (the HMAC path is already limited inside
+    // verifyDeviceAuth; D10).
+    if (!rateLimit(`devices-events-legacy:${clientIp(req)}`, 30, 60_000).ok) {
+      return NextResponse.json({ error: "Too many requests" }, { status: 429 });
     }
     const secret = process.env.KIOSK_INGEST_SECRET;
     if (!secret) return NextResponse.json({ error: "Device ingest not configured" }, { status: 503 });

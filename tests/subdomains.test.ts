@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { planRoute } from "@/lib/subdomains";
+import { readdirSync } from "node:fs";
+import path from "node:path";
+import { APEX_SECTIONS, planRoute, SUB_PREFIX } from "@/lib/subdomains";
 import { subUrl } from "@/lib/site";
 
 const r = (host: string, path: string, protocol = "https:") => planRoute({ host, path, protocol, base: "zapnivo.com" });
@@ -51,8 +53,11 @@ describe("subdomain rewrites", () => {
   it("bounces cross-portal and apex-owned paths to the right host", () => {
     expect(r("internal.zapnivo.com", "/partners/support")).toEqual({ kind: "redirect", to: "https://partners.zapnivo.com/support" });
     expect(r("support.zapnivo.com", "/admin")).toEqual({ kind: "redirect", to: "https://internal.zapnivo.com/" });
-    expect(r("support.zapnivo.com", "/legal/refund-policy")).toEqual({ kind: "redirect", to: "https://zapnivo.com/legal/refund-policy" });
-    expect(r("support.zapnivo.com", "/contact")).toEqual({ kind: "redirect", to: "https://zapnivo.com/contact" });
+    expect(r("support.zapnivo.com", "/legal/refund-policy")).toEqual({ kind: "redirect", to: "https://www.zapnivo.com/legal/refund-policy" });
+    expect(r("support.zapnivo.com", "/contact")).toEqual({ kind: "redirect", to: "https://www.zapnivo.com/contact" });
+    // Regression: footer links to these sections were 404ing on portal subdomains.
+    expect(r("support.zapnivo.com", "/scam-awareness")).toEqual({ kind: "redirect", to: "https://www.zapnivo.com/scam-awareness" });
+    expect(r("support.zapnivo.com", "/advertiser")).toEqual({ kind: "redirect", to: "https://www.zapnivo.com/advertiser" });
     expect(r("support.zapnivo.com", "/account")).toEqual({ kind: "redirect", to: "https://customer.zapnivo.com/" });
     expect(r("internal.zapnivo.com", "/account/settings")).toEqual({ kind: "redirect", to: "https://customer.zapnivo.com/settings" });
   });
@@ -68,9 +73,11 @@ describe("apex canonical redirects", () => {
     expect(r("www.zapnivo.com", "/account/rentals")).toEqual({ kind: "redirect", to: "https://customer.zapnivo.com/rentals" });
   });
 
-  it("leaves marketing pages and /api on the apex untouched", () => {
+  it("canonicalizes the bare apex to www; www serves marketing pages and /api untouched", () => {
+    // www is the canonical marketing host (SITE.url / metadataBase).
     for (const p of ["/", "/about", "/locations", "/api/contact", "/api/support/tickets", "/login"]) {
-      expect(r("zapnivo.com", p).kind).toBe("next");
+      expect(r("www.zapnivo.com", p).kind).toBe("next");
+      expect(r("zapnivo.com", p)).toEqual({ kind: "redirect", to: `https://www.zapnivo.com${p}` });
     }
   });
 
@@ -97,6 +104,37 @@ describe("local dev subdomains", () => {
     expect(r("support.localhost:3000", "/", "http:")).toEqual({ kind: "rewrite", to: "/support", noindex: false });
     expect(r("internal.localhost:3000", "/partners", "http:")).toEqual({ kind: "redirect", to: "http://partners.localhost:3000/" });
     expect(r("support.localhost:3000", "/legal/terms", "http:")).toEqual({ kind: "redirect", to: "http://localhost:3000/legal/terms" });
+  });
+});
+
+describe("APEX_SECTIONS coverage", () => {
+  // Segments that legitimately live outside APEX_SECTIONS:
+  //  - portal prefixes (/support, /account, ...) are claimed by the SUB_PREFIX loop first
+  //  - /login passes through untouched on every host (shared sign-in page)
+  const PORTAL_SEGMENTS = new Set(Object.values(SUB_PREFIX).map((p) => p.slice(1)));
+  const PASS_THROUGH = new Set(["login"]);
+
+  it("classifies every top-level src/app/(site) route segment", () => {
+    const dir = path.resolve(__dirname, "../src/app/(site)");
+    const segments = readdirSync(dir, { withFileTypes: true })
+      .filter((d) => d.isDirectory())
+      .map((d) => d.name);
+    expect(segments.length).toBeGreaterThan(0);
+    for (const seg of segments) {
+      const classified = APEX_SECTIONS.has(seg) || PORTAL_SEGMENTS.has(seg) || PASS_THROUGH.has(seg);
+      expect(classified, `/${seg} is unclassified — it would rewrite under a portal prefix and 404 on subdomains`).toBe(true);
+    }
+  });
+
+  it("never rewrites an unclassified (site) segment into a portal prefix", () => {
+    const dir = path.resolve(__dirname, "../src/app/(site)");
+    const segments = readdirSync(dir, { withFileTypes: true })
+      .filter((d) => d.isDirectory())
+      .map((d) => d.name);
+    for (const seg of segments) {
+      const d = r("support.zapnivo.com", `/${seg}`);
+      expect(d.kind, `/${seg} on support.zapnivo.com`).not.toBe("rewrite");
+    }
   });
 });
 

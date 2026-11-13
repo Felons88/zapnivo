@@ -1,3 +1,4 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { renderEmail, renderEmailText } from "./email-templates";
 import { flushOutbox, getMailer } from "./helpdesk/mailer";
 import { getRepo } from "./helpdesk/repo";
@@ -39,12 +40,76 @@ export async function loadRental(where: { id?: string; stripeId?: string }): Pro
 /** Routing metadata recorded on the outbox row — resolves the department sender at flush time. */
 export type EmailMeta = { sender?: string | null; template?: string | null; event?: string | null };
 
-export async function sendToCustomer(email: string, subject: string, body: string, html: string | null, ticketId = null as string | null, meta: EmailMeta = {}) {
+/** Outcome of a customer send attempt — distinguishes "queued" from "actually delivered". */
+export type SendOutcome = {
+  /** Row was written to email_outbox (may still be awaiting delivery). */
+  queued: boolean;
+  /** The provider accepted THIS message during this call. */
+  sent: boolean;
+  /** Why nothing was delivered this call: no repo, no provider configured, or the send failed. */
+  reason: "no_repo" | "no_provider" | "send_failed" | null;
+};
+
+/**
+ * Queues into the helpdesk outbox, then flushes. Returns a tri-state outcome so
+ * callers can tell "queued for later" apart from "handed to the provider" —
+ * conversation state must only claim an answer was sent when `sent` is true.
+ */
+export async function sendToCustomerOutcome(email: string, subject: string, body: string, html: string | null, ticketId = null as string | null, meta: EmailMeta = {}): Promise<SendOutcome> {
   const repo = await getRepo();
-  if (!repo) return false;
-  await repo.queueEmail({ ticketId, to: email, subject, body, html, sender: meta.sender ?? null, replyTo: null, template: meta.template ?? null, event: meta.event ?? null });
-  await flushOutbox(repo, getMailer());
-  return true;
+  if (!repo) return { queued: false, sent: false, reason: "no_repo" };
+  const row = await repo.queueEmail({ ticketId, to: email, subject, body, html, sender: meta.sender ?? null, replyTo: null, template: meta.template ?? null, event: meta.event ?? null });
+  const mailer = getMailer();
+  if (!mailer) return { queued: true, sent: false, reason: "no_provider" };
+  const res = await flushOutbox(repo, mailer);
+  const sent = res.sentIds.includes(row.id);
+  return { queued: true, sent, reason: sent ? null : "send_failed" };
+}
+
+/**
+ * Back-compatible boolean wrapper: true when the message was accepted into the
+ * outbox (queued OR sent). Use sendToCustomerOutcome when delivery state matters.
+ */
+export async function sendToCustomer(email: string, subject: string, body: string, html: string | null, ticketId = null as string | null, meta: EmailMeta = {}) {
+  return (await sendToCustomerOutcome(email, subject, body, html, ticketId, meta)).queued;
+}
+
+export type StaffAlert = {
+  subject: string;
+  body: string;
+  sender?: string | null;
+  template?: string | null;
+  event?: string | null;
+};
+
+/**
+ * Queues an email to every admin/staff profile — the staff-notification path
+ * used by public forms and the receptionist. Best-effort: returns the number
+ * of messages queued (0 when no backend/staff exist) and never throws.
+ * `db` defaults to the service client; pass an existing client to reuse one.
+ */
+export async function alertStaff(alert: StaffAlert, db: SupabaseClient | null = serviceClient()): Promise<number> {
+  try {
+    if (!db) return 0;
+    const { data } = await db.from("profiles").select("email").in("role", ["admin", "staff"]).limit(50);
+    const emails = [...new Set(
+      ((data ?? []) as { email: string | null }[])
+        .map((r) => r.email?.trim().toLowerCase())
+        .filter((e): e is string => Boolean(e)),
+    )];
+    let queued = 0;
+    for (const to of emails) {
+      const res = await sendToCustomerOutcome(to, alert.subject, alert.body, null, null, {
+        sender: alert.sender ?? "admin",
+        template: alert.template ?? null,
+        event: alert.event ?? null,
+      });
+      if (res.queued) queued++;
+    }
+    return queued;
+  } catch {
+    return 0;
+  }
 }
 
 export const emailFor = (r: RentalRow) => r.payments?.[0]?.receipt_email ?? null;

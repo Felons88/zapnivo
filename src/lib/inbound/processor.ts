@@ -3,7 +3,7 @@ import { requesterMessage, type Ctx } from "../helpdesk/service";
 import { HelpdeskError } from "../helpdesk/types";
 import { parsePlusReply, verifyReplyToken, type PlusReply } from "../email/inbound";
 import { serviceClient } from "../supabase";
-import { ingestGeneralMail, isGeneralInboxMail } from "../receptionist/ingest";
+import { ingestGeneralMail, isGeneralInboxMail, monitoredRecipient } from "../receptionist/ingest";
 
 /**
  * Stage-B inbound email processor — runs inside the durable worker
@@ -85,22 +85,38 @@ export async function processInboundMail(c: Ctx | null, db: Db | null, mail: Par
   };
 
   if (mail.dmarc === "fail") return finish("quarantined", "dmarc_fail");
-  if (mail.autoSubmitted && !isGeneralInboxMail(mail)) return finish("ignored", "auto_submitted");
+  // Monitored registry addresses (security@, partners@, billing@, support@, …)
+  // are receptionist-bound when they carry no valid ticket credential — see
+  // the fallthrough at the bottom of this function.
+  const monitored = monitoredRecipient(mail);
+  if (mail.autoSubmitted && !isGeneralInboxMail(mail) && !monitored) return finish("ignored", "auto_submitted");
   if (!body) return finish("ignored", "empty_body");
 
   // General-correspondence desk: mail addressed to hello@zapnivo.com (or
   // GENERAL_INBOX) goes to the AI receptionist — NEVER a helpdesk ticket.
   // Runs before ticket-token matching so support@ behavior is unchanged.
-  if (isGeneralInboxMail(mail)) {
+  /** Sends mail to the receptionist; `lead` is the monitored address to record as the primary recipient. */
+  const toReceptionist = async (lead: string | null): Promise<Outcome> => {
     if (!db) return finish("error", "receptionist_db_unavailable");
+    const recipients = lead
+      ? [lead, ...mail.recipients.filter((x) => x.toLowerCase() !== lead)]
+      : mail.recipients;
     try {
-      const r = await ingestGeneralMail(db, mail);
+      const r = await ingestGeneralMail(db, { ...mail, recipients });
       return finish(r.status === "duplicate" ? "duplicate" : r.status === "error" ? "error" : r.status === "quarantined" ? "quarantined" : "accepted", r.reason);
-    } catch (e) {
+    } catch {
       return finish("error", "receptionist_error");
     }
+  };
+
+  if (isGeneralInboxMail(mail)) return toReceptionist(null);
+  if (!c) {
+    // Receptionist-bound monitored mail still works without a helpdesk ctx —
+    // unless it carries a plus-style ticket credential we can't verify.
+    const hasPlus = mail.recipients.some((r) => parsePlusReply(r));
+    if (monitored && !hasPlus) return toReceptionist(monitored);
+    return finish("error", "helpdesk_unavailable");
   }
-  if (!c) return finish("error", "helpdesk_unavailable");
 
   // Reply-token path: scan every provider-supplied recipient; the HMAC token
   // is self-authenticating regardless of which header carried it.
@@ -132,24 +148,36 @@ export async function processInboundMail(c: Ctx | null, db: Db | null, mail: Par
 
   // Legacy fallback: Z-<n> reference + sender match.
   const num = (mail.subject.match(TICKET_RE) ?? mail.text.slice(0, 500).match(TICKET_RE))?.[0].toUpperCase();
-  if (!num) return finish("ignored", "no_ticket_reference");
-  const ticket = await c.repo.getTicketByNumber(num);
-  if (!ticket) return finish("ignored", "unknown_ticket", { ticket_number: num });
+  if (num) {
+    const ticket = await c.repo.getTicketByNumber(num);
+    if (ticket) {
+      let actor: Parameters<typeof requesterMessage>[1] = { kind: "customer", email: mail.from };
+      if (ticket.requesterType === "partner" && db) {
+        const { data: p } = await db.from("profiles").select("id,role,organization_id,full_name").ilike("email", mail.from).maybeSingle();
+        const prof = p as { id: string; role: string; organization_id: string | null; full_name: string | null } | null;
+        if (prof?.role === "partner" && prof.organization_id && prof.organization_id === ticket.orgId) {
+          actor = { kind: "partner", id: prof.id, name: prof.full_name ?? mail.from, email: mail.from, orgId: prof.organization_id };
+        }
+      }
 
-  let actor: Parameters<typeof requesterMessage>[1] = { kind: "customer", email: mail.from };
-  if (ticket.requesterType === "partner" && db) {
-    const { data: p } = await db.from("profiles").select("id,role,organization_id,full_name").ilike("email", mail.from).maybeSingle();
-    const prof = p as { id: string; role: string; organization_id: string | null; full_name: string | null } | null;
-    if (prof?.role === "partner" && prof.organization_id && prof.organization_id === ticket.orgId) {
-      actor = { kind: "partner", id: prof.id, name: prof.full_name ?? mail.from, email: mail.from, orgId: prof.organization_id };
+      try {
+        await requesterMessage(c, actor, num, body);
+        return finish("accepted", null, { ticket_number: num, auth_method: "legacy_from_match" });
+      } catch (e) {
+        if (e instanceof HelpdeskError) return finish("ignored", e.code, { ticket_number: num, auth_method: "legacy_from_match" });
+        return finish("error", "processing_error", { ticket_number: num, auth_method: "legacy_from_match" });
+      }
     }
+    // Unknown ticket number — fall through to monitored-contact routing below.
   }
 
-  try {
-    await requesterMessage(c, actor, num, body);
-    return finish("accepted", null, { ticket_number: num, auth_method: "legacy_from_match" });
-  } catch (e) {
-    if (e instanceof HelpdeskError) return finish("ignored", e.code, { ticket_number: num, auth_method: "legacy_from_match" });
-    return finish("error", "processing_error", { ticket_number: num, auth_method: "legacy_from_match" });
-  }
+  // Monitored public contact addresses (security@, partners@, billing@,
+  // support@, hello@ via GENERAL_INBOX drift, …) that carried no valid ticket
+  // credential go to the AI receptionist general queue instead of being
+  // silently dropped. The matched address leads `recipients` so the stored
+  // message records which monitored inbox it actually reached. Addresses
+  // outside the verified registry keep the old ignore behavior.
+  if (monitored) return toReceptionist(monitored);
+  if (!num) return finish("ignored", "no_ticket_reference");
+  return finish("ignored", "unknown_ticket", { ticket_number: num });
 }

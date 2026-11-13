@@ -4,6 +4,7 @@ import { z } from "zod";
 import { serviceClient } from "@/lib/supabase";
 import { isCampaignDeliverable, campaignTargetsKiosk } from "@/lib/ads/eligibility";
 import { reportError, recordLog } from "@/lib/observability";
+import { rateLimit } from "@/lib/rate-limit";
 
 /**
  * Verified ad engagement ingest — POST /api/kiosks/playback
@@ -13,6 +14,7 @@ import { reportError, recordLog } from "@/lib/observability";
  * retries idempotent. This is the only source of billable ad engagement.
  */
 const safeEq = (a: string, b: string) => { const x = Buffer.from(a), y = Buffer.from(b); return x.length === y.length && timingSafeEqual(x, y); };
+const clientIp = (req: Request) => req.headers.get("x-forwarded-for")?.split(",")[0].trim() || "unknown";
 
 const bodySchema = z.object({
   station_id: z.string().trim().regex(/^[A-Za-z0-9_-]{3,40}$/),
@@ -26,6 +28,10 @@ const bodySchema = z.object({
 });
 
 export async function POST(req: Request) {
+  // Bearer endpoints still do multi-query work per call — bound per-IP abuse (D10).
+  if (!rateLimit(`kiosk-playback:${clientIp(req)}`, 60, 60_000).ok) {
+    return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+  }
   const secret = process.env.KIOSK_INGEST_SECRET;
   if (!secret) return NextResponse.json({ error: "Device ingest not configured" }, { status: 503 });
   const bearer = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");

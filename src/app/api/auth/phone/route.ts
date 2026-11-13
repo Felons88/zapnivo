@@ -24,6 +24,13 @@ const ip = (req: Request) => req.headers.get("x-forwarded-for")?.split(",")[0].t
 export async function POST(req: NextRequest) {
   const callbackOrigin = authCallbackOrigin(req);
   if (!callbackOrigin) return NextResponse.json({ error: "Rejected." }, { status: 403 });
+  // Same-origin check as /api/auth/email-link: the Origin host must match the callback host.
+  const host = new URL(callbackOrigin).host;
+  const origin = req.headers.get("origin");
+  if (origin) {
+    try { if (new URL(origin).host !== host) return NextResponse.json({ error: "Rejected." }, { status: 403 }); }
+    catch { return NextResponse.json({ error: "Rejected." }, { status: 403 }); }
+  }
   const db = serviceClient();
   if (!db) return NextResponse.json({ error: "Backend not configured" }, { status: 503 });
   if (!secret()) return NextResponse.json({ error: "Auth is not configured." }, { status: 503 });

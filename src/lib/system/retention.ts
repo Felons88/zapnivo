@@ -30,6 +30,8 @@ export type RetentionRule = {
   /** Optional status equality filter (e.g. only finished queue rows). */
   statusColumn?: string;
   statusValue?: string;
+  /** Optional multi-value status filter (terminal states like failed+cancelled). */
+  statusValues?: readonly string[];
   description: string;
   /** Whether a covering time-column index exists (from migrations). */
   indexNote: string;
@@ -65,6 +67,32 @@ export const RETENTION_POLICY: readonly RetentionRule[] = [
     statusColumn: "status", statusValue: "sent",
     description: "Sent transactional email rows only; queued/failed rows are kept for ops.",
     indexNote: "outbox_status_idx (status, created_at) — 0004" },
+  // ── Phase 2.7: high-volume operational telemetry ──────────────────────
+  // device_events / kiosk_events are operational hardware logs, NOT legal or
+  // financial records — but they may be dispute-relevant, so they get the LONG
+  // window (365d), never a short one. Bounded batches drain backlogs over runs.
+  { table: "device_events", retentionDays: 365, timeColumn: "occurred_at",
+    description: "Immutable hardware event log (ingest payloads). Long window — possible rental-dispute evidence; not preserved-class.",
+    indexNote: "device_events_kiosk_idx (kiosk_id, occurred_at desc) — 0001" },
+  { table: "kiosk_events", retentionDays: 365, timeColumn: "received_at",
+    description: "Device event processing ledger (replay protection + results). Long window — audit-relevant ops data.",
+    indexNote: "kiosk_events_kiosk_idx (kiosk_id, received_at desc) + partial unprocessed idx — 0015" },
+  { table: "business_events", retentionDays: 180, timeColumn: "occurred_at",
+    description: "First-party analytics event stream; daily rollups live in analytics_daily/analytics_cohorts (preserved aggregates).",
+    indexNote: "business_events_occurred_idx (occurred_at desc) — 0025" },
+  { table: "inbound_emails", retentionDays: 180, timeColumn: "created_at",
+    description: "Inbound-email processing log for the Communication Center (all statuses are terminal log rows).",
+    indexNote: "inbound_emails_created_idx (created_at desc) — 0022" },
+  { table: "sms_messages", retentionDays: 365, timeColumn: "created_at",
+    description: "SMS message log (Twilio). Long window — carrier-billing/dispute evidence; contains phone numbers, kept service-role only.",
+    indexNote: "sms_messages_created_idx (created_at desc) — 0012" },
+  { table: "ad_events", retentionDays: 365, timeColumn: "occurred_at",
+    description: "Verified ad engagement events — advertiser billing evidence; long window.",
+    indexNote: "ad_events_campaign_idx (campaign_id, kind, occurred_at desc) — 0027" },
+  { table: "notification_jobs", retentionDays: 90, timeColumn: "created_at",
+    statusColumn: "status", statusValues: ["failed", "cancelled"],
+    description: "Terminal-failure SMS schedule jobs only. 'sent' rows are KEPT — they are the (rental_id, kind) dedupe record that prevents re-sends; queued/sending are live work.",
+    indexNote: "notification_jobs_due_idx (status, due_at) — 0013; created_at unindexed (small terminal volume)" },
 ];
 
 /**
@@ -140,7 +168,8 @@ const DEFAULT_LIMIT = 500;
 
 function applyFilters(q: any, rule: RetentionRule, cutoff: string) {
   q = q.lt(rule.timeColumn, cutoff);
-  if (rule.statusColumn && rule.statusValue) q = q.eq(rule.statusColumn, rule.statusValue);
+  if (rule.statusColumn && rule.statusValues?.length) q = q.in(rule.statusColumn, [...rule.statusValues]);
+  else if (rule.statusColumn && rule.statusValue) q = q.eq(rule.statusColumn, rule.statusValue);
   return q;
 }
 
