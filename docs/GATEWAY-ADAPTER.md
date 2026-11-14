@@ -117,6 +117,10 @@ interface GatewayAdapter {
 `commandDispatch`, `commandStatus`, `dispense`, `return`, `configUpdate`,
 `firmwareUpdate`, `diagnostics`. The blocked adapter reports all `false`.
 
+Update delivery uses a SEPARATE flag set — `GatewayUpdateCapabilities` keys:
+`firmwareDelivery`, `configUpdatePush`, `updateStatusQuery`,
+`installedVersionReport`, `reconnectVerification`, `rollbackSupport` — see §6.
+
 ## 3. Resolution & current dispatch behavior (verified)
 
 `getGatewayAdapter()` (`gateway-adapter.ts`) reads `KIOSK_ADAPTER`:
@@ -208,3 +212,106 @@ Before `KIOSK_ADAPTER` may name a real adapter:
 
 Until then `KIOSK_ADAPTER=none` remains the honest configuration and every
 dispatch path records explicit failures.
+
+---
+
+## 6. Remote update delivery (Phase 4.3)
+
+Update delivery is an **optional extension** of `GatewayAdapter`, defined in
+`src/lib/kiosk/gateway-adapter.ts` as the `GatewayUpdateCapable` interface.
+A vendor adapter may satisfy the base contract (auth, ingest, commands,
+dispense) without implementing it — `isGatewayUpdateCapable()` /
+`updateCapabilitiesOf()` are the ONLY sanctioned way to detect support, and
+`updateCapabilities()` must report honest per-surface flags. The blocked
+adapter implements the interface with all-false capabilities and every method
+returns `unsupported_capability`. Server-side orchestration lives in
+`src/lib/system/update-config.ts`; UI in
+`src/app/system/kiosks/updates/ConfigRolloutPanel.tsx`.
+
+### 6.1 Per-surface contract
+
+| Capability flag | Method | Contract |
+|---|---|---|
+| `firmwareDelivery` | `deliverFirmwareArtifact(GatewayFirmwareDeliveryRequest)` | Transfer a signed artifact (`GatewayFirmwareArtifact`: `artifactRef` + `sha256` + `signature` all required — no unsigned path). Idempotent on `commandId`. `resumeToken` is an opaque vendor cursor; adapters that cannot resume MUST reject non-empty tokens rather than silently restart. Returns `GatewayUpdateJobAccepted` — acceptance ≠ installation. |
+| `configUpdatePush` | `pushConfigUpdate(GatewayConfigPushRequest)` | Push whitelisted desired-state (`device-config.ts` keys only; `schemaVersion` optional). Idempotent on `commandId`. Same accepted-not-completed rule. |
+| `updateStatusQuery` | `queryUpdateStatus(GatewayUpdateJobRef)` | Poll the vendor-side job and map onto `GatewayUpdateJobState`. MUST distinguish `failed` from `unknown_outcome` (job lost / device vanished mid-transfer). |
+| `installedVersionReport` | `reportInstalledVersion({deviceId, commandId?})` | Read back the version the device actually reports (telemetry or direct query). A version the device never reported is a failure — never infer from "transfer finished". |
+| `reconnectVerification` | `verifyReconnect(GatewayUpdateJobRef)` | Post-update proof over the AUTHENTICATED device channel (HMAC ingest session re-established + health checks). A bare TCP/ping success is not verification. |
+| `rollbackSupport` | `requestRollback(GatewayRollbackRequest)` | Restore a known-good artifact/config. `rollbackRef` is opaque; `sha256`+`signature` REQUIRED — rollback obeys the same signed-artifact rule as forward updates. |
+
+### 6.2 State machine mapping
+
+Vendor job states map onto `kiosk_update_targets.state` (migration 0067):
+
+```
+queued → transferring → installing → reconnecting → verifying → completed
+branches: failed | unknown_outcome | investigating | recovery | cancelled
+```
+
+- `deliverFirmwareArtifact`/`pushConfigUpdate` success ⇒ target `queued`
+  (or `transferring` once the vendor confirms bytes moving).
+- `queryUpdateStatus.state` drives `transferring → installing → reconnecting
+  → verifying` transitions verbatim.
+- `verifyReconnect.verified === true` is a prerequisite for `verifying →
+  completed`.
+- A lost job or unreachable device mid-flight ⇒ `unknown_outcome`, never
+  silently `completed` or `failed`.
+
+### 6.3 Verification requirements — what 'completed' means
+
+A target may ONLY be marked `completed` when ALL of the following hold:
+
+1. `reportInstalledVersion` (or `queryUpdateStatus.evidence.installedVersion`)
+   returns the target version from **authenticated device telemetry** — the
+   same HMAC ingest channel as heartbeats, not a vendor-cloud assertion.
+2. `evidence.healthOk === true` from the device's post-update health report.
+3. `verifyReconnect.verified === true` for the same `commandId`.
+
+For **config** rollouts the equivalent gate already exists server-side:
+`device_config_revisions.status = 'applied'` requires `reconcileReported` to
+match every whitelisted desired key against a device-reported snapshot.
+`refreshConfigRolloutTargets` (`update-config.ts`) derives target states
+exclusively from that revision state — `completed` is unreachable without
+reported evidence. Until a reported-config ingest channel exists, config
+targets honestly stall at `verifying`/`failed`.
+
+### 6.4 Rollback semantics
+
+- Rollback is a NEW forward operation (`requestRollback`), never a state
+  rewrite: a new `kiosk_update_targets` row (or config revision) references
+  the known-good artifact via `rollbackRef`.
+- The rollback artifact MUST be signed and verified on-device exactly like a
+  forward artifact; an unsigned or unverifiable rollback path is
+  non-conforming.
+- Config rollback reuses `proposeRollback` (device-config.ts): a new draft
+  revision restoring the previously `applied` desired state.
+- After rollback the same verification gate (§6.3) applies — the device must
+  report the restored version + health before `completed`.
+
+### 6.5 Vendor documentation additions (required before registration)
+
+In addition to the §4 checklist, a update-capable adapter needs documented:
+
+- [ ] **Artifact transport** — how bytes reach the device (direct push,
+      presigned URL, vendor cloud relay, sneakernet import), chunking,
+      integrity re-checks en route, and whether `artifactRef` is a URL, opaque
+      package id, or storage path the adapter resolves.
+- [ ] **Resume semantics** — whether interrupted transfers resume via
+      `resumeToken`/offset, restart from scratch, or fail; max transfer size
+      and time.
+- [ ] **Signing verification on-device** — which signature scheme the
+      firmware verifies (vendor key? Zapnivo key? dual-signed?), where
+      verification happens (bootloader vs OS), and how a failed signature is
+      reported (must surface as `failed`, never `unknown_outcome` ambiguity).
+- [ ] **Rollback image** — whether the device retains a known-good image,
+      golden-image restore, or A/B partition; how `rollbackRef` maps to it;
+      whether rollback itself needs network.
+- [ ] **Concurrency limits** — max simultaneous artifact transfers per
+      gateway/device and per account; required for `concurrency_limit` on
+      `kiosk_update_campaigns`.
+- [ ] **Status reporting cadence** — how `queryUpdateStatus` state is
+      produced (device-pushed events vs polled), expected latency per state,
+      and how `installedVersion`/`healthOk` evidence is emitted.
+- [ ] **Brick recovery** — recovery path when an update leaves the device
+      unreachable (`recovery` target state), including whether the vendor
+      offers a forced-reflash mechanism and its auth requirements.

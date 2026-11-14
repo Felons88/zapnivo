@@ -75,6 +75,7 @@ export default async function KiosksFleetPage({ searchParams }: {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Link href="/system/kiosks/maintenance" className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-bold text-slate-200 ring-1 ring-white/15 hover:bg-white/15">Maintenance</Link>
+            <Link href="/system/kiosks/updates" className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-bold text-slate-200 ring-1 ring-white/15 hover:bg-white/15">Updates</Link>
             <Link href="/system/kiosks/provision-qr" className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-bold text-slate-200 ring-1 ring-white/15 hover:bg-white/15">Provision QR</Link>
             {canManage && (
               <Link href="/system/kiosks/register" className="rounded-full bg-lime px-4 py-2 text-xs font-bold text-ink hover:bg-[#e6ffa8]">
