@@ -75,6 +75,12 @@ type ProviderSpec = {
   /** Regex tested against "action resource" of recent audit rows. */
   activityPattern: RegExp;
   healthRoute?: string;
+  /**
+   * Overrides the generic "run a live check" hint when no healthRoute exists —
+   * used for providers whose evidence is operational (public client config,
+   * delivery receipts) rather than a probeable credential.
+   */
+  verifyHint?: string;
 };
 
 const SPECS: readonly ProviderSpec[] = [
@@ -159,6 +165,35 @@ const SPECS: readonly ProviderSpec[] = [
     healthRoute: "/api/system/integrations/kiosk_gateway/health",
   },
   {
+    provider: "uptime",
+    name: "Uptime probes & cron auth",
+    integrationId: "uptime",
+    requiredEnv: ["CRON_SECRET"],
+    webhookNote: "scheduled probes authenticate with CRON_SECRET bearer — no inbound provider webhook",
+    activityPattern: /uptime|cron|probe|scheduler/i,
+    healthRoute: "/api/system/integrations/uptime/health",
+  },
+  {
+    provider: "alerts",
+    name: "Alerting webhook",
+    integrationId: "alerts",
+    requiredEnv: ["ALERT_WEBHOOK_URL"],
+    webhookNote: "outbound-only push alerts — ALERT_WEBHOOK_URL receives POSTs; no inbound surface",
+    activityPattern: /alert|incident|error_issue|observability|external_alert/i,
+    healthRoute: "/api/system/integrations/alerts/health",
+  },
+  {
+    provider: "analytics",
+    name: "Analytics & maps (public)",
+    integrationId: "analytics",
+    anyOfEnv: ["NEXT_PUBLIC_GTM_ID", "NEXT_PUBLIC_GA_MEASUREMENT_ID", "NEXT_PUBLIC_MAPBOX_TOKEN"],
+    webhookNote: null,
+    activityPattern: /analytics|gtm|ga4|mapbox|tag.?manager/i,
+    // No healthRoute: the check honestly returns 'unknown' — public client
+    // config has no server-side probe. verifyHint says where evidence lives.
+    verifyHint: "confirm the container/measurement/map fires in the browser (GTM Preview, GA4 Realtime, map render) — public client config has no server-side probe",
+  },
+  {
     provider: "newsletter-mail",
     name: "Newsletter outbound mail",
     // No INTEGRATION_PROVIDERS row — newsletter delivery reuses the shared
@@ -194,10 +229,12 @@ async function recentAuditRows(
 }
 
 function missingFor(spec: ProviderSpec): string[] {
-  if (spec.envConfiguredFn) {
-    // any-of semantics: report the full candidate set when none is set.
-    const set = (spec.anyOfEnv ?? []).filter(env);
-    return set.length > 0 ? [] : [...(spec.anyOfEnv ?? [])];
+  // Any-of semantics (envConfiguredFn or bare anyOfEnv): report the full
+  // candidate set when none is set, empty when at least one is present.
+  if (spec.envConfiguredFn || spec.anyOfEnv) {
+    const candidates = spec.anyOfEnv ?? [];
+    const set = candidates.filter(env);
+    return set.length > 0 ? [] : [...candidates];
   }
   const required = spec.requiredEnv ?? [];
   return required.filter((name) => !env(name));
@@ -238,7 +275,7 @@ function ownerActionFor(
   if (!verified) {
     const how = spec.healthRoute
       ? `run a live check via ${spec.healthRoute} (system.integrations.manage)`
-      : "confirm delivery via the newsletter overview / a real send";
+      : (spec.verifyHint ?? "confirm delivery via the newsletter overview / a real send");
     return `Credentials are present but unverified — ${how}; 'operational' is required before this provider counts as activated.`;
   }
   if (webhook.configured === false && spec.webhookEnv) {

@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { serviceClient } from "@/lib/supabase";
 import { runAggregation } from "@/lib/analytics-aggregates";
 import { recordCron } from "@/lib/fleet-sweep";
+import { pausedJobSet, recordPausedRun } from "@/lib/system/job-controls";
 import { recordLog, traced } from "@/lib/observability";
 
 /**
@@ -23,6 +24,12 @@ export async function GET(req: Request) {
   if (!db) return NextResponse.json({ error: "Backend not configured" }, { status: 503 });
   const staff = await import("@/lib/auth").then((m) => m.getSessionUser().then((u) => m.isStaff(u))).catch(() => false);
   if (!(await authorized(req)) && !staff) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  // Operator pause (jobs.paused): record a skipped cron_runs row, run nothing.
+  if ((await pausedJobSet(db)).has("analytics")) {
+    await recordPausedRun(db, "analytics");
+    return NextResponse.json({ ok: true, paused: true, job: "analytics" });
+  }
 
   const days = Math.min(Math.max(parseInt(new URL(req.url).searchParams.get("days") ?? "2", 10) || 2, 1), 30);
   // recordCron writes cron_runs and emails staff on failure — a broken

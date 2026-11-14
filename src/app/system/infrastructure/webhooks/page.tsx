@@ -124,7 +124,15 @@ export default async function InfraWebhooksPage({ searchParams }: { searchParams
                   <span className="font-mono text-xs text-slate-400">{detail.event.ref}</span>
                   <span className="font-mono text-xs text-slate-400">at {when(detail.event.at)}</span>
                   <span className="rounded-full bg-white/5 px-2 py-0.5 font-mono text-[10px] text-slate-300 ring-1 ring-white/10">{detail.event.status}</span>
+                  {typeof detail.event.fields.relatedObject === "string" && (
+                    <span className="rounded-full bg-sky-400/10 px-2 py-0.5 font-mono text-[10px] text-sky-300 ring-1 ring-sky-400/20">
+                      {detail.event.fields.relatedObject}
+                    </span>
+                  )}
                 </div>
+                {typeof detail.event.fields.verification === "string" && (
+                  <p className="mt-2 font-mono text-[11px] text-slate-500">verification: {detail.event.fields.verification}</p>
+                )}
                 <JsonBlock value={detail.event.fields} />
                 <div className="mt-3 flex flex-wrap items-center gap-3">
                   {detail.replay.eligible ? (

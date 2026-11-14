@@ -6,8 +6,10 @@ import type { IncidentStatus } from "@/lib/system/incidents";
 
 /**
  * Incident lifecycle transition control. POSTs
- * /api/system/incidents/{id}/transition with { to_status, reason? }.
- * Reason is mandatory when the target is 'reopened' (enforced server-side too).
+ * /api/system/incidents/{id}/transition with { to_status, reason?,
+ * resolution_notes? }. Reason is mandatory when the target is 'reopened';
+ * resolution notes are mandatory when the target is 'resolved' (reason is
+ * accepted as a fallback server-side).
  */
 export function IncidentActions({
   incidentId,
@@ -21,6 +23,7 @@ export function IncidentActions({
   const router = useRouter();
   const [to, setTo] = useState<string>(targets[0] ?? "");
   const [reason, setReason] = useState("");
+  const [notes, setNotes] = useState("");
   const [state, setState] = useState<"idle" | "loading" | "done" | string>("idle");
 
   if (targets.length === 0) {
@@ -28,6 +31,7 @@ export function IncidentActions({
   }
 
   const needsReason = to === "reopened";
+  const needsNotes = to === "resolved";
 
   async function submit() {
     if (!to) return;
@@ -36,7 +40,11 @@ export function IncidentActions({
       const res = await fetch(`/api/system/incidents/${incidentId}/transition`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ to_status: to, ...(reason.trim() ? { reason: reason.trim() } : {}) }),
+        body: JSON.stringify({
+          to_status: to,
+          ...(reason.trim() ? { reason: reason.trim() } : {}),
+          ...(needsNotes && notes.trim() ? { resolution_notes: notes.trim() } : {}),
+        }),
       });
       const json = (await res.json().catch(() => ({}))) as { error?: string; reason?: string };
       if (res.ok) { setState("done"); router.refresh(); }
@@ -62,7 +70,7 @@ export function IncidentActions({
         </select>
         <button
           onClick={submit}
-          disabled={state === "loading" || !to || (needsReason && reason.trim().length < 3)}
+          disabled={state === "loading" || !to || (needsReason && reason.trim().length < 3) || (needsNotes && notes.trim().length < 3)}
           title={typeof state === "string" && state !== "idle" && state !== "loading" ? state : "Apply transition"}
           className="rounded-full bg-white/10 px-3 py-1 font-mono text-[11px] font-bold text-slate-200 ring-1 ring-white/15 hover:bg-white/15 disabled:opacity-50"
         >
@@ -74,6 +82,14 @@ export function IncidentActions({
           value={reason}
           onChange={(e) => setReason(e.target.value)}
           placeholder="reopen reason (required)"
+          className="w-44 rounded-lg border border-white/15 bg-black/40 px-2 py-1 font-mono text-[10px] text-slate-200 placeholder:text-slate-600"
+        />
+      )}
+      {needsNotes && (
+        <input
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder="resolution notes (required)"
           className="w-44 rounded-lg border border-white/15 bg-black/40 px-2 py-1 font-mono text-[10px] text-slate-200 placeholder:text-slate-600"
         />
       )}

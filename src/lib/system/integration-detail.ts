@@ -6,6 +6,9 @@ import {
 } from "@/lib/system/integrations";
 import { cachedProviderVerification } from "@/lib/system/deploy-verify";
 import type { DeployProviderId } from "@/lib/system/deploy-verify";
+import { kioskAdapterName } from "@/lib/system/kiosks";
+import { getGatewayAdapter } from "@/lib/kiosk/gateway-adapter";
+import { parseGithubRepo } from "@/lib/system/deploy-provider";
 
 /**
  * Per-provider operational detail for /system/integrations and
@@ -50,6 +53,23 @@ export type LastOperation = {
   at: string | null;
 };
 
+/** Kiosk-gateway adapter/certification state (kiosk_gateway provider only). */
+export type GatewayAdapterInfo = {
+  /** KIOSK_ADAPTER selection — 'none' when unset. */
+  adapter: string;
+  /**
+   * True ONLY when a registered gateway adapter reports at least one real
+   * capability. The registry (src/lib/kiosk/gateway-adapter.ts) is intentionally
+   * empty until a vendor adapter passes docs/GATEWAY-ADAPTER.md — so today this
+   * is always false and the surface is honestly 'awaiting hardware/certification'.
+   */
+  certified: boolean;
+  /** Capability names reporting true (empty = blocked/uncertified adapter). */
+  capabilities: string[];
+  /** Repo-relative certification checklist path. */
+  checklist: string;
+};
+
 export type IntegrationDetail = {
   provider: IntegrationRow;
   readAuth: {
@@ -75,6 +95,10 @@ export type IntegrationDetail = {
   requiredPermissions: string;
   /** Imperative owner checklist. */
   requiredAction: string[];
+  /** What the integration can actually do today (curated, honest). */
+  capabilities: string[];
+  /** Kiosk gateway only: adapter selection + certification state. */
+  adapter: GatewayAdapterInfo | null;
   docs: readonly { label: string; url: string }[];
   /** Credential metadata (names/purposes/rotation only — never values). */
   secrets: SecretMeta[];
@@ -93,6 +117,10 @@ type ProviderOpsMeta = {
   /** Outbound write posture — 'none' only when the integration is genuinely read-only/inbound-only. */
   writeAuth: WriteAuthStatus;
   writeNote: string;
+  /** Curated capability list shown to operators. */
+  capabilities: readonly string[];
+  /** Dynamic docs (e.g. repo-relative checklist linked via GitHub when configured). */
+  docsFn?: () => readonly { label: string; url: string }[];
 };
 
 const META: Record<string, ProviderOpsMeta> = {
@@ -113,6 +141,12 @@ const META: Record<string, ProviderOpsMeta> = {
     ],
     writeAuth: "unverified",
     writeNote: "Writes (checkout sessions, captures, refunds) only happen inside payment flows — no safe probe exists, so write stays 'unverified' until a real transaction succeeds.",
+    capabilities: [
+      "checkout sessions + manual-capture payment holds",
+      "refunds, disputes, payout/balance reads",
+      "Stripe Tax (when STRIPE_TAX_ENABLED=1 and Tax is active on the account)",
+      "signed billing webhooks → /api/webhooks/stripe",
+    ],
   },
   supabase: {
     requiredEnv: ["NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY"],
@@ -129,6 +163,11 @@ const META: Record<string, ProviderOpsMeta> = {
     ],
     writeAuth: "unverified",
     writeNote: "The service-role key grants full DB write and is exercised continuously by server routes — there is no single probe that proves write, so it stays 'unverified' by design.",
+    capabilities: [
+      "Postgres reads/writes for every server route (service role)",
+      "auth, storage, realtime channels",
+      "migration/backup/recovery surfaces under /system",
+    ],
   },
   brevo: {
     requiredEnv: ["BREVO_API_KEY"],
@@ -147,6 +186,10 @@ const META: Record<string, ProviderOpsMeta> = {
     ],
     writeAuth: "unverified",
     writeNote: "Outbound send is only exercised by real mail (helpdesk replies, receipts). Check email_outbox 'sent' rows for evidence of a successful send.",
+    capabilities: [
+      "primary transactional email (helpdesk replies, receipts, notifications)",
+      "inbound support mail → tickets (with EMAIL_INBOUND_SECRET configured)",
+    ],
   },
   resend: {
     requiredEnv: ["RESEND_API_KEY"],
@@ -165,6 +208,10 @@ const META: Record<string, ProviderOpsMeta> = {
     ],
     writeAuth: "unverified",
     writeNote: "Send-only fallback mailer; write capability is proven implicitly by email_outbox 'sent' rows, not by a dedicated probe.",
+    capabilities: [
+      "fallback transactional email when BREVO_API_KEY is unset",
+      "delivery/bounce webhooks → email_delivery_events (with RESEND_WEBHOOK_SECRET)",
+    ],
   },
   twilio: {
     requiredEnv: ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM_NUMBER"],
@@ -182,6 +229,10 @@ const META: Record<string, ProviderOpsMeta> = {
     ],
     writeAuth: "unverified",
     writeNote: "SMS sends happen inside rental/notification flows; sms_messages rows with status 'sent'/'delivered' are the evidence of a working write path.",
+    capabilities: [
+      "outbound rental/notification SMS",
+      "inbound SMS + delivery callbacks (STOP/START opt-outs handled inline)",
+    ],
   },
   openrouter: {
     requiredEnv: ["OPENROUTER_API_KEY"],
@@ -199,6 +250,10 @@ const META: Record<string, ProviderOpsMeta> = {
     ],
     writeAuth: "unverified",
     writeNote: "Chat completions are metered writes; ai_agent_runs rows with status 'ok' are the evidence a real completion succeeded.",
+    capabilities: [
+      "assistant / receptionist / triage chat completions",
+      "agent runs, approvals and knowledge surfaces under /system/ai",
+    ],
   },
   github: {
     requiredEnv: ["GITHUB_TOKEN", "GITHUB_REPO"],
@@ -217,6 +272,9 @@ const META: Record<string, ProviderOpsMeta> = {
     ],
     writeAuth: "none",
     writeNote: "Read-only client — deployments/PRs/checks are fetched, never written. Deploy triggers go through Vercel, not the GitHub API.",
+    capabilities: [
+      "repo metadata, commits, deployments, PRs and check-run reads for the deploy center",
+    ],
   },
   vercel: {
     requiredEnv: ["VERCEL_TOKEN", "VERCEL_PROJECT_ID"],
@@ -235,21 +293,81 @@ const META: Record<string, ProviderOpsMeta> = {
     ],
     writeAuth: "unverified",
     writeNote: "Deployment create/promote/cancel calls exist but are only exercised by approved deployment requests — verification is read-only.",
+    capabilities: [
+      "deployment list/events reads for the deploy center",
+      "deployment create/promote/cancel on approved requests (write unverified until first real deploy)",
+    ],
   },
   kiosk_gateway: {
     requiredEnv: ["KIOSK_INGEST_SECRET"],
+    optionalEnv: ["KIOSK_ADAPTER", "DEVICE_CREDENTIAL_KEK", "DEVICE_CREDENTIAL_KEK_VERSION", "DEVICE_CREDENTIAL_KEK_PREVIOUS"],
     requiredPermissions:
-      "Shared bearer secret (KIOSK_INGEST_SECRET) presented by kiosks/gateways on /api/devices/events and kiosk manifest/playback. Per-device HMAC credentials (DEVICE_CREDENTIAL_KEK chain) layer on top for device auth.",
+      "Shared bearer secret (KIOSK_INGEST_SECRET) presented by kiosks/gateways on /api/devices/events and kiosk manifest/playback. Per-device HMAC credentials (DEVICE_CREDENTIAL_KEK chain) layer on top for device auth. Outbound control additionally requires a CERTIFIED vendor adapter selected via KIOSK_ADAPTER — none is registered today.",
     requiredAction: [
       "Generate a random secret and set KIOSK_INGEST_SECRET in Vercel.",
       "Provision the same secret to every kiosk/gateway — devices presenting the old secret are rejected until updated.",
       "Confirm device_events / system_device_messages rows appear after devices reconnect (health check counts last-24h events).",
+      "For outbound control (commands/firmware): select KIOSK_ADAPTER only after the vendor adapter passes the certification checklist in docs/GATEWAY-ADAPTER.md — the adapter registry is intentionally empty until then.",
+      "KEK rotation: follow the runbook in SECRET_REGISTRY (DEVICE_CREDENTIAL_KEK → PREVIOUS/VERSION overlap → re-encrypt → unset PREVIOUS).",
     ],
-    // Internal hardware surface — no public vendor docs exist; the API route
-    // and src/lib/system/device-auth.ts are the authoritative references.
+    // No public vendor docs exist; link the repo checklist via GitHub when the
+    // repo is configured, otherwise the path is still named in requiredAction.
     docs: [],
+    docsFn: () => {
+      const r = parseGithubRepo();
+      return r
+        ? [{ label: "Gateway adapter certification checklist (docs/GATEWAY-ADAPTER.md)", url: `https://github.com/${r.owner}/${r.repo}/blob/HEAD/docs/GATEWAY-ADAPTER.md` }]
+        : [];
+    },
     writeAuth: "none",
-    writeNote: "Inbound-only surface — devices write to us; there is no outbound provider API to authorize.",
+    writeNote: "Inbound ingest is device→server. Outbound device control exists in code but is BLOCKED until a certified KIOSK_ADAPTER lands — see the adapter block below.",
+    capabilities: [
+      "device event ingest + kiosk manifest/playback (Bearer KIOSK_INGEST_SECRET)",
+      "per-device HMAC credential auth (DEVICE_CREDENTIAL_KEK chain)",
+      "outbound commands/firmware — blocked: no certified vendor adapter registered",
+    ],
+  },
+  analytics: {
+    requiredEnv: [],
+    requiredPermissions:
+      "None server-side — NEXT_PUBLIC_* values are public by design and ship in the client bundle. Mapbox tokens should carry URL restrictions in the Mapbox dashboard; GA4/GTM need no secret at all.",
+    requiredAction: [
+      "Set whichever of NEXT_PUBLIC_GTM_ID / NEXT_PUBLIC_GA_MEASUREMENT_ID / NEXT_PUBLIC_MAPBOX_TOKEN apply — each surface is independent; leaving all unset disables it honestly.",
+      "Verify in the browser: GTM Preview for the container, GA4 Realtime for the measurement ID, a real map render for Mapbox (locator/network pages).",
+      "There is no server-side probe — env presence is the only server-visible signal; 'unverified' here is expected, not a failure.",
+    ],
+    docs: [
+      { label: "Google Tag Manager", url: "https://developers.google.com/tag-platform/tag-manager" },
+      { label: "GA4 measurement ID", url: "https://support.google.com/analytics/answer/12270356" },
+      { label: "Mapbox access tokens & URL restrictions", url: "https://docs.mapbox.com/help/glossary/access-token/" },
+    ],
+    writeAuth: "none",
+    writeNote: "Public client-side configuration — the server only reports presence; all real usage happens in the browser.",
+    capabilities: [
+      "consent-gated page-view/event tracking via GTM/GA4",
+      "Mapbox locator + network map rendering",
+    ],
+  },
+  alerts: {
+    requiredEnv: ["ALERT_WEBHOOK_URL"],
+    requiredPermissions:
+      "Outbound webhook endpoint accepting a JSON POST ({ text, zapnivo: { severity, key, title, body, ts } }) — Slack incoming webhook or PagerDuty Events API style. No inbound auth exists; treat the URL itself as a secret (it embeds the provider credential).",
+    requiredAction: [
+      "Create an alert destination (Slack workflow webhook / PagerDuty integration) and set ALERT_WEBHOOK_URL (https).",
+      "Alerts fire only on NEW warning/critical error_issues fingerprints plus selected sweep detections — there is no test button; trigger a real warning or wait for the next alert sweep.",
+      "Run the health check — it reads the latest external_alert_* row in app_logs (delivery evidence, never a live POST from this page).",
+      "Optional: ALERT_COOLDOWN_MS tunes per-key storm suppression (default 15 min).",
+    ],
+    docs: [
+      { label: "Slack incoming webhooks", url: "https://docs.slack.dev/messaging/sending-messages-using-incoming-webhooks" },
+      { label: "PagerDuty Events API v2", url: "https://developer.pagerduty.com/docs/events-api-v2/overview/" },
+    ],
+    writeAuth: "none",
+    writeNote: "Outbound-only — the app POSTs alerts to the configured URL; nothing calls back in.",
+    capabilities: [
+      "push alerts for new warning/critical issues — survives mail/API outages",
+      "per-key cooldown storm suppression",
+    ],
   },
   uptime: {
     requiredEnv: ["CRON_SECRET"],
@@ -265,6 +383,10 @@ const META: Record<string, ProviderOpsMeta> = {
     ],
     writeAuth: "none",
     writeNote: "Internal observability — no external provider credentials involved.",
+    capabilities: [
+      "synthetic uptime probes → uptime_checks via /api/cron/uptime",
+      "cron run telemetry feeding the status board and alert sweep",
+    ],
   },
 };
 
@@ -404,6 +526,7 @@ const OP_SPECS: Partial<Record<string, OpSpec>> = {
   openrouter: { label: "last successful AI agent run", table: "ai_agent_runs", column: "created_at", apply: (q) => q.eq("status", "ok") },
   kiosk_gateway: { label: "last accepted device message", table: "system_device_messages", column: "received_at", apply: (q) => q.eq("result", "ok") },
   uptime: { label: "last uptime probe", table: "uptime_checks", column: "checked_at" },
+  alerts: { label: "last external alert delivery attempt", table: "app_logs", column: "ts", apply: (q) => q.in("message", ["external_alert_delivered", "external_alert_failed"]) },
 };
 
 /* ── Detail assembly ───────────────────────────────────────────────────── */
@@ -523,8 +646,30 @@ export async function getIntegrationDetail(
       s.provider === id ||
       (id === "uptime" && s.envVar === "CRON_SECRET") ||
       (id === "brevo" && s.envVar === "EMAIL_INBOUND_SECRET") ||
-      ((id === "brevo" || id === "resend") && s.envVar === "SUPPORT_FROM_EMAIL"),
+      ((id === "brevo" || id === "resend") && s.envVar === "SUPPORT_FROM_EMAIL") ||
+      // Device credential KEK chain is registered under 'platform' but is the
+      // kiosk gateway's rotation surface — surface it on this provider too.
+      (id === "kiosk_gateway" && s.envVar.startsWith("DEVICE_CREDENTIAL_KEK")),
   );
+
+  // Kiosk gateway only: honest adapter/certification state. 'certified' is
+  // true ONLY when a registered adapter reports real capabilities — the
+  // registry is intentionally empty until docs/GATEWAY-ADAPTER.md is satisfied.
+  const adapter: GatewayAdapterInfo | null =
+    id === "kiosk_gateway"
+      ? (() => {
+          const name = kioskAdapterName();
+          try {
+            const caps = getGatewayAdapter().capabilities();
+            const on = Object.entries(caps)
+              .filter(([, v]) => v === true)
+              .map(([k]) => k);
+            return { adapter: name, certified: on.length > 0, capabilities: on, checklist: "docs/GATEWAY-ADAPTER.md" };
+          } catch {
+            return { adapter: name, certified: false, capabilities: [], checklist: "docs/GATEWAY-ADAPTER.md" };
+          }
+        })()
+      : null;
 
   return {
     provider: row,
@@ -542,7 +687,9 @@ export async function getIntegrationDetail(
     optionalMissing,
     requiredPermissions: meta.requiredPermissions,
     requiredAction: meta.requiredAction,
-    docs: meta.docs,
+    capabilities: [...meta.capabilities],
+    adapter,
+    docs: meta.docsFn ? meta.docsFn() : meta.docs,
     secrets,
   };
 }

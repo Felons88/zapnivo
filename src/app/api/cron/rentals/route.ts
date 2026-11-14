@@ -7,6 +7,7 @@ import { runSmsSweep } from "@/lib/notifications";
 import { generateLedgers, previousPeriod } from "@/lib/ledgers";
 import { expireSweep } from "@/lib/monetization/entitlements";
 import { serviceClient } from "@/lib/supabase";
+import { pausedJobSet, recordPausedRun } from "@/lib/system/job-controls";
 
 /**
  * Daily sweep: rental deadline reminders + non-return notices, offline/low-battery fleet alerts,
@@ -24,17 +25,22 @@ export async function GET(req: Request) {
   if (!(await authorized(req))) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const db = serviceClient();
   if (!db) return NextResponse.json({ error: "Backend not configured" }, { status: 503 });
-  const rentals = await recordCron(db, "rentals", async () => ({ ...(await runRentalSweep()) }));
-  const sms = await recordCron(db, "sms", async () => ({ ...(await runSmsSweep(db)) }));
-  const fleet = await recordCron(db, "fleet", async () => ({ ...(await runFleetSweep(db)) }));
+  // Operator pause (system console → jobs.paused): paused sub-jobs record a
+  // skipped cron_runs row instead of running. Fail-open when unset.
+  const paused = await pausedJobSet(db);
+  const maybeCron = (job: string, run: () => Promise<Record<string, unknown>>) =>
+    paused.has(job) ? recordPausedRun(db, job) : recordCron(db, job, run);
+  const rentals = await maybeCron("rentals", async () => ({ ...(await runRentalSweep()) }));
+  const sms = await maybeCron("sms", async () => ({ ...(await runSmsSweep(db)) }));
+  const fleet = await maybeCron("fleet", async () => ({ ...(await runFleetSweep(db)) }));
   const first = new Date().getUTCDate() === 1;
-  const entitlements = await recordCron(db, "entitlements", async () => {
+  const entitlements = await maybeCron("entitlements", async () => {
     const { expireSweep } = await import("@/lib/monetization/entitlements");
     const { releaseOrphanedReservations, expireStaleAuthorizedRentals } = await import("@/lib/monetization/credits");
     const stale = await expireStaleAuthorizedRentals(db);
     return { expired: await expireSweep(db), released: await releaseOrphanedReservations(db), stale };
   });
-  const ledgers = first ? await recordCron(db, "ledgers", async () => { const r = await generateLedgers(db, previousPeriod()); return { created: r.created.length, noRate: r.skippedNoRate.length, locked: r.skippedLocked.length }; }) : null;
+  const ledgers = first ? await maybeCron("ledgers", async () => { const r = await generateLedgers(db, previousPeriod()); return { created: r.created.length, noRate: r.skippedNoRate.length, locked: r.skippedLocked.length }; }) : null;
   const ok = rentals.ok && fleet.ok && sms.ok && entitlements.ok && (ledgers?.ok ?? true);
   return NextResponse.json({ ok, rentals: rentals.detail, sms: sms.detail, fleet: fleet.detail, entitlements: entitlements.detail, ledgers: ledgers?.detail ?? "not first of month" }, { status: ok ? 200 : 500 });
 }

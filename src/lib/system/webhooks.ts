@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { scrub } from "@/lib/observability";
 import { assertApprovedOrRequest, systemAudit, type SystemActor } from "./audit";
+import { inboundJobPayloadSummary, relatedBusinessObject, signatureVerification } from "./webhook-inspector";
 
 /**
  * Webhook/event-source aggregation + inspector + replay for the system console.
@@ -161,8 +162,9 @@ const INSPECT_SELECT: Record<WebhookSourceId, { cols: string; map: (r: Record<st
     }),
   },
   inbound_jobs: {
-    cols: "id,kind,status,attempts,max_attempts,run_after,last_error,message_id,created_at,processed_at",
-    // payload jsonb is deliberately not selected (may contain email bodies/PII).
+    // payload is selected ONLY so relatedObject/payloadPreview can be derived
+    // server-side — the raw payload is never returned to the client.
+    cols: "id,kind,status,attempts,max_attempts,run_after,last_error,message_id,created_at,processed_at,payload",
     map: (r) => ({
       id: r.id, kind: r.kind, status: r.status, attempts: r.attempts, maxAttempts: r.max_attempts,
       runAfter: r.run_after, lastError: scrub(String(r.last_error ?? ""), 300) || null,
@@ -193,21 +195,73 @@ export async function inspectWebhookEvent(db: SupabaseClient, source: WebhookSou
   const { data, error } = await db.from(source).select(spec.cols).eq("id", rowId).maybeSingle();
   if (error) return { ok: false, status: 500, error: error.message };
   if (!data) return { ok: false, status: 404, error: "Event not found" };
-  return { ok: true, event: { source, sanitized: true, ...spec.map(data as unknown as Record<string, unknown>) } };
+  const row = data as unknown as Record<string, unknown>;
+  const event: Record<string, unknown> = { source, sanitized: true, ...spec.map(row) };
+  // Enrichment (Phase 4.4): verification status, derived business object,
+  // sanitized payload preview (inbound_jobs only), retry eligibility.
+  event.verification = signatureVerification(source, row);
+  const related = relatedBusinessObject(source, row, source === "inbound_jobs" ? row.payload : undefined);
+  if (related) event.relatedObject = related;
+  if (source === "inbound_jobs") event.payloadPreview = inboundJobPayloadSummary(row.payload);
+  event.replay = replayEligibility(source, row);
+  return { ok: true, event };
+}
+
+/** Replay eligibility mirrored from replayWebhookEvent — keep in sync. */
+export function replayEligibility(
+  source: WebhookSourceId,
+  row: Record<string, unknown>,
+): { eligible: boolean; reason: string } {
+  if (source === "stripe_events") {
+    return { eligible: false, reason: "payment/financial event — replay forbidden (HTTP 403); re-send from the provider dashboard" };
+  }
+  if (source !== "inbound_jobs") {
+    return { eligible: false, reason: `${source} rows cannot be replayed — no stored payload and/or non-idempotent handler` };
+  }
+  if (row.kind && row.kind !== "email_message") {
+    return { eligible: false, reason: `job kind '${String(row.kind)}' is not replayable — only email_message jobs are` };
+  }
+  if (row.status !== "failed" && row.status !== "dead") {
+    return { eligible: false, reason: `job status is '${String(row.status)}' — only failed/dead jobs can be replayed` };
+  }
+  return { eligible: true, reason: "requeue creates a NEW inbound_jobs attempt; the worker dedupes on message_id/content hash" };
 }
 
 /* ── Replay ────────────────────────────────────────────────────────────── */
 
 export type ReplayResult =
-  | { ok: true; status: "requeued"; jobId: string; changeRequestId: string | null }
+  | { ok: true; status: "requeued"; jobId: string; replayOf: string; changeRequestId: string | null }
   | { ok: false; status: number; error: string; reason?: string };
 
+/** Payment/financial sources are NEVER replayable — explicit 403, not 409. */
+const FINANCIAL_SOURCES: readonly string[] = ["stripe_events"];
+/** Only this inbound_jobs kind is replayable (whitelist, not blacklist). */
+const REPLAYABLE_JOB_KIND = "email_message";
+/** Max replay attempts spawned per original job — bounds replay storms. */
+export const MAX_REPLAYS_PER_JOB = 5;
+
 /**
- * Replays a webhook-sourced row. ONLY inbound_jobs failed/dead rows are
- * replayable — the worker claims them with a conditional update and dedupes on
- * message_id/dedupe_hash, so requeueing cannot double-process. Everything else
- * (stripe_events, inbound_emails, sms_messages, kiosk_events) has no safe
- * server-side replay path → 409 replay_unsupported.
+ * Replays a webhook-sourced row by creating a NEW inbound_jobs attempt —
+ * the original row is NEVER mutated (it stays failed/dead as the audit
+ * trail of the first failure).
+ *
+ * Hard rules (Phase 4.4):
+ *  - stripe_events (payment/financial) → 403 forbidden_financial. Financial
+ *    events have no stored payload and fulfillment is not blindly re-runnable;
+ *    re-send from the provider dashboard instead.
+ *  - Every other non-inbound_jobs source → 409 replay_unsupported.
+ *  - inbound_jobs: only kind='email_message' in failed/dead state.
+ *  - The stored payload is NOT executed here — replay only re-enqueues. The
+ *    /api/cron/inbound worker re-runs processInboundMail, which re-checks
+ *    dmarc=fail quarantine, auto-submitted loop prevention, reply-token
+ *    verification, and content-hash/message_id dedupe. A forged or stale
+ *    payload therefore cannot bypass the real processor's checks.
+ *  - Each replay inserts a new row with message_id `replay:<origId>:<n>`
+ *    (the payload keeps the original Message-ID so processor-level dedupe
+ *    still applies) and payload.replayedFrom/replayAttempt provenance.
+ *  - Audited as webhook.replayed with actor + justification; breakglass and
+ *    high/critical-risk callers still go through assertApprovedOrRequest.
+ *  - Route-level rate limit: systemApiGuard(system.webhooks.retry, 20/min).
  */
 export async function replayWebhookEvent(
   db: SupabaseClient,
@@ -216,6 +270,13 @@ export async function replayWebhookEvent(
   rowId: string,
   justification?: string,
 ): Promise<ReplayResult> {
+  if (FINANCIAL_SOURCES.includes(source)) {
+    await systemAudit(db, {
+      actor, action: "webhook.replay_denied", resource: `webhook:${source}:${rowId}`,
+      detail: { source, reason: "financial/payment event — replay forbidden" },
+    });
+    return { ok: false, status: 403, error: "forbidden_financial", reason: "Payment/financial webhook events are never replayable — they have no stored payload and fulfillment is not idempotent. Re-send the event from the Stripe dashboard if needed." };
+  }
   if (source !== "inbound_jobs") {
     await systemAudit(db, {
       actor, action: "webhook.replay_unsupported", resource: `webhook:${source}:${rowId}`,
@@ -226,21 +287,27 @@ export async function replayWebhookEvent(
 
   const { data: job, error } = await db
     .from("inbound_jobs")
-    .select("id,status,attempts")
+    .select("id,kind,status,attempts,max_attempts,payload")
     .eq("id", rowId)
     .maybeSingle();
   if (error) return { ok: false, status: 500, error: error.message };
   if (!job) return { ok: false, status: 404, error: "Job not found" };
-  const j = job as { id: string; status: string; attempts: number };
+  const j = job as { id: string; kind: string | null; status: string; attempts: number; max_attempts: number | null; payload: unknown };
+  if (j.kind && j.kind !== REPLAYABLE_JOB_KIND) {
+    return { ok: false, status: 409, error: "kind_not_replayable", reason: `Job kind '${j.kind}' is not replayable — only ${REPLAYABLE_JOB_KIND} jobs are whitelisted.` };
+  }
   if (j.status !== "failed" && j.status !== "dead") {
-    return { ok: false, status: 409, error: "not_replayable", reason: `Job status is "${j.status}" — only failed/dead jobs can be requeued.` };
+    return { ok: false, status: 409, error: "not_replayable", reason: `Job status is "${j.status}" — only failed/dead jobs can be replayed.` };
+  }
+  if (!j.payload || typeof j.payload !== "object" || Array.isArray(j.payload)) {
+    return { ok: false, status: 409, error: "no_payload", reason: "Job has no stored payload to re-enqueue." };
   }
 
   const action = `webhook.replay:inbound_jobs:${j.id}`;
   const approval = await assertApprovedOrRequest(db, actor, {
     action,
     risk: "medium",
-    justification: justification ?? `Requeue inbound email job ${j.id} (status ${j.status}, ${j.attempts} attempts) — worker dedupes on message_id.`,
+    justification: justification ?? `Replay inbound email job ${j.id} (status ${j.status}, ${j.attempts} attempts) as a NEW queue attempt — worker dedupes on message_id/content hash.`,
   });
   if (approval.status === "pending") {
     await systemAudit(db, { actor, action: "webhook.replay_pending", resource: `inbound_jobs:${j.id}`, detail: { changeRequestId: approval.changeRequestId } });
@@ -248,19 +315,64 @@ export async function replayWebhookEvent(
   }
   if (approval.status === "error") return { ok: false, status: 500, error: approval.error };
 
-  const { data: updated, error: upErr } = await db
+  // Count prior replay children (message_id `replay:<origId>:<n>`) and cap.
+  const prefix = `replay:${j.id}:`;
+  const { data: prior, error: countErr } = await db
     .from("inbound_jobs")
-    .update({ status: "queued", attempts: 0, run_after: new Date().toISOString(), last_error: null, processed_at: null })
-    .eq("id", j.id)
-    .eq("status", j.status) // optimistic guard: only requeue if still in the same state
     .select("id")
-    .maybeSingle();
-  if (upErr) return { ok: false, status: 500, error: upErr.message };
-  if (!updated) return { ok: false, status: 409, error: "state_changed", reason: "Job status changed concurrently — refresh and retry." };
+    .like("message_id", `${prefix}%`)
+    .limit(MAX_REPLAYS_PER_JOB + 1);
+  if (countErr) return { ok: false, status: 500, error: countErr.message };
+  const existing = (prior ?? []).length;
+  if (existing >= MAX_REPLAYS_PER_JOB) {
+    await systemAudit(db, {
+      actor, action: "webhook.replay_denied", resource: `inbound_jobs:${j.id}`,
+      detail: { reason: "replay_limit", attempts: existing },
+    });
+    return { ok: false, status: 409, error: "replay_limit", reason: `Job already has ${existing} replay attempts (max ${MAX_REPLAYS_PER_JOB}). Investigate the root cause instead of replaying again.` };
+  }
+
+  // Insert the NEW attempt row. The unique message_id suffix makes concurrent
+  // replays collide safely — on 23505 we bump the suffix and retry once.
+  const payload = {
+    ...(j.payload as Record<string, unknown>),
+    replayedFrom: j.id,
+    replayAttempt: existing + 1,
+  };
+  let newJobId: string | null = null;
+  let lastErr = "insert failed";
+  for (let n = existing + 1; n <= existing + 2 && !newJobId; n++) {
+    const { data: inserted, error: insErr } = await db
+      .from("inbound_jobs")
+      .insert({
+        kind: REPLAYABLE_JOB_KIND,
+        payload,
+        status: "queued",
+        attempts: 0,
+        max_attempts: j.max_attempts ?? 5,
+        run_after: new Date().toISOString(),
+        message_id: `${prefix}${n}`,
+        dedupe_hash: null,
+      })
+      .select("id")
+      .single();
+    if (!insErr && inserted?.id) {
+      newJobId = (inserted as { id: string }).id;
+      break;
+    }
+    lastErr = insErr?.message ?? "insert failed";
+    if (insErr?.code !== "23505") break; // only unique-collision is retryable
+  }
+  if (!newJobId) return { ok: false, status: 500, error: lastErr };
 
   await systemAudit(db, {
-    actor, action: "webhook.replayed", resource: `inbound_jobs:${j.id}`,
-    detail: { previousStatus: j.status, attempts: j.attempts, changeRequestId: approval.changeRequestId },
+    actor, action: "webhook.replayed", resource: `inbound_jobs:${newJobId}`,
+    detail: {
+      replayOf: j.id, replayAttempt: existing + 1, newJobId,
+      previousStatus: j.status, previousAttempts: j.attempts,
+      justification: justification?.slice(0, 500) ?? null,
+      changeRequestId: approval.changeRequestId,
+    },
   });
-  return { ok: true, status: "requeued", jobId: j.id, changeRequestId: approval.changeRequestId };
+  return { ok: true, status: "requeued", jobId: newJobId, replayOf: j.id, changeRequestId: approval.changeRequestId };
 }

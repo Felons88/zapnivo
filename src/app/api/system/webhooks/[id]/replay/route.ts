@@ -6,10 +6,13 @@ import { replayWebhookEvent, WEBHOOK_SOURCES, type WebhookSourceId } from "@/lib
 const replaySchema = z.object({ justification: z.string().max(2000).optional() });
 
 /**
- * POST /api/system/webhooks/[id]/replay — requeue a failed/dead inbound_jobs row.
- * Perm: system.webhooks.retry. Only inbound_jobs is replayable (worker dedupes);
- * all other sources return 409 replay_unsupported. Breakglass/high-risk callers
- * get a pending change request instead of execution.
+ * POST /api/system/webhooks/[id]/replay — replay a failed/dead inbound_jobs row
+ * by inserting a NEW queued attempt (the original row is never mutated; the
+ * worker re-processes through the real pipeline with dedupe). Perm:
+ * system.webhooks.retry, rate-limited 20/min. stripe_events → 403
+ * forbidden_financial; all other sources → 409 replay_unsupported;
+ * non-email_message kinds → 409 kind_not_replayable; >5 replays → 409
+ * replay_limit. Breakglass/high-risk callers get a pending change request.
  */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const g = await systemApiGuard("system.webhooks.retry", { limit: 20 });
@@ -32,5 +35,5 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const status = result.status === 202 ? 202 : result.status;
     return NextResponse.json({ error: result.error, reason: "reason" in result ? result.reason : undefined }, { status });
   }
-  return NextResponse.json({ ok: true, status: result.status, jobId: result.jobId, changeRequestId: result.changeRequestId });
+  return NextResponse.json({ ok: true, status: result.status, jobId: result.jobId, replayOf: result.replayOf, changeRequestId: result.changeRequestId });
 }

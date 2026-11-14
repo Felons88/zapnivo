@@ -28,7 +28,7 @@ export type HealthStatus = IntegrationStatus | "requires_credentials" | "not_ver
 export type IntegrationProvider = {
   id: string;
   name: string;
-  category: "payments" | "data" | "messaging" | "ai" | "scm" | "hosting" | "hardware";
+  category: "payments" | "data" | "messaging" | "ai" | "scm" | "hosting" | "hardware" | "analytics";
   purpose: string;
   /** Env var NAMES that gate this provider (values are never read into responses). */
   envVars: readonly string[];
@@ -134,6 +134,42 @@ export const INTEGRATION_PROVIDERS: readonly IntegrationProvider[] = [
     configured: () => env("KIOSK_INGEST_SECRET"),
     mode: () => (env("KIOSK_INGEST_SECRET") ? "ingest_secret" : "none"),
     webhook: () => (env("KIOSK_INGEST_SECRET") ? "device ingest bearer configured" : null),
+  },
+  {
+    id: "analytics",
+    name: "Analytics & maps (public)",
+    category: "analytics",
+    purpose: "Browser-side GTM container, GA4 measurement ID and Mapbox token (src/components/Analytics.tsx, Locator.tsx, NetworkMap.tsx). NEXT_PUBLIC_* values are public by design — shipped to the browser, domain-restricted where the vendor supports it; there is NO server secret to verify.",
+    envVars: ["NEXT_PUBLIC_GTM_ID", "NEXT_PUBLIC_GA_MEASUREMENT_ID", "NEXT_PUBLIC_MAPBOX_TOKEN"],
+    configured: () =>
+      env("NEXT_PUBLIC_GTM_ID") || env("NEXT_PUBLIC_GA_MEASUREMENT_ID") || env("NEXT_PUBLIC_MAPBOX_TOKEN"),
+    mode: () => {
+      const set = [
+        env("NEXT_PUBLIC_GTM_ID") ? "gtm" : null,
+        env("NEXT_PUBLIC_GA_MEASUREMENT_ID") ? "ga4" : null,
+        env("NEXT_PUBLIC_MAPBOX_TOKEN") ? "mapbox" : null,
+      ].filter((x): x is string => Boolean(x));
+      return set.length === 0 ? "none" : `public:${set.join("+")}`;
+    },
+    webhook: () => null,
+  },
+  {
+    id: "alerts",
+    name: "Alerting webhook",
+    category: "messaging",
+    purpose: "Outbound push alerting to ALERT_WEBHOOK_URL (Slack/PagerDuty-style JSON POST) fired by reportError/alertNewIssue via src/lib/alerts.ts — the fallback channel that survives mail/API outages. Delivery is logged to app_logs (external_alert_delivered/failed).",
+    envVars: ["ALERT_WEBHOOK_URL"],
+    configured: () => env("ALERT_WEBHOOK_URL"),
+    // Scheme only — the URL path can embed provider tokens; never surface it.
+    mode: () => {
+      const u = process.env.ALERT_WEBHOOK_URL;
+      if (!u) return "none";
+      return u.startsWith("https://") ? "https" : "non-https";
+    },
+    webhook: () =>
+      env("ALERT_WEBHOOK_URL")
+        ? "outbound push alerts — deliveries logged to app_logs; no inbound surface"
+        : "ALERT_WEBHOOK_URL not set — external alerting disabled (in-app incidents + staff email still run)",
   },
   {
     id: "uptime",
@@ -387,6 +423,35 @@ export async function checkIntegrationHealth(id: string, db: SupabaseClient | nu
       });
       return { ...r, provider: id, checkedAt };
     }
+    case "analytics": {
+      // Public client-side config — there is no server credential to probe.
+      // Presence is already reported via envPresence; verification happens in
+      // the browser (GTM Preview / GA4 Realtime / map render).
+      const set = ["NEXT_PUBLIC_GTM_ID", "NEXT_PUBLIC_GA_MEASUREMENT_ID", "NEXT_PUBLIC_MAPBOX_TOKEN"].filter(env);
+      return done("unknown",
+        `public client config present (${set.join(", ") || "none"}) — no server-side probe exists; verify the container/measurement/map fires in the browser`);
+    }
+    case "alerts": {
+      if (!db) return done("unknown", "service client unavailable — cannot read app_logs");
+      const { data, error } = await db
+        .from("app_logs")
+        .select("ts,message")
+        .in("message", ["external_alert_delivered", "external_alert_failed"])
+        .order("ts", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) return done("unknown", "app_logs not queryable");
+      const row = data as { ts?: string; message?: string } | null;
+      if (!row?.message) {
+        return done("unknown",
+          "ALERT_WEBHOOK_URL set but no alert has ever been emitted — endpoint delivery is unverified (alerts only fire on new warning/critical issues)");
+      }
+      const ageMin = Math.max(0, Math.round((Date.now() - new Date(row.ts ?? 0).getTime()) / 60_000));
+      if (row.message === "external_alert_failed") {
+        return done("degraded", `latest external alert FAILED ${ageMin}m ago — check ALERT_WEBHOOK_URL reachability`);
+      }
+      return done("operational", `latest external alert delivered ${ageMin}m ago (HTTP ok logged to app_logs)`);
+    }
     case "uptime": {
       if (!db) return done("unknown", "service client unavailable — cannot read uptime_checks");
       const dayAgo = new Date(Date.now() - 24 * 3600_000).toISOString();
@@ -442,7 +507,10 @@ export const SECRET_REGISTRY: readonly SecretMeta[] = [
   { provider: "platform", envVar: "CRON_SECRET", purpose: "Bearer secret authorizing /api/cron/* jobs", rotation: "Generate a new random secret, update Vercel env and any external scheduler (cron-job.org/UptimeRobot) that calls the routes, redeploy.", configured: has("CRON_SECRET") },
   { provider: "platform", envVar: "HELPDESK_SECRET", purpose: "Signs customer helpdesk thread access tokens", rotation: "Generate a new random secret, update Vercel env, redeploy — outstanding customer magic links invalidate (they re-request access).", configured: has("HELPDESK_SECRET") },
   { provider: "platform", envVar: "EMAIL_INBOUND_SECRET", purpose: "Shared secret for inbound email webhook (Brevo)", rotation: "Generate a new random secret, update BOTH Vercel env and the Brevo inbound webhook config, redeploy.", configured: has("EMAIL_INBOUND_SECRET") },
-  { provider: "platform", envVar: "ALERT_WEBHOOK_URL", purpose: "External alerting webhook (Slack/PagerDuty-style)", rotation: "Rotate the URL in the alerting provider dashboard, update Vercel env, redeploy.", configured: has("ALERT_WEBHOOK_URL") },
+  { provider: "alerts", envVar: "ALERT_WEBHOOK_URL", purpose: "External alerting webhook (Slack/PagerDuty-style JSON POST)", rotation: "Rotate the URL in the alerting provider dashboard, update Vercel env, redeploy. Deliveries are logged to app_logs (external_alert_*).", configured: has("ALERT_WEBHOOK_URL") },
+  { provider: "analytics", envVar: "NEXT_PUBLIC_GTM_ID", purpose: "Google Tag Manager container id (public, browser-exposed by design)", rotation: "Not a secret — public container id compiled into the client bundle; change the env var and redeploy.", configured: has("NEXT_PUBLIC_GTM_ID") },
+  { provider: "analytics", envVar: "NEXT_PUBLIC_GA_MEASUREMENT_ID", purpose: "GA4 measurement id (public, browser-exposed by design)", rotation: "Not a secret — public measurement id; change the env var and redeploy.", configured: has("NEXT_PUBLIC_GA_MEASUREMENT_ID") },
+  { provider: "analytics", envVar: "NEXT_PUBLIC_MAPBOX_TOKEN", purpose: "Mapbox public token for locator/network maps (browser-exposed; restrict by URL in the Mapbox dashboard)", rotation: "Roll the token in the Mapbox dashboard (keep URL restrictions), update Vercel env, redeploy, revoke the old token.", configured: has("NEXT_PUBLIC_MAPBOX_TOKEN") },
   { provider: "platform", envVar: "AUTH_ANCHOR_SECRET", purpose: "Secret anchoring auth/session flows", rotation: "Generate a new random secret, update Vercel env, redeploy — may sign out active sessions; coordinate with staff.", configured: has("AUTH_ANCHOR_SECRET") },
   { provider: "platform", envVar: "DEVICE_CREDENTIAL_KEK", purpose: "AES-256 key-encryption-key wrapping system_devices credential ciphertext (device-auth)", rotation: "Generate a new 32-byte KEK (64 hex chars). Set DEVICE_CREDENTIAL_KEK_PREVIOUS=<old>, DEVICE_CREDENTIAL_KEK=<new>, DEVICE_CREDENTIAL_KEK_VERSION=<new tag>, redeploy, run credential/reencrypt per device, then unset PREVIOUS. Runbook: /system/security/readiness.", configured: has("DEVICE_CREDENTIAL_KEK") },
   { provider: "platform", envVar: "DEVICE_CREDENTIAL_KEK_PREVIOUS", purpose: "Previous KEK kept only during rotation so staged ciphertexts still decrypt", rotation: "Unset once every device reports the new key_version in telemetry. Set only as part of the KEK rotation runbook (see DEVICE_CREDENTIAL_KEK).", configured: has("DEVICE_CREDENTIAL_KEK_PREVIOUS") },

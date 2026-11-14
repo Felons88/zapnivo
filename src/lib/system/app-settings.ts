@@ -95,6 +95,14 @@ export const APP_SETTING_REGISTRY: readonly AppSettingDef[] = [
     default: false,
     description: "Analytics collection toggle. NOTE: the analytics pipeline is additionally env-gated; this records intended state + audit.",
   },
+  {
+    key: "jobs.paused",
+    risk: "high",
+    kind: "string",
+    maxLength: 500,
+    default: "",
+    description: "Comma-separated vercel.json cron job names paused by operators (Phase 4.4). HIGH RISK: step-up elevation required; cron routes check this each run and record a skipped cron_runs row. Financial/settlement jobs are denylisted in code and can never be paused.",
+  },
 ];
 
 const BY_KEY = new Map(APP_SETTING_REGISTRY.map((d) => [d.key, d]));

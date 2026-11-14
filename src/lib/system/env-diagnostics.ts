@@ -120,11 +120,22 @@ const GROUPS: readonly GroupSpec[] = [
     ],
   },
   {
+    id: "analytics",
+    label: "Analytics & maps (public)",
+    description: "Browser-side GTM/GA4/Mapbox config — NEXT_PUBLIC_* values are public by design; each surface is independent.",
+    vars: [
+      { name: "NEXT_PUBLIC_GTM_ID", optional: true, features: ["Google Tag Manager container (consent-gated)"] },
+      { name: "NEXT_PUBLIC_GA_MEASUREMENT_ID", optional: true, features: ["GA4 measurement (consent-gated)"] },
+      { name: "NEXT_PUBLIC_MAPBOX_TOKEN", optional: true, features: ["locator + network map rendering (URL-restrict in Mapbox dashboard)"] },
+    ],
+  },
+  {
     id: "alerts",
     label: "Alerting",
     description: "Outbound staff/external notifications when observability rules fire.",
     vars: [
       { name: "ALERT_WEBHOOK_URL", secret: true, optional: true, features: ["external alert webhook (Slack/PagerDuty-style) on critical issues"] },
+      { name: "ALERT_COOLDOWN_MS", optional: true, features: ["per-key alert storm suppression window (default 15 min)"] },
     ],
   },
   {

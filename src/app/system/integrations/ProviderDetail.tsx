@@ -118,6 +118,36 @@ export function ProviderDetail({ detail }: { detail: IntegrationDetail }) {
           <p className="mt-1 text-slate-400">{detail.writeAuth.note}</p>
         </Section>
 
+        {/* Capabilities */}
+        <Section title="available capabilities">
+          {detail.capabilities.length === 0 ? (
+            <p className="text-slate-500">none declared</p>
+          ) : (
+            <ul className="list-disc space-y-1 pl-4">
+              {detail.capabilities.map((c, i) => (
+                <li key={i}>{c}</li>
+              ))}
+            </ul>
+          )}
+          {detail.adapter && (
+            <div className="mt-2 space-y-1 border-t border-white/[0.06] pt-2">
+              <p>
+                kiosk adapter: <span className="font-mono">{detail.adapter.adapter}</span>{" "}
+                {detail.adapter.certified
+                  ? <span className="text-lime">certified</span>
+                  : <span className="text-amber-300">not certified</span>}
+              </p>
+              {detail.adapter.capabilities.length > 0 && (
+                <p className="font-mono text-slate-400">capabilities: {detail.adapter.capabilities.join(", ")}</p>
+              )}
+              <p className="text-slate-500">
+                outbound control stays blocked until a vendor adapter passes the certification
+                checklist (<span className="font-mono">{detail.adapter.checklist}</span>).
+              </p>
+            </div>
+          )}
+        </Section>
+
         {/* Webhook state */}
         <Section title="webhook / inbound events">
           {detail.webhook.applicable ? (

@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { reportError } from "@/lib/observability";
 import { heartbeatStale, HEARTBEAT_STALE_MIN } from "@/lib/kiosk/heartbeat";
+import { configStateDiff } from "./kiosk-detail";
 
 /**
  * Alert sweep (Phase 2.5) — deferred ALERT_POLICY emitters that cannot fire
@@ -46,6 +47,21 @@ import { heartbeatStale, HEARTBEAT_STALE_MIN } from "@/lib/kiosk/heartbeat";
  *    credential_expired, duplicate_message) are excluded. One alert per device
  *    once rejections reach CREDENTIAL_ABUSE_MIN_REJECTIONS.
  *
+ * Phase 4.4 additions (same contract — aggregate probes, stable fingerprints,
+ * PII-free messages, fault-tolerant 'skipped'):
+ *  - update.rollout_failure / firmware.rollout_failure — kiosk_update_targets
+ *    in 'failed'/'unknown_outcome' within RECENT_WINDOW_HOURS; release kind
+ *    resolved via campaign → release lookup (firmware gets its own rule id).
+ *  - update.campaign_blocked — kiosk_update_campaigns status='blocked' with
+ *    updated_at within the window.
+ *  - config.drift_detected — latest device_config_revisions per device whose
+ *    reported config mismatches desired (configStateDiff, same rule as
+ *    fleet-stats). reported===null is 'unreported', never drift.
+ *  - finance.reconciliation_error — error-level app_logs mentioning
+ *    'reconcil' within the window (e.g. rental_refund_reconcile_failed).
+ *  - recovery.test_overdue — no system_recovery_tests row within
+ *    RECOVERY_TEST_STALE_DAYS (reminder-level; backups are provider-managed).
+ *
  * Every probe is fault-tolerant: a missing table/column or query error marks
  * that check 'skipped' — the sweep NEVER throws and never crashes the cron.
  * Emissions go through reportError → error_events/error_issues, fingerprinted
@@ -61,6 +77,10 @@ export const RECENT_WINDOW_HOURS = 24;
 /** Phase 4.1: device auth-failure burst threshold + window. */
 export const CREDENTIAL_ABUSE_MIN_REJECTIONS = 5;
 export const CREDENTIAL_ABUSE_WINDOW_HOURS = 24;
+/** Phase 4.4: recovery-test freshness target + config-drift scan bounds. */
+export const RECOVERY_TEST_STALE_DAYS = 90;
+export const CONFIG_DRIFT_SCAN_LIMIT = 500;
+export const UPDATE_TARGET_SCAN_LIMIT = 100;
 /** Max rows inspected/emitted per check — bounds cron runtime and alert volume. */
 export const ALERT_SWEEP_ROW_CAP = 25;
 /** Device scan is wider (need the full enrolled fleet to find stale ones). */
@@ -494,6 +514,191 @@ export async function runAlertSweep(
         bump();
       }
       checks[name] = { status: "ok", matched: res.rows.length, emitted: n };
+    }
+  }
+
+  /* ── Phase 4.4 probes ──────────────────────────────────────────────────── */
+
+  /* ── update.rollout_failure / firmware.rollout_failure — kiosk_update_targets
+     in 'failed'/'unknown_outcome' touched within RECENT_WINDOW_HOURS. The
+     release kind is resolved via kiosk_update_campaigns → kiosk_update_releases
+     (two bounded follow-up lookups, each fault-tolerant — an unavailable
+     lookup degrades kind to 'unknown' and the target still alerts as a
+     software rollout failure). One alert per target id; the message is stable
+     (no counts/ages) so the fingerprint dedupes repeat sweeps. */
+  {
+    const name = "update_rollout_failures";
+    const res = await probe<{ id: string; campaign_id: string | null; state: string | null; updated_at: string | null; state_entered_at: string | null }>(() =>
+      db
+        .from("kiosk_update_targets")
+        .select("id,campaign_id,state,updated_at,state_entered_at")
+        .in("state", ["failed", "unknown_outcome"])
+        .limit(UPDATE_TARGET_SCAN_LIMIT),
+    );
+    if (!res.ok) {
+      checks[name] = { status: "skipped", reason: res.reason };
+    } else {
+      const recent = res.rows.filter((r) => {
+        const stamps = [r.updated_at, r.state_entered_at]
+          .map((s) => (s ? Date.parse(s) : NaN))
+          .filter((t) => Number.isFinite(t));
+        return stamps.length > 0 && Math.max(...stamps) >= recentCutoffMs;
+      });
+      // Resolve release kinds in two bounded hops (campaign → release).
+      const kindByTarget = new Map<string, string>();
+      if (recent.length > 0) {
+        const campaignIds = [...new Set(recent.map((r) => r.campaign_id).filter((c): c is string => typeof c === "string" && c.length > 0))];
+        if (campaignIds.length > 0) {
+          const campRes = await probe<{ id: string; release_id: string | null }>(() =>
+            db.from("kiosk_update_campaigns").select("id,release_id").in("id", campaignIds).limit(200),
+          );
+          if (campRes.ok) {
+            const releaseByCampaign = new Map(campRes.rows.map((c) => [c.id, c.release_id]));
+            const releaseIds = [...new Set([...releaseByCampaign.values()].filter((r): r is string => typeof r === "string" && r.length > 0))];
+            const kindByRelease = new Map<string, string>();
+            if (releaseIds.length > 0) {
+              const relRes = await probe<{ id: string; kind: string | null }>(() =>
+                db.from("kiosk_update_releases").select("id,kind").in("id", releaseIds).limit(200),
+              );
+              if (relRes.ok) for (const r of relRes.rows) kindByRelease.set(r.id, r.kind ?? "unknown");
+            }
+            for (const t of recent) {
+              const relId = t.campaign_id ? releaseByCampaign.get(t.campaign_id) : null;
+              kindByTarget.set(t.id, (relId && kindByRelease.get(relId)) || "unknown");
+            }
+          }
+        }
+      }
+      let n = 0;
+      for (const row of recent.slice(0, ALERT_SWEEP_ROW_CAP)) {
+        const kind = kindByTarget.get(row.id) ?? "unknown";
+        if (kind === "firmware") emit(`firmware.rollout_failure target=${row.id} state=${row.state ?? "unknown"}`);
+        else emit(`update.rollout_failure target=${row.id} kind=${kind} state=${row.state ?? "unknown"}`);
+        n += 1;
+        bump();
+      }
+      checks[name] = { status: "ok", matched: recent.length, emitted: n };
+    }
+  }
+
+  /* ── update.campaign_blocked — campaigns parked in 'blocked' recently ────
+     kiosk_update_campaigns.status includes 'blocked' (0067). Recency uses
+     updated_at within RECENT_WINDOW_HOURS; one alert per campaign id. */
+  {
+    const name = "update_campaign_blocked";
+    const res = await probe<{ id: string; updated_at: string | null }>(() =>
+      db
+        .from("kiosk_update_campaigns")
+        .select("id,updated_at")
+        .eq("status", "blocked")
+        .gte("updated_at", recentCutoff)
+        .limit(ALERT_SWEEP_ROW_CAP),
+    );
+    if (!res.ok) {
+      checks[name] = { status: "skipped", reason: res.reason };
+    } else {
+      let n = 0;
+      for (const row of res.rows.slice(0, ALERT_SWEEP_ROW_CAP)) {
+        emit(`update.campaign_blocked campaign=${row.id}`);
+        n += 1;
+        bump();
+      }
+      checks[name] = { status: "ok", matched: res.rows.length, emitted: n };
+    }
+  }
+
+  /* ── config.drift_detected — latest device_config_revisions per device
+     whose reported config mismatches desired (same configStateDiff rule as
+     fleet-stats). reported===null is 'unreported', NOT drift — the reported
+     channel does not exist in ingest today, so this probe honestly matches
+     zero rows until it does. Bounded scan, sorted by revision desc in JS so
+     stub-independent ordering holds; one alert per drifted device. */
+  {
+    const name = "config_drift";
+    const res = await probe<{ device_id: string; revision: number; desired: Record<string, unknown> | null; status: string | null; reported: Record<string, unknown> | null }>(() =>
+      db
+        .from("device_config_revisions")
+        .select("device_id,revision,desired,status,reported")
+        .order("revision", { ascending: false })
+        .limit(CONFIG_DRIFT_SCAN_LIMIT),
+    );
+    if (!res.ok) {
+      checks[name] = { status: "skipped", reason: res.reason };
+    } else {
+      const sorted = [...res.rows].sort((a, b) => (b.revision ?? 0) - (a.revision ?? 0));
+      const latestSeen = new Set<string>();
+      const drifted: string[] = [];
+      for (const r of sorted) {
+        if (latestSeen.has(r.device_id)) continue;
+        latestSeen.add(r.device_id);
+        if (r.reported != null && configStateDiff(r.desired, r.reported).summary === "mismatch") drifted.push(r.device_id);
+      }
+      let n = 0;
+      for (const deviceId of drifted.slice(0, ALERT_SWEEP_ROW_CAP)) {
+        emit(`config.drift_detected device=${deviceId}`);
+        n += 1;
+        bump();
+      }
+      checks[name] = { status: "ok", matched: drifted.length, emitted: n };
+    }
+  }
+
+  /* ── finance.reconciliation_error — error-level app_logs whose message
+     mentions reconciliation (e.g. rental_refund_reconcile_failed written by
+     src/lib/payments/refund.ts). One stable alert per sweep window — the
+     fingerprint groups repeats; per-row ids are intentionally NOT in the
+     message (they would defeat dedup). */
+  {
+    const name = "finance_reconciliation";
+    const res = await probe<{ id: number; message: string | null }>(() =>
+      db
+        .from("app_logs")
+        .select("id,message")
+        .eq("level", "error")
+        .gte("ts", recentCutoff)
+        .limit(200),
+    );
+    if (!res.ok) {
+      checks[name] = { status: "skipped", reason: res.reason };
+    } else {
+      const hits = res.rows.filter((r) => typeof r.message === "string" && /reconcil/i.test(r.message));
+      let n = 0;
+      if (hits.length > 0) {
+        emit(`finance.reconciliation_error source=app_logs`);
+        n = 1;
+        bump();
+      }
+      checks[name] = { status: "ok", matched: hits.length, emitted: n };
+    }
+  }
+
+  /* ── recovery.test_overdue — no system_recovery_tests row within
+     RECOVERY_TEST_STALE_DAYS (or the table is empty). Reminder-level: the
+     sweep emits one stable alert; backups themselves are provider-managed
+     and unverifiable from the app (see src/lib/system/recovery.ts). */
+  {
+    const name = "recovery_test_overdue";
+    const res = await probe<{ tested_at: string | null }>(() =>
+      db
+        .from("system_recovery_tests")
+        .select("tested_at")
+        .order("tested_at", { ascending: false })
+        .limit(50),
+    );
+    if (!res.ok) {
+      checks[name] = { status: "skipped", reason: res.reason };
+    } else {
+      const stamps = res.rows.map((r) => (r.tested_at ? Date.parse(r.tested_at) : NaN)).filter((t) => Number.isFinite(t));
+      const latest = stamps.length ? Math.max(...stamps) : NaN;
+      const staleDays = RECOVERY_TEST_STALE_DAYS * 24 * HOUR;
+      const overdue = !Number.isFinite(latest) || latest < nowMs - staleDays;
+      let n = 0;
+      if (overdue) {
+        emit(`recovery.test_overdue window_days=${RECOVERY_TEST_STALE_DAYS}`);
+        n = 1;
+        bump();
+      }
+      checks[name] = { status: "ok", matched: overdue ? 1 : 0, emitted: n };
     }
   }
 

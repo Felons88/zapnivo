@@ -8,6 +8,7 @@ import { roleCan, systemRole } from "@/lib/system/rbac";
 import { getSystemJobs } from "@/lib/system/jobs";
 import { getCronJobDetails } from "@/lib/system/db-admin";
 import { RetryButton } from "./RetryButton";
+import { JobControlButton } from "./JobControl";
 
 export const metadata: Metadata = { title: "Jobs & Workers" };
 
@@ -33,9 +34,9 @@ export default async function JobsPage() {
           <p className="eyebrow text-lime">Queue / Workers</p>
           <h1 className="mt-2 font-display text-3xl font-bold tracking-tight">Jobs &amp; background workers</h1>
           <p className="mt-1 max-w-2xl text-sm text-slate-400">
-            Live counts from the real queue tables and cron_runs. Pause/resume is{" "}
-            <span className="font-mono">not_supported</span> — cron schedules are declared in vercel.json and there
-            is no runtime mechanism to pause them.
+            Live counts from the real queue tables and cron_runs. Cron jobs can be paused/resumed via the{" "}
+            <code className="font-mono">jobs.paused</code> setting (step-up elevation + audit; financial jobs are
+            denylisted). Queue workers and provider webhooks are not pausable here.
           </p>
         </div>
 
@@ -72,21 +73,25 @@ export default async function JobsPage() {
         <section className="rounded-2xl border border-white/[0.08] bg-white/[0.05] shadow-[0_12px_32px_-16px_rgba(0,0,0,0.8)] p-5">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <h2 className="eyebrow text-slate-400">Cron routes</h2>
-            <p className="font-mono text-[10px] text-slate-500">schedules from vercel.json · pause/resume: not_supported</p>
+            <p className="font-mono text-[10px] text-slate-500">schedules from vercel.json · pause/resume via jobs.paused (elevation required)</p>
           </div>
           <div className="mt-3 overflow-x-auto">
-            <table className="w-full min-w-[760px] text-left text-sm">
+            <table className="w-full min-w-[1100px] text-left text-sm">
               <thead>
                 <tr className="border-b border-white/10 font-mono text-[11px] uppercase tracking-wider text-slate-400">
                   <th className="py-2 pr-4">Route</th>
                   <th className="py-2 pr-4">Schedule (UTC)</th>
-                  <th className="py-2 pr-4">Job(s)</th>
+                  <th className="py-2 pr-4">Next run</th>
+                  <th className="py-2 pr-4">Job</th>
+                  <th className="py-2 pr-4">State</th>
                   <th className="py-2 pr-4">Last run</th>
                   <th className="py-2 pr-4">Last ok</th>
                   <th className="py-2 pr-4">Runs 24h</th>
                   <th className="py-2 pr-4">Failed 24h</th>
                   <th className="py-2 pr-4">Duration (last span)</th>
-                  <th className="py-2">Last detail</th>
+                  <th className="py-2 pr-4">Dependencies</th>
+                  <th className="py-2 pr-4">Last detail</th>
+                  <th className="py-2">Control</th>
                 </tr>
               </thead>
               <tbody>
@@ -94,10 +99,23 @@ export default async function JobsPage() {
                   const d = cronDetails.get(c.job);
                   const detailJson = d?.lastDetail ? JSON.stringify(d.lastDetail) : null;
                   return (
-                  <tr key={`${c.route}:${c.job}`} className="border-b border-white/5 last:border-0">
+                  <tr key={`${c.route}:${c.job}`} className="border-b border-white/5 align-top last:border-0">
                     <td className="py-2 pr-4 font-mono text-xs">{c.route}</td>
                     <td className="py-2 pr-4 font-mono text-xs text-slate-400">{c.schedule}</td>
+                    <td className="py-2 pr-4 font-mono text-xs text-slate-300">{when(c.nextRunAt)}</td>
                     <td className="py-2 pr-4 font-mono text-xs">{c.job}</td>
+                    <td className="py-2 pr-4">
+                      {c.paused ? (
+                        <span className="rounded-full bg-amber-400/15 px-2 py-0.5 font-mono text-[10px] font-bold text-amber-300 ring-1 ring-amber-400/30">paused</span>
+                      ) : (
+                        <span className="rounded-full bg-lime/10 px-2 py-0.5 font-mono text-[10px] font-bold text-lime/80 ring-1 ring-lime/20">scheduled</span>
+                      )}
+                      {c.recentActivity[0] && (
+                        <div className="mt-1 max-w-[140px] truncate font-mono text-[9px] text-slate-600" title={c.recentActivity.map((a) => `${a.at} ${a.label}`).join("\n")}>
+                          {c.recentActivity[0].label}
+                        </div>
+                      )}
+                    </td>
                     <td className="py-2 pr-4 font-mono text-xs text-slate-300">{when(c.lastRunAt)}</td>
                     <td className="py-2 pr-4">
                       <span className={`rounded-full px-2 py-0.5 font-mono text-[10px] font-bold ring-1 ${lastOkTone(c.lastOk)}`}>
@@ -107,10 +125,27 @@ export default async function JobsPage() {
                     <td className="py-2 pr-4 font-mono text-xs">{c.runs24h}</td>
                     <td className="py-2 pr-4 font-mono text-xs">{c.failures24h}</td>
                     <td className="py-2 pr-4 font-mono text-xs">
-                      {d?.lastDurationMs == null ? <span className="text-slate-600">—</span> : `${d.lastDurationMs}ms`}
+                      {d?.lastDurationMs == null && c.runtimeMs == null ? <span className="text-slate-600">—</span> : `${d?.lastDurationMs ?? c.runtimeMs}ms`}
                       {d?.lastSpanStatus && d.lastSpanStatus !== "ok" && <span className="ml-1 text-red-300">({d.lastSpanStatus})</span>}
                     </td>
-                    <td className="max-w-[280px] py-2">
+                    <td className="max-w-[180px] py-2 pr-4">
+                      <div className="flex flex-wrap gap-1">
+                        {c.dependencies.map((dep) => (
+                          <span
+                            key={dep.name}
+                            title={`${dep.name}: ${dep.detail}`}
+                            className={`rounded px-1.5 py-0.5 font-mono text-[10px] ring-1 ${
+                              dep.configured === false ? "bg-red-500/10 text-red-300/90 ring-red-400/20"
+                              : dep.configured === true ? "bg-lime/10 text-lime/80 ring-lime/20"
+                              : "bg-white/5 text-slate-500 ring-white/10"
+                            }`}
+                          >
+                            {dep.name}{dep.configured === false ? " ✗" : dep.configured === true ? " ✓" : ""}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="max-w-[280px] py-2 pr-4">
                       {d?.lastError ? (
                         <span className="font-mono text-[11px] text-red-300/90" title={d.lastError}>{d.lastError.slice(0, 120)}</span>
                       ) : detailJson ? (
@@ -124,6 +159,13 @@ export default async function JobsPage() {
                         </details>
                       ) : (
                         <span className="text-slate-600">—</span>
+                      )}
+                    </td>
+                    <td className="py-2">
+                      {canRetry ? (
+                        <JobControlButton job={c.job} paused={c.paused} />
+                      ) : (
+                        <span className="font-mono text-[10px] text-slate-600">{c.paused ? "paused" : "—"}</span>
                       )}
                     </td>
                   </tr>
@@ -188,7 +230,7 @@ export default async function JobsPage() {
           <div className="rounded-2xl border border-white/[0.08] bg-white/[0.05] shadow-[0_12px_32px_-16px_rgba(0,0,0,0.8)] p-5">
             <h2 className="eyebrow text-slate-400">Controls</h2>
             <p className="mt-2 text-xs text-slate-400">{jobs.controls.note}</p>
-            <p className="mt-2 font-mono text-[11px] text-slate-500">pause/resume: {jobs.controls.pauseResume}</p>
+            <p className="mt-2 font-mono text-[11px] text-slate-500">pause/resume: {jobs.controls.pauseResume} · API: POST /api/system/jobs/control</p>
           </div>
         </section>
 

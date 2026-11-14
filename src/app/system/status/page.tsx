@@ -83,7 +83,8 @@ export default async function StatusPage() {
         })}
 
         <p className="text-xs text-slate-500">
-          API: <code className="font-mono">GET /api/system/status</code> · live provider checks:{" "}
+          Unified rollup: <a href="/system/health" className="text-lime underline">/system/health</a> · API:{" "}
+          <code className="font-mono">GET /api/system/status</code> · live provider checks:{" "}
           <code className="font-mono">GET /api/system/integrations/{"{id}"}/health</code>
         </p>
       </div>

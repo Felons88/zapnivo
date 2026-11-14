@@ -163,3 +163,58 @@ to `restore_tested` (still self-reported). `recovery_verified` is reserved for a
 explicit verified marker that does not exist in the schema today and is never
 auto-emitted; reaching it requires a schema change plus an honest operator
 attestation, documented here as self-reported — not independent verification.**
+
+## Isolated restore procedure (detailed — Phase 4.4)
+
+Mirrors `ISOLATED_RESTORE_RUNBOOK` in `src/lib/system/recovery.ts`, rendered on
+`/system/recovery`. Every step is a human dashboard/CLI action — the app performs
+no restore itself.
+
+1. **Create the isolated target** — new Supabase project in the same org, or a
+   project branch if the plan supports it (e.g. `zapnivo-restore-drill`). It must
+   NEVER receive live traffic.
+2. **Get the data across** — Dashboard → Database → Backups on the SOURCE project
+   → restore into the isolated project (PITR timestamp or nearest daily backup).
+   Alternative: owner-run `pg_dump` from production → `pg_restore`/`psql` into the
+   isolated project's connection string (`scripts/backup-db.sh` covers the dump
+   side). **Auth users live in the auth schema** — a plain `pg_dump` of `public`
+   does NOT carry them; use Supabase's native restore/branching for auth.
+3. **Align schema & verify migrations** — `supabase link --project-ref <new-ref>`,
+   then `supabase migration list`; every repo migration must show applied (or
+   `supabase db push` only if the restore left the schema behind). Confirm
+   `system_*` tables exist with RLS enabled.
+4. **Point a PREVIEW deployment at it** — Vercel preview env vars (or a throwaway
+   deployment) get the isolated project's URL/keys. NEVER overwrite production
+   env vars for a drill.
+5. **Validate** — the post-restore checklist below; record elapsed time as the
+   measured RTO and the restore-point gap as the measured RPO.
+6. **Record the exercise, then destroy** — `POST /api/system/recovery/tests` (or
+   the form on `/system/recovery`) with `environment=isolated-project`, then
+   DELETE the isolated project/branch.
+
+## Independent backup strategy — UNVERIFIED (Phase 4.4)
+
+Documented plan only. **Nothing here has been executed** — no encrypted dump has
+been taken and no restore from one has succeeded. Mirrors
+`INDEPENDENT_BACKUP_STRATEGY` in `src/lib/system/recovery.ts` (also shown on
+`/system/recovery`). Do not cite this as a backup until the first restore test
+passes.
+
+- **Encrypted `pg_dump` on a schedule** — owner-run `scripts/backup-db.sh`, a
+  scheduled GitHub Action, or operator cron. `pg_dump` cannot run inside Vercel
+  serverless; the job must run where `psql`/`pg_dump` binaries exist.
+- **Private destination (3-2-1)** — encrypted dumps to private object storage
+  owned separately from the database provider where feasible (owner S3 bucket,
+  private Supabase Storage bucket, or private Vercel Blob). Never public, never
+  committed to the repo.
+- **Key separation** — encrypt with a dedicated `BACKUP_ENCRYPTION_KEY` (age/GPG
+  symmetric or KMS), separate from `DEVICE_CREDENTIAL_KEK` and every app secret.
+  App compromise must not yield readable backups. Keep the key in the owner's
+  password manager/KMS — not in Vercel env unless strictly required.
+- **Retention (suggested, owner to finalize)** — daily 35 days, weekly 12 weeks,
+  monthly 12 months; verify the oldest retained dump still decrypts quarterly.
+- **Monitoring** — dead-man's-switch heartbeat (healthchecks.io or equivalent);
+  alert if no successful encrypted dump lands within 25h.
+- **Restore-test cadence** — quarterly isolated drill per the procedure above,
+  recorded in `system_recovery_tests`. First recorded pass moves
+  `backup.state` to `restore_tested` (still self-reported).

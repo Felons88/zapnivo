@@ -4,7 +4,10 @@ import { SystemGate } from "@/components/SystemGate";
 import { serviceClient } from "@/lib/supabase";
 import { getSessionUser } from "@/lib/auth";
 import { roleCan, systemRole } from "@/lib/system/rbac";
-import { getRecoveryFacts, RESTORE_RUNBOOK, listRecoveryTests, RECOVERY_METHODS } from "@/lib/system/recovery";
+import {
+  getRecoveryFacts, getBackupPosture, RESTORE_RUNBOOK, ISOLATED_RESTORE_RUNBOOK,
+  INDEPENDENT_BACKUP_STRATEGY, listRecoveryTests, RECOVERY_METHODS,
+} from "@/lib/system/recovery";
 import { RecordTestForm } from "./RecordTestForm";
 
 export const metadata: Metadata = { title: "Recovery — Disaster recovery" };
@@ -19,6 +22,7 @@ export default async function RecoveryPage() {
   const canRecord = roleCan(role, "system.changes.request");
   const facts = getRecoveryFacts();
   const { tests } = db ? await listRecoveryTests(db, 50) : { tests: [] as Awaited<ReturnType<typeof listRecoveryTests>>["tests"] };
+  const posture = await getBackupPosture(db);
 
   return (
     <SystemGate perm="system.security.audit.view">
@@ -55,6 +59,32 @@ export default async function RecoveryPage() {
           </section>
         </div>
 
+        {/* Backup posture — last-known provider snapshot + derived state */}
+        <section className="rounded-2xl border border-white/[0.08] bg-white/[0.05] p-5">
+          <h2 className="eyebrow text-slate-400">Backup posture (last-known snapshot — not live)</h2>
+          <div className="mt-4 grid gap-4 md:grid-cols-2">
+            <dl className="space-y-1.5 font-mono text-xs">
+              <div className="flex justify-between gap-3"><dt className="text-slate-500">derived state</dt><dd className="font-bold text-amber-300">{posture.state}</dd></div>
+              <div className="flex justify-between gap-3"><dt className="text-slate-500">snapshot as_of</dt><dd className="text-slate-200">{posture.providerSnapshot.as_of}</dd></div>
+              <div className="flex justify-between gap-3"><dt className="text-slate-500">snapshot source</dt><dd className="text-slate-200">{posture.providerSnapshot.source}</dd></div>
+              <div className="flex justify-between gap-3"><dt className="text-slate-500">region</dt><dd className="text-slate-200">{posture.providerSnapshot.region ?? "unknown"}</dd></div>
+              <div className="flex justify-between gap-3"><dt className="text-slate-500">WAL-G archiving</dt><dd className="text-slate-200">{posture.providerSnapshot.walg_enabled === null ? "unknown" : String(posture.providerSnapshot.walg_enabled)}</dd></div>
+              <div className="flex justify-between gap-3"><dt className="text-slate-500">PITR</dt><dd className="text-slate-200">{posture.providerSnapshot.pitr_enabled === null ? "unknown" : String(posture.providerSnapshot.pitr_enabled)}</dd></div>
+              <div className="flex justify-between gap-3"><dt className="text-slate-500">listed backups</dt><dd className="text-slate-200">{posture.providerSnapshot.backup_count ?? "unknown"}</dd></div>
+              <div className="flex justify-between gap-3"><dt className="text-slate-500">recorded tests</dt><dd className="text-slate-200">{posture.testsTotal ?? "unavailable"}{posture.testsPassed != null ? ` (${posture.testsPassed} passed)` : ""}</dd></div>
+            </dl>
+            <div className="text-xs text-slate-400">
+              <p>{posture.note}</p>
+              <p className="mt-2 text-slate-500">{posture.providerSnapshot.note}</p>
+              {posture.lastTest && (
+                <p className="mt-2 font-mono text-[11px] text-slate-500">
+                  last test: {posture.lastTest.result ?? "?"} · {posture.lastTest.environment ?? "?"} · {posture.lastTest.method ?? "?"} · {when(posture.lastTest.tested_at)} — self-reported
+                </p>
+              )}
+            </div>
+          </div>
+        </section>
+
         {/* Runbook */}
         <section className="rounded-2xl border border-white/[0.08] bg-white/[0.05] p-5">
           <h2 className="eyebrow text-slate-400">Restore runbook</h2>
@@ -62,6 +92,41 @@ export default async function RecoveryPage() {
             {RESTORE_RUNBOOK.map((s) => (
               <li key={s.title} className={`rounded-xl border p-4 ${s.warning ? "border-red-400/25 bg-red-400/[0.05]" : "border-white/[0.07] bg-white/[0.02]"}`}>
                 <p className={`text-sm font-bold ${s.warning ? "text-red-300" : "text-slate-200"}`}>{s.title}</p>
+                <p className="mt-1 text-xs text-slate-400">{s.detail}</p>
+              </li>
+            ))}
+          </ol>
+        </section>
+
+        {/* Isolated restore procedure */}
+        <section className="rounded-2xl border border-white/[0.08] bg-white/[0.05] p-5">
+          <h2 className="eyebrow text-slate-400">Isolated restore procedure — restore to a copy FIRST</h2>
+          <p className="mt-2 text-xs text-slate-500">
+            Owner-executed drill: restore into a NEW Supabase project/branch, validate, then decide on cutover.
+            The app performs no restore itself — every step is a human dashboard/CLI action. Mirrored in docs/RECOVERY.md.
+          </p>
+          <ol className="mt-4 space-y-4">
+            {ISOLATED_RESTORE_RUNBOOK.map((s) => (
+              <li key={s.title} className={`rounded-xl border p-4 ${s.warning ? "border-red-400/25 bg-red-400/[0.05]" : "border-white/[0.07] bg-white/[0.02]"}`}>
+                <p className={`text-sm font-bold ${s.warning ? "text-red-300" : "text-slate-200"}`}>{s.title}</p>
+                <p className="mt-1 text-xs text-slate-400">{s.detail}</p>
+              </li>
+            ))}
+          </ol>
+        </section>
+
+        {/* Independent backup strategy — UNVERIFIED */}
+        <section className="rounded-2xl border border-amber-400/20 bg-amber-400/[0.04] p-5">
+          <h2 className="eyebrow text-amber-300">Independent backup strategy — UNVERIFIED</h2>
+          <p className="mt-2 text-xs text-slate-400">
+            Documented plan for encrypted off-provider dumps. <strong className="text-amber-300">Nothing below has been
+            executed</strong> — no dump has been taken and no restore from one has succeeded. This is a plan, not a
+            backup. It becomes real only after the first recorded restore test passes.
+          </p>
+          <ol className="mt-4 space-y-4">
+            {INDEPENDENT_BACKUP_STRATEGY.map((s) => (
+              <li key={s.title} className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-4">
+                <p className="text-sm font-bold text-slate-200">{s.title}</p>
                 <p className="mt-1 text-xs text-slate-400">{s.detail}</p>
               </li>
             ))}

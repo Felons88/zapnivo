@@ -84,6 +84,89 @@ export type IndexSummary =
   | { status: "scanned"; createIndexStatements: number; tablesWithRls: number; note: string }
   | { status: "unavailable"; note: string };
 
+/* ── Phase 4.4 signals ─────────────────────────────────────────────────── */
+
+/**
+ * Planner row estimates via PostgREST `count=estimated` — PostgREST asks the
+ * query planner for its row estimate instead of scanning the table, so this is
+ * bounded and cheap even on large tables. It is an ESTIMATE (relpages-based),
+ * not an exact count — always labeled as such in the UI.
+ */
+export type RowEstimate = { table: string; estimate: number | null; error?: string };
+
+export type EstimateSummary = {
+  status: "ok" | "partial" | "unavailable";
+  /** Tables probed this request (capped — see ESTIMATE_TABLE_LIMIT). */
+  tablesProbed: number;
+  /** Tables that returned an estimate. */
+  tablesWithEstimate: number;
+  /** Sum of per-table estimates — planner math, NOT a verified total. */
+  estimatedTotalRows: number | null;
+  /** Top-N largest estimates (bounded slice for display). */
+  largest: { table: string; estimate: number }[];
+  rows: RowEstimate[];
+  note: string;
+};
+
+/** Hard cap on per-request estimate probes — keeps the page load bounded. */
+export const ESTIMATE_TABLE_LIMIT = 60;
+export const ESTIMATE_TOP_N = 12;
+
+/** Pure summarizer — exported for tests. */
+export function summarizeRowEstimates(rows: RowEstimate[]): Pick<EstimateSummary, "status" | "tablesProbed" | "tablesWithEstimate" | "estimatedTotalRows" | "largest"> {
+  const ok = rows.filter((r) => r.estimate !== null);
+  const status: EstimateSummary["status"] =
+    rows.length === 0 ? "unavailable" : ok.length === rows.length ? "ok" : ok.length > 0 ? "partial" : "unavailable";
+  const largest = [...ok]
+    .sort((a, b) => (b.estimate ?? 0) - (a.estimate ?? 0))
+    .slice(0, ESTIMATE_TOP_N)
+    .map((r) => ({ table: r.table, estimate: r.estimate as number }));
+  return {
+    status,
+    tablesProbed: rows.length,
+    tablesWithEstimate: ok.length,
+    estimatedTotalRows: ok.length ? ok.reduce((s, r) => s + (r.estimate ?? 0), 0) : null,
+    largest,
+  };
+}
+
+/**
+ * "Last write" freshness probes — newest timestamp per high-signal table via a
+ * single ordered limit-1 select (bounded, index-backed where the column is
+ * indexed). Answers "is the pipeline alive?" honestly: a null lastAt means
+ * either an empty table or a failed probe — `error` distinguishes them.
+ */
+export const FRESHNESS_TARGETS: readonly { table: string; column: string; label: string }[] = [
+  { table: "system_audit_events", column: "created_at", label: "System audit events" },
+  { table: "cron_runs", column: "ran_at", label: "Cron runs" },
+  { table: "error_events", column: "occurred_at", label: "Error events" },
+  { table: "app_logs", column: "ts", label: "Application logs" },
+  { table: "stripe_events", column: "received_at", label: "Stripe webhook events" },
+  { table: "inbound_jobs", column: "created_at", label: "Inbound email jobs" },
+  { table: "email_outbox", column: "created_at", label: "Email outbox" },
+  { table: "device_events", column: "occurred_at", label: "Device events" },
+  { table: "ai_agent_runs", column: "created_at", label: "AI agent runs" },
+  { table: "system_recovery_tests", column: "tested_at", label: "Recovery tests" },
+  { table: "system_retention_runs", column: "created_at", label: "Retention runs" },
+];
+
+export type FreshnessRow = {
+  table: string;
+  label: string;
+  column: string;
+  /** Newest observed timestamp, or null (empty table or failed probe — see error). */
+  lastAt: string | null;
+  /** true = query succeeded and table is empty; false/undefined = probe failed. */
+  probed: boolean;
+  error?: string;
+};
+
+/** Storage growth has no recorded history — stated once, honestly, no query. */
+export const STORAGE_GROWTH_STATE = {
+  status: "no_history" as const,
+  note: "No size/disk snapshot table exists in supabase/migrations — there is no recorded history to trend. Per-table sizes (pg_total_relation_size) and database size (pg_database_size) are Postgres catalog internals not exposed via PostgREST, and no size RPC exists in the migrations. For growth tracking use Supabase Dashboard → Database → Reports / Disk IO, or add a scheduled size probe writing to a new table (requires a migration — deliberately not added here).",
+};
+
 export type DatabaseAdminReport = {
   configured: boolean;
   reachable: boolean;
@@ -94,7 +177,17 @@ export type DatabaseAdminReport = {
   /** Postgres catalog internals are not reachable via PostgREST. */
   databaseSize: UnavailableProbe;
   slowQueries: UnavailableProbe;
+  /** Per-table sizes (pg_total_relation_size) — catalog internal, not exposed. */
+  tableSizes: UnavailableProbe;
+  /** Unused/duplicate index detection needs pg_stat_user_indexes — not exposed. */
+  indexUsage: UnavailableProbe;
   indexHealth: IndexSummary;
+  /** Planner row estimates for manifest tables (bounded, labeled estimate). */
+  rowEstimates: EstimateSummary | null;
+  /** Newest-timestamp "last write" probe per high-signal table. */
+  freshness: FreshnessRow[];
+  /** Honest statement: no size history is recorded anywhere. */
+  storageGrowth: typeof STORAGE_GROWTH_STATE;
   migrations: MigrationInfo;
   rls: RlsCoverage;
   backup: {
@@ -209,6 +302,15 @@ export async function getDatabaseAdmin(db: SupabaseClient | null): Promise<Datab
       status: "unavailable" as const,
       note: "pg_stat_statements is not reachable via PostgREST. For slow-query analysis enable/inspect it in the Supabase dashboard (Database → Query Performance) — the app never runs arbitrary SQL.",
     },
+    tableSizes: {
+      status: "unavailable" as const,
+      note: "pg_total_relation_size / pg_indexes size columns are catalog internals not exposed via PostgREST and no size RPC exists in the migrations. Per-table sizes: Supabase Dashboard → Database → Tables.",
+    },
+    indexUsage: {
+      status: "unavailable" as const,
+      note: "Unused/duplicate index detection requires pg_stat_user_indexes — not reachable via PostgREST. Repo scan counts CREATE INDEX statements only (see index health). Live index usage: Dashboard → Database → Indexes / Query Performance.",
+    },
+    storageGrowth: STORAGE_GROWTH_STATE,
     indexHealth: indexCount == null
       ? { status: "unavailable" as const, note: "Could not scan supabase/migrations — index count unknown." }
       : {
@@ -227,6 +329,8 @@ export async function getDatabaseAdmin(db: SupabaseClient | null): Promise<Datab
       latencyMs: null,
       detail: "backend not configured (Supabase env vars absent)",
       stats: [],
+      rowEstimates: null,
+      freshness: [],
       backup: null,
     };
   }
@@ -250,6 +354,16 @@ export async function getDatabaseAdmin(db: SupabaseClient | null): Promise<Datab
     .map((s) => (s.status === "fulfilled" ? s.value : null))
     .filter((s): s is DbStat => s !== null);
 
+  // Phase 4.4: planner row estimates (bounded, count=estimated) + last-write
+  // freshness probes — allSettled so one failure never blocks the others.
+  const estimateRows = await getRowEstimates(db);
+  const rowEstimates: EstimateSummary = {
+    ...summarizeRowEstimates(estimateRows),
+    rows: estimateRows,
+    note: "PostgREST count=estimated — the query planner's row estimate (relpages-based), NOT an exact count. Cheap and bounded; per-table errors report honestly.",
+  };
+  const freshness = await getFreshness(db);
+
   // Backup/retention state — reuse the security-readiness aggregate (it owns
   // the provider-snapshot state machine and retention last-run probe).
   let backup: DatabaseAdminReport["backup"] = null;
@@ -266,7 +380,65 @@ export async function getDatabaseAdmin(db: SupabaseClient | null): Promise<Datab
     backup = { state: null, providerSnapshot: null, recoveryLastTest: null, retentionLastRun: null, note: "securityReadiness probe failed — backup state unknown." };
   }
 
-  return { ...base, reachable, latencyMs, detail, stats, backup };
+  return { ...base, reachable, latencyMs, detail, stats, rowEstimates, freshness, backup };
+}
+
+/* ── Phase 4.4 live probes ─────────────────────────────────────────────── */
+
+/**
+ * Bounded planner estimates for every manifest table (capped at
+ * ESTIMATE_TABLE_LIMIT). `count: "estimated"` asks PostgREST for the planner's
+ * estimate — no table scan — so this stays cheap on large tables. Wildcard
+ * select keeps the probe valid for tables without an `id` column.
+ */
+export async function getRowEstimates(
+  db: SupabaseClient,
+  tables: readonly string[] = MANIFEST_TABLES,
+): Promise<RowEstimate[]> {
+  const targets = tables.slice(0, ESTIMATE_TABLE_LIMIT);
+  const settled = await Promise.allSettled(
+    targets.map(async (table): Promise<RowEstimate> => {
+      try {
+        const { count, error } = await db
+          .from(table)
+          .select("*", { count: "estimated", head: true })
+          .limit(1);
+        if (error) return { table, estimate: null, error: error.code ?? error.message };
+        return { table, estimate: typeof count === "number" ? count : null };
+      } catch (e) {
+        return { table, estimate: null, error: e instanceof Error ? e.message.slice(0, 120) : "query failed" };
+      }
+    }),
+  );
+  return settled.map((s) =>
+    s.status === "fulfilled" ? s.value : { table: "?", estimate: null, error: "query threw" },
+  );
+}
+
+/** Newest-timestamp probe per FRESHNESS_TARGETS entry — one limit-1 select each. */
+export async function getFreshness(db: SupabaseClient): Promise<FreshnessRow[]> {
+  const settled = await Promise.allSettled(
+    FRESHNESS_TARGETS.map(async (t): Promise<FreshnessRow> => {
+      try {
+        const { data, error } = await db
+          .from(t.table)
+          .select(t.column)
+          .order(t.column, { ascending: false })
+          .limit(1);
+        if (error) {
+          return { ...t, lastAt: null, probed: false, error: error.code ?? error.message };
+        }
+        const row = (Array.isArray(data) ? data[0] : null) as unknown;
+        const v = row && typeof row === "object" ? (row as Record<string, unknown>)[t.column] : null;
+        return { ...t, lastAt: typeof v === "string" ? v : null, probed: true };
+      } catch (e) {
+        return { ...t, lastAt: null, probed: false, error: e instanceof Error ? e.message.slice(0, 120) : "query failed" };
+      }
+    }),
+  );
+  return settled.map((s) =>
+    s.status === "fulfilled" ? s.value : { table: "?", label: "?", column: "?", lastAt: null, probed: false, error: "query threw" },
+  );
 }
 
 /* ── Cron run detail enrichment (jobs deep-dive) ────────────────────────── */

@@ -406,7 +406,9 @@ describe("runAlertSweep", () => {
     expect(summary.checks.system_device_commands_stuck).toMatchObject({ status: "ok", emitted: 2 });
     expect(summary.checks.unresolved_settlements).toMatchObject({ status: "ok", emitted: 2 });
     expect(summary.checks.offline_devices).toMatchObject({ status: "ok", emitted: 2 }); // offline + null-heartbeat
-    expect(summary.emitted).toBe(8);
+    // +1: phase 4.4 recovery.test_overdue — no system_recovery_tests rows seeded = never tested.
+    expect(summary.checks.recovery_test_overdue).toMatchObject({ status: "ok", emitted: 1 });
+    expect(summary.emitted).toBe(9);
 
     const msgs = emissions().map((e) => e.message);
     expect(msgs.some((m) => m.includes("exception=exc-1") && m.includes("rental.exceptions_unresolved"))).toBe(true);
@@ -503,7 +505,9 @@ describe("GET /api/cron/retention — alert sweep wiring", () => {
     const res = await call("");
     expect(res.status).toBe(200);
     const json = await res.json();
-    expect(json.alert_sweep).toMatchObject({ ok: true, emitted: 1 });
+    // emitted 2: the seeded stale exception + phase 4.4 recovery.test_overdue
+    // (no system_recovery_tests rows = never tested → reminder-level alert).
+    expect(json.alert_sweep).toMatchObject({ ok: true, emitted: 2 });
     expect(json.alert_sweep.checks.rental_exceptions_unresolved.emitted).toBe(1);
     const msgs = emissions().map((e) => e.message);
     expect(msgs.some((m) => m.includes("exception=exc-route"))).toBe(true);

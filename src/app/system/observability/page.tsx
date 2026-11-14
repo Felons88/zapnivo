@@ -4,6 +4,7 @@ import Link from "next/link";
 import { SystemGate } from "@/components/SystemGate";
 import { serviceClient } from "@/lib/supabase";
 import { getObservabilityOverview } from "@/lib/system/observability";
+import { getAlertDeliveryStatus } from "@/lib/system/alert-notify";
 
 export const metadata: Metadata = { title: "Observability" };
 
@@ -22,7 +23,7 @@ const tone = (ok: boolean) => (ok ? "text-lime" : "text-red-300");
 
 export default async function SystemObservabilityPage() {
   const db = serviceClient();
-  const o = await getObservabilityOverview(db);
+  const [o, delivery] = await Promise.all([getObservabilityOverview(db), getAlertDeliveryStatus(db)]);
 
   return (
     <SystemGate perm="system.security.audit.view">
@@ -39,6 +40,8 @@ export default async function SystemObservabilityPage() {
           <Link href="/system/observability/errors" className="rounded-full bg-white/10 px-4 py-2 text-xs font-bold text-slate-200 ring-1 ring-white/15 hover:bg-white/15">Errors</Link>
           <Link href="/system/observability/logs" className="rounded-full bg-white/10 px-4 py-2 text-xs font-bold text-slate-200 ring-1 ring-white/15 hover:bg-white/15">Logs</Link>
           <Link href="/system/observability/crons" className="rounded-full bg-white/10 px-4 py-2 text-xs font-bold text-slate-200 ring-1 ring-white/15 hover:bg-white/15">Crons & uptime</Link>
+          <Link href="/system/observability/traces" className="rounded-full bg-white/10 px-4 py-2 text-xs font-bold text-slate-200 ring-1 ring-white/15 hover:bg-white/15">Traces</Link>
+          <Link href="/system/observability/alerts" className="rounded-full bg-lime/15 px-4 py-2 text-xs font-bold text-lime ring-1 ring-lime/30 hover:bg-lime/25">Alerts & incidents</Link>
         </div>
 
         {/* KPIs */}
@@ -136,8 +139,29 @@ export default async function SystemObservabilityPage() {
           </Card>
         </div>
 
+        {/* Alert delivery status */}
+        <Card title="Alert delivery">
+          <div className="flex flex-wrap items-center justify-between gap-3 font-mono text-xs">
+            <p className="flex flex-wrap gap-x-5 gap-y-1">
+              <span>ALERT_WEBHOOK_URL: <b className={delivery.configured ? "text-lime" : "text-amber-300"}>{delivery.configured ? "configured" : "not configured"}</b></span>
+              <span>sent 24h: <b>{delivery.sent24h}</b></span>
+              <span>failed 24h: <b className={delivery.failed24h ? "text-red-300" : ""}>{delivery.failed24h}</b></span>
+              <span>last sent: <span className="text-slate-400">{when(delivery.lastSentAt)}</span></span>
+            </p>
+            <Link href="/system/observability/alerts" className="text-xs font-bold text-lime underline">Delivery details & test →</Link>
+          </div>
+          <p className="mt-2 text-[11px] text-slate-500">
+            New warning/critical error issues alert staff by email and post to the webhook (externalAlert); the
+            alert_notifications ledger records each delivery. Dashboard incidents are operational records — they do not page anyone by themselves.
+          </p>
+        </Card>
+
         {/* Incidents */}
         <Card title="Incidents" className="!p-0">
+          <div className="flex items-center justify-between px-5 pt-4">
+            <p className="text-[11px] text-slate-500">Operational records — lifecycle, assignment, notes &amp; evidence on the incident register.</p>
+            <Link href="/system/incidents" className="text-xs font-bold text-lime underline">Incident register →</Link>
+          </div>
           <div className="px-5 pb-4">
             {o.incidents.recent.length === 0 ? (
               <p className="py-4 text-sm text-slate-400">No incidents recorded.</p>
@@ -146,7 +170,7 @@ export default async function SystemObservabilityPage() {
                 {o.incidents.recent.map((i) => (
                   <li key={i.id} className="flex items-center justify-between gap-4 py-2.5 text-xs">
                     <div className="min-w-0">
-                      <span className="font-mono font-bold text-slate-200">{i.number}</span>
+                      <Link href={`/system/incidents/${i.id}`} className="font-mono font-bold text-slate-200 hover:text-lime">{i.number}</Link>
                       <span className="ml-2 text-slate-300">{i.title}</span>
                       <span className="ml-2 font-mono text-[10px] text-slate-500">{i.severity}</span>
                     </div>

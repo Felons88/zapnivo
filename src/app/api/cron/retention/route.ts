@@ -5,6 +5,7 @@ import { runRetention } from "@/lib/system/retention";
 import { sweepExpiredRotations } from "@/lib/system/device-auth";
 import { runAlertSweep } from "@/lib/system/alert-sweep";
 import { recordCron } from "@/lib/fleet-sweep";
+import { pausedJobSet, recordPausedRun } from "@/lib/system/job-controls";
 import { recordLog, traced } from "@/lib/observability";
 
 /**
@@ -32,6 +33,14 @@ export async function GET(req: Request) {
   if (!db) return NextResponse.json({ error: "Backend not configured" }, { status: 503 });
   const staff = await import("@/lib/auth").then((m) => m.getSessionUser().then((u) => m.isStaff(u))).catch(() => false);
   if (!(await authorized(req)) && !staff) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  // Operator pause (jobs.paused): record a skipped cron_runs row, run nothing.
+  // Retention is pausable (it is destructive, not financial) — pause is the
+  // SAFE way to stop it; blind retry is denylisted in job-controls.
+  if ((await pausedJobSet(db)).has("retention")) {
+    await recordPausedRun(db, "retention");
+    return NextResponse.json({ ok: true, paused: true, job: "retention" });
+  }
 
   const params = new URL(req.url).searchParams;
   const dryRun = params.get("dry_run") === "1" || params.get("mode") === "dry_run";

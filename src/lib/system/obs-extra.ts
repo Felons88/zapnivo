@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { listUptimeChecks } from "./observability";
+import { getAlertDeliveryStatus, type AlertDeliveryStatus } from "./alert-notify";
 
 /**
  * Extended observability read models for system.zapnivo.com sub-pages
@@ -147,6 +148,8 @@ export type AlertsOverview = {
     failures24h: number;
     failures: CronFailure[];
   };
+  /** Outbound alert delivery ledger status (alert_notifications + env config). */
+  delivery: AlertDeliveryStatus;
   /** Static alerting policy text — rendered on the page, also returned by the API. */
   policy: {
     externalMonitor: string;
@@ -303,6 +306,60 @@ export const ALERT_POLICY = {
       dedup: "one error_issue per device (stable fingerprint message); re-alerts daily while the burst continues",
       emitter: "live",
     },
+    {
+      id: "update.rollout_failure",
+      source: "kiosk_update_targets state IN ('failed','unknown_outcome') touched within 24h — probed by runAlertSweep; release kind resolved via kiosk_update_campaigns → kiosk_update_releases",
+      match: "failed/unknown-outcome update target for a non-firmware release → one reportError per target id",
+      severity: "sev2",
+      windowMinutes: 1440,
+      dedup: "one error_issue per target id (stable fingerprint message)",
+      emitter: "live",
+    },
+    {
+      id: "firmware.rollout_failure",
+      source: "same probe as update.rollout_failure, filtered to releases with kind='firmware'",
+      match: "failed/unknown-outcome firmware update target → one reportError per target id",
+      severity: "sev2",
+      windowMinutes: 1440,
+      dedup: "one error_issue per target id (stable fingerprint message)",
+      emitter: "live",
+    },
+    {
+      id: "update.campaign_blocked",
+      source: "kiosk_update_campaigns status='blocked' with updated_at within 24h — probed by runAlertSweep",
+      match: "blocked rollout campaign → one reportError per campaign id",
+      severity: "sev3",
+      windowMinutes: 1440,
+      dedup: "one error_issue per campaign id (stable fingerprint message)",
+      emitter: "live",
+    },
+    {
+      id: "config.drift_detected",
+      source: "device_config_revisions — latest revision per device where reported config mismatches desired (configStateDiff, same rule as fleet-stats) — probed by runAlertSweep",
+      match: "confirmed desired-vs-reported mismatch on a device's latest revision → one reportError per device; reported=null is 'unreported', never drift",
+      severity: "sev3",
+      windowMinutes: 1440,
+      dedup: "one error_issue per device_id (stable fingerprint message)",
+      emitter: "live",
+    },
+    {
+      id: "finance.reconciliation_error",
+      source: "app_logs level='error' with 'reconcil' in message within 24h (e.g. rental_refund_reconcile_failed) — probed by runAlertSweep",
+      match: "any reconciliation failure log line → one stable reportError per window",
+      severity: "sev2",
+      windowMinutes: 1440,
+      dedup: "one error_issue per window (stable fingerprint message — per-row ids deliberately excluded)",
+      emitter: "live",
+    },
+    {
+      id: "recovery.test_overdue",
+      source: "system_recovery_tests — latest tested_at older than 90 days or no rows — probed by runAlertSweep",
+      match: "no recovery/restore test recorded within 90 days → reminder-level reportError",
+      severity: "sev4",
+      windowMinutes: 129600,
+      dedup: "one error_issue (stable fingerprint message)",
+      emitter: "live",
+    },
   ] as const satisfies readonly AlertRule[],
   notes: [
     "In-app signals (uptime_checks, cron_runs, error_events) are recorded here but do not page anyone — alerting is the external workflow + issue tracker.",
@@ -311,6 +368,8 @@ export const ALERT_POLICY = {
     "Phase 2.4 rules above are declarative policy describing what SHOULD alert; 'emitter: live' means a code path emits the signal today (inline reportError in provisioning.ts/device-auth.ts, or the runAlertSweep cron probes); 'pending' means the emitter has not landed — a pending rule matching zero rows is NOT coverage.",
     "Phase 2.5: all 8 rules now have live emitters. Inline emitters (provisioning burst, revoked/expired credential rejects) write error_events fingerprinted per device; aggregate probes (rental exceptions, stuck commands, pending settlements, stale heartbeats) run in cron.retention via runAlertSweep and are skipped on dry_run.",
     "Phase 4.1: five more live sweep probes cover deployment.failed, deployment.health_degraded, webhook.failures, jobs.failed and device.credential_abuse — all aggregate/count-based, fault-tolerant ('skipped' on missing tables), capped, and PII-free. device.credential_abuse excludes rejection reasons that already have dedicated emitters.",
+    "Phase 4.4: six more live sweep probes cover update.rollout_failure + firmware.rollout_failure (kiosk_update_targets failed/unknown_outcome, kind resolved via campaign→release), update.campaign_blocked, config.drift_detected (device_config_revisions desired-vs-reported via configStateDiff — reported=null is 'unreported', never drift), finance.reconciliation_error (error app_logs mentioning 'reconcil') and recovery.test_overdue (no system_recovery_tests row in 90d, reminder-level sev4).",
+    "Phase 4.4 delivery: human notification for NEW warning/critical error issues = alertStaff email + ALERT_WEBHOOK_URL via externalAlert (src/lib/alerts.ts), fired from reportError→alertNewIssue. alert_notifications (migration 0068) is the delivery LEDGER — it records configured/sent/failed/skipped per fingerprint with a 6h dedup window; it does not double-post. Verify end-to-end via POST /api/system/observability/alerts/test.",
     "error_events/error_issues already group by fingerprint (observability.ts); critical-severity issues alert via alertStaff + ALERT_WEBHOOK_URL external fallback.",
   ],
 } as const;
@@ -321,6 +380,7 @@ export async function getAlertsOverview(db: SupabaseClient | null): Promise<Aler
     incidents: { open: 0, recent: [] },
     uptime: { targets: [], overallOkPct24h: null },
     cron: { runs24h: 0, failures24h: 0, failures: [] },
+    delivery: await getAlertDeliveryStatus(db),
     policy: ALERT_POLICY,
   };
   if (!db) return empty;
@@ -371,6 +431,7 @@ export async function getAlertsOverview(db: SupabaseClient | null): Promise<Aler
       failures24h: failures.length,
       failures,
     },
+    delivery: empty.delivery,
     policy: ALERT_POLICY,
   };
 }

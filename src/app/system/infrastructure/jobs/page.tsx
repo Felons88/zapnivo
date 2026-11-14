@@ -3,8 +3,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { SystemGate } from "@/components/SystemGate";
 import { serviceClient } from "@/lib/supabase";
+import { getSessionUser } from "@/lib/auth";
+import { roleCan, systemRole } from "@/lib/system/rbac";
 import { getSystemJobs, CRON_ROUTES } from "@/lib/system/jobs";
 import { getCronJobDetails } from "@/lib/system/db-admin";
+import { JobControlButton } from "../../jobs/JobControl";
 
 export const metadata: Metadata = { title: "Infrastructure · Jobs deep-dive" };
 
@@ -29,6 +32,9 @@ function DetailJson({ detail }: { detail: Record<string, unknown> | null }) {
 
 export default async function InfraJobsPage() {
   const db = serviceClient();
+  const user = await getSessionUser();
+  const role = user ? await systemRole(user) : null;
+  const canControl = roleCan(role, "system.webhooks.retry");
   const [jobs, details] = await Promise.all([getSystemJobs(db), getCronJobDetails(db)]);
 
   return (
@@ -53,20 +59,23 @@ export default async function InfraJobsPage() {
         <section className="rounded-2xl border border-white/[0.08] bg-white/[0.05] p-5">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <h2 className="eyebrow text-slate-400">Cron routes &amp; recorded jobs</h2>
-            <p className="font-mono text-[10px] text-slate-500">schedules from vercel.json · all 5 cron routes record cron_runs since Phase 2.7</p>
+            <p className="font-mono text-[10px] text-slate-500">schedules from vercel.json · all 5 cron routes record cron_runs since Phase 2.7 · pause/resume via jobs.paused (elevation required)</p>
           </div>
           <div className="mt-3 overflow-x-auto">
-            <table className="w-full min-w-[1080px] text-left text-sm">
+            <table className="w-full min-w-[1150px] text-left text-sm">
               <thead>
                 <tr className="border-b border-white/10 font-mono text-[11px] uppercase tracking-wider text-slate-400">
                   <th className="py-2 pr-4">Route</th>
                   <th className="py-2 pr-4">Schedule (UTC)</th>
+                  <th className="py-2 pr-4">Next run</th>
                   <th className="py-2 pr-4">Job</th>
                   <th className="py-2 pr-4">Last run</th>
                   <th className="py-2 pr-4">Result</th>
                   <th className="py-2 pr-4">Duration (last span)</th>
                   <th className="py-2 pr-4">Runs/Failed 24h</th>
-                  <th className="py-2">Last detail / error</th>
+                  <th className="py-2 pr-4">Dependencies</th>
+                  <th className="py-2 pr-4">Last detail / error</th>
+                  <th className="py-2">Control</th>
                 </tr>
               </thead>
               <tbody>
@@ -78,7 +87,11 @@ export default async function InfraJobsPage() {
                       <tr key={`${route.path}:${jobName}`} className="border-b border-white/5 align-top last:border-0">
                         <td className="py-2 pr-4 font-mono text-xs">{route.path}</td>
                         <td className="py-2 pr-4 font-mono text-xs text-slate-400">{route.schedule}</td>
-                        <td className="py-2 pr-4 font-mono text-xs">{jobName}</td>
+                        <td className="py-2 pr-4 font-mono text-xs text-slate-300">{when(c?.nextRunAt ?? null)}</td>
+                        <td className="py-2 pr-4 font-mono text-xs">
+                          {jobName}
+                          {c?.paused && <span className="ml-1 rounded-full bg-amber-400/15 px-1.5 py-0.5 text-[9px] font-bold text-amber-300 ring-1 ring-amber-400/30">paused</span>}
+                        </td>
                         <td className="py-2 pr-4 font-mono text-xs text-slate-300">{when(c?.lastRunAt ?? d?.lastRunAt ?? null)}</td>
                         <td className="py-2 pr-4">
                           <span className={`rounded-full px-2 py-0.5 font-mono text-[10px] font-bold ring-1 ${
@@ -96,11 +109,35 @@ export default async function InfraJobsPage() {
                           )}
                         </td>
                         <td className="py-2 pr-4 font-mono text-xs">{c ? `${c.runs24h} / ${c.failures24h}` : "—"}</td>
-                        <td className="max-w-[320px] py-2">
+                        <td className="max-w-[160px] py-2 pr-4">
+                          <div className="flex flex-wrap gap-1">
+                            {(c?.dependencies ?? []).map((dep) => (
+                              <span
+                                key={dep.name}
+                                title={`${dep.name}: ${dep.detail}`}
+                                className={`rounded px-1.5 py-0.5 font-mono text-[10px] ring-1 ${
+                                  dep.configured === false ? "bg-red-500/10 text-red-300/90 ring-red-400/20"
+                                  : dep.configured === true ? "bg-lime/10 text-lime/80 ring-lime/20"
+                                  : "bg-white/5 text-slate-500 ring-white/10"
+                                }`}
+                              >
+                                {dep.name}{dep.configured === false ? " ✗" : dep.configured === true ? " ✓" : ""}
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="max-w-[280px] py-2 pr-4">
                           {d?.lastError ? (
                             <span className="font-mono text-[11px] text-red-300/90">{d.lastError}</span>
                           ) : (
                             <DetailJson detail={d?.lastDetail ?? null} />
+                          )}
+                        </td>
+                        <td className="py-2">
+                          {canControl && c ? (
+                            <JobControlButton job={jobName} paused={c.paused} />
+                          ) : (
+                            <span className="font-mono text-[10px] text-slate-600">{c?.paused ? "paused" : "—"}</span>
                           )}
                         </td>
                       </tr>

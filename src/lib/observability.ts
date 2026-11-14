@@ -128,6 +128,11 @@ export async function alertNewIssue(db: NonNullable<ReturnType<typeof serviceCli
     // External fallback — survives Brevo/API outages (ALERT_WEBHOOK_URL).
     const { externalAlert } = await import("./alerts");
     externalAlert(`issue:${fp}`, `${label}: ${i?.title ?? fp}`, `Route: ${i?.culprit ?? "unknown"}\nFingerprint: ${fp}`, sev);
+    // Delivery ledger (phase 4.4): mirrors the alert into alert_notifications
+    // for console visibility + dedup. post:false — externalAlert owns the
+    // actual webhook POST, so nothing is double-posted.
+    const { notifyIssueAlert } = await import("./system/alert-notify");
+    void notifyIssueAlert(db, { fingerprint: fp, severity: sev, title: i?.title ?? fp, culprit: i?.culprit ?? null });
   } catch { /* alerting is best-effort */ }
 }
 

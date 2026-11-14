@@ -217,6 +217,7 @@ async function recentEvents(db: SupabaseClient): Promise<InfraEvent[]> {
         runAfter: r.run_after, lastError: scrub(String(r.last_error ?? ""), 300) || null,
         messageId: r.message_id, createdAt: r.created_at, processedAt: r.processed_at,
         payloadSummary: inboundJobPayloadSummary(r.payload),
+        relatedObject: relatedBusinessObject("inbound_jobs", r, r.payload),
       },
     });
   }
@@ -305,6 +306,76 @@ export function inboundJobPayloadSummary(payload: unknown): Record<string, unkno
   };
 }
 
+/* ── Per-event enrichment: verification + related business object ─────────
+ * Both are derived HONESTLY from what is actually stored — nothing is
+ * invented. Signature results that were verified at ingest but never
+ * persisted say so explicitly.
+ */
+
+const TICKET_REF = /\bZ-\d+\b/i;
+
+/**
+ * Signature/auth verification status for one event row. Returns a short
+ * human-readable string; "not recorded" when the source stores nothing.
+ */
+export function signatureVerification(source: string, row: Record<string, unknown>): string {
+  switch (source) {
+    case "stripe_events":
+      return "stripe-signature verified at ingest (route rejects bad signatures); per-event result not persisted";
+    case "inbound_jobs":
+      return "provider webhook auth verified before enqueue (EMAIL_INBOUND_SECRET / provider checks); per-message dmarc/spf/dkim re-evaluated by the worker";
+    case "inbound_emails": {
+      const parts = [
+        row.auth_method ? `auth=${String(row.auth_method)}` : null,
+        row.dmarc_result ? `dmarc=${String(row.dmarc_result)}` : null,
+        row.spf_result ? `spf=${String(row.spf_result)}` : null,
+        row.dkim_result ? `dkim=${String(row.dkim_result)}` : null,
+      ].filter(Boolean);
+      return parts.length ? `stored: ${parts.join(" ")}` : "auth results not recorded";
+    }
+    case "sms_messages":
+      return "X-Twilio-Signature HMAC verified at ingest (route rejects bad signatures); per-event result not persisted";
+    case "system_device_messages":
+      return `device auth at ingest: method=${String(row.auth_method ?? "unknown")}, result=${String(row.result ?? "unknown")}`;
+    case "email_outbox":
+      return "n/a — outbound queue row, not an inbound webhook";
+    default:
+      return "not recorded";
+  }
+}
+
+/**
+ * Best-effort related business object derived from the row (+ sanitized
+ * payload for inbound_jobs). Only non-PII identifiers are returned — ticket
+ * numbers, device ids, provider event types. null = no honest derivation.
+ */
+export function relatedBusinessObject(source: string, row: Record<string, unknown>, payload?: unknown): string | null {
+  switch (source) {
+    case "stripe_events":
+      return row.type ? `payment_event:${String(row.type)}` : "payment_event:stripe";
+    case "inbound_jobs": {
+      const p = payload && typeof payload === "object" && !Array.isArray(payload)
+        ? (payload as Record<string, unknown>)
+        : null;
+      if (!p) return "inbound_email_job";
+      const hay = `${String(p.subject ?? "")} ${String(p.inReplyTo ?? "")}`;
+      const m = TICKET_REF.exec(hay);
+      const base = m ? `support_ticket:${m[0].toUpperCase()}` : "inbound_email";
+      return typeof p.replayedFrom === "string" ? `${base} (replay of job ${String(p.replayedFrom).slice(0, 8)})` : base;
+    }
+    case "inbound_emails":
+      return "inbound_email_log";
+    case "sms_messages":
+      return `sms_message:${String(row.direction ?? "unknown")}`;
+    case "system_device_messages":
+      return row.device_id ? `device_message:${String(row.device_id)}` : "device_message";
+    case "email_outbox":
+      return "outbound_email";
+    default:
+      return null;
+  }
+}
+
 /** Full inspector report for the page + GET /api/system/infrastructure/webhooks. */
 export async function getWebhookInspector(db: SupabaseClient | null): Promise<WebhookInspectorReport> {
   const empty: WebhookInspectorReport = {
@@ -335,6 +406,9 @@ export function replayEligibility(source: InfraWebhookSourceId, row: Record<stri
   }
   if (source === "email_outbox") {
     return { eligible: false, reason: `outbox status is "${String(row.status)}" — only failed rows can be retried` };
+  }
+  if (source === "stripe_events") {
+    return { eligible: false, reason: "payment/financial event — replay is forbidden (HTTP 403); re-send from the Stripe dashboard if needed" };
   }
   return { eligible: false, reason: `${source} has no replay path — provider re-send or manual remediation only` };
 }
@@ -396,6 +470,13 @@ export async function inspectInfraEvent(
       fields.error = scrub(String(r.error ?? ""), 300) || null; fields.createdAt = r.created_at;
       break;
   }
+
+  // Enrichment: signature-verification status + derived business object.
+  // inbound_jobs is the only source whose payload is read — server-side only,
+  // for derivation; the raw payload is never returned.
+  fields.verification = signatureVerification(source, r);
+  const related = relatedBusinessObject(source, r, source === "inbound_jobs" ? r.payload : undefined);
+  if (related) fields.relatedObject = related;
 
   const at =
     (r.received_at as string | undefined) ??

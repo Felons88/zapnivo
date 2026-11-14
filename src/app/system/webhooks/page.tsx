@@ -43,7 +43,8 @@ export default async function WebhooksPage() {
             Aggregated from the real webhook/ingest tables. Inspectors return sanitized metadata only —
             payloads and PII (emails, phones, bodies) are never exposed. Replay is limited to{" "}
             <span className="font-mono">inbound_jobs</span> failed/dead rows (idempotent requeue); everything
-            else returns <span className="font-mono">replay_unsupported</span>.
+            else returns <span className="font-mono">replay_unsupported</span>; payment events return{" "}
+            <span className="font-mono">forbidden_financial</span> (403).
           </p>
         </div>
 
@@ -95,8 +96,11 @@ export default async function WebhooksPage() {
         <section className="rounded-2xl border border-white/[0.08] bg-white/[0.05] shadow-[0_12px_32px_-16px_rgba(0,0,0,0.8)] p-5">
           <h2 className="eyebrow text-slate-400">Failed / dead inbound jobs</h2>
           <p className="mt-1 text-xs text-slate-400">
-            The only replayable rows. Requeue sets status → queued; the /api/cron/inbound worker re-processes
-            with dedupe on message_id. Requires <code className="font-mono">system.webhooks.retry</code>.
+            The only replayable rows. Replay inserts a <em>new</em> queued <code className="font-mono">inbound_jobs</code>{" "}
+            attempt (the original stays dead as the failure record, max 5 replays); the /api/cron/inbound worker
+            re-processes through the full pipeline — DMARC quarantine, reply-token verification, and message_id /
+            content-hash dedupe still apply. Payment events are forbidden (403). Requires{" "}
+            <code className="font-mono">system.webhooks.retry</code>.
           </p>
           {deadJobs.length === 0 ? (
             <p className="mt-4 text-sm text-slate-500">No failed or dead inbound jobs.</p>

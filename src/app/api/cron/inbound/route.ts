@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getSessionUser, isStaff } from "@/lib/auth";
 import { runInboundWorker } from "@/lib/inbound/worker";
 import { recordCron } from "@/lib/fleet-sweep";
+import { pausedJobSet, recordPausedRun } from "@/lib/system/job-controls";
 import { serviceClient } from "@/lib/supabase";
 
 /**
@@ -33,10 +34,14 @@ export async function GET(req: Request) {
     requeued = data?.length ?? 0;
   }
 
-  const result = await recordCron(db, "inbound", async () => {
-    const r = await runInboundWorker(50);
-    if (r.errors.length) throw new Error(`${r.errors.length} job(s) failed: ${r.errors[0]?.slice(0, 120)}`);
-    return { ...r, requeued };
-  });
+  // Operator pause (jobs.paused): a paused inbound worker records a skipped
+  // cron_runs row; queued jobs simply wait. Fail-open when unset.
+  const result = (await pausedJobSet(db)).has("inbound")
+    ? await recordPausedRun(db, "inbound")
+    : await recordCron(db, "inbound", async () => {
+        const r = await runInboundWorker(50);
+        if (r.errors.length) throw new Error(`${r.errors.length} job(s) failed: ${r.errors[0]?.slice(0, 120)}`);
+        return { ...r, requeued };
+      });
   return NextResponse.json(result);
 }

@@ -48,7 +48,7 @@ export type OpsStatus = {
   cards: OpsCard[];
 };
 
-const PROVIDER_IDS = ["stripe", "brevo", "twilio", "openrouter", "github", "vercel"] as const;
+const PROVIDER_IDS = ["stripe", "brevo", "twilio", "openrouter", "github", "vercel", "analytics", "alerts"] as const;
 type ProviderId = (typeof PROVIDER_IDS)[number];
 
 const PROVIDER_LABELS: Record<ProviderId, string> = {
@@ -58,6 +58,8 @@ const PROVIDER_LABELS: Record<ProviderId, string> = {
   openrouter: "OpenRouter AI",
   github: "GitHub",
   vercel: "Vercel hosting",
+  analytics: "Analytics (GTM/GA4/Mapbox)",
+  alerts: "Alert delivery webhook",
 };
 
 const NEWSLETTER_EVENTS = ["newsletter.confirm", "newsletter.welcome"] as const;

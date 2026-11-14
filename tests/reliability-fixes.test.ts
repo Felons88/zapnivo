@@ -341,7 +341,10 @@ describe("D14 — runAlertSweep integration health", () => {
     healthMock.mockResolvedValue({ provider: "fakeprov", status: "unconfigured", detail: "", checkedAt: "", latencyMs: null });
     const summary = await runAlertSweep(dbHolder.db as never);
     expect(summary.checks["integration_health"]).toMatchObject({ status: "skipped" });
-    expect(summary.emitted).toBe(0);
+    // emitted 1 = phase 4.4 recovery.test_overdue (empty system_recovery_tests
+    // = never tested → reminder-level alert). The integration probe itself
+    // emits nothing. (reportError is the real impl here — not a spy.)
+    expect(summary.emitted).toBe(1);
   });
 });
 

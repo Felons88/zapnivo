@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { serviceClient } from "@/lib/supabase";
 import { recordCron } from "@/lib/fleet-sweep";
+import { pausedJobSet, recordPausedRun } from "@/lib/system/job-controls";
 import { recordLog, traced } from "@/lib/observability";
 
 /**
@@ -42,6 +43,12 @@ export async function GET(req: Request) {
   if (!db) return NextResponse.json({ error: "Backend not configured" }, { status: 503 });
   const staff = await import("@/lib/auth").then((m) => m.getSessionUser().then((u) => m.isStaff(u))).catch(() => false);
   if (!(await authorized(req)) && !staff) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  // Operator pause (jobs.paused): record a skipped cron_runs row, run nothing.
+  if ((await pausedJobSet(db)).has("uptime")) {
+    await recordPausedRun(db, "uptime");
+    return NextResponse.json({ ok: true, paused: true, job: "uptime" });
+  }
 
   // recordCron persists a cron_runs row (Jobs & workers visibility) and emails
   // staff if the sweep itself throws — failed PROBES are data, not job failure:

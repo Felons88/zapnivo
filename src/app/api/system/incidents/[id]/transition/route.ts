@@ -5,7 +5,8 @@ import { roleCan } from "@/lib/system/rbac";
 
 /**
  * POST /api/system/incidents/[id]/transition — lifecycle transition.
- * Body: { to_status, reason? }. 'reopened' requires reason.
+ * Body: { to_status, reason?, resolution_notes? }. 'reopened' requires reason;
+ * 'resolved' requires resolution_notes (reason accepted as fallback).
  *
  * Same permission model as acknowledge: reads need system.security.audit.view,
  * mutations additionally need system.changes.request. Illegal edges → 409,
@@ -33,6 +34,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     id,
     parsed.data.to_status,
     parsed.data.reason,
+    parsed.data.resolution_notes,
   );
   if (!result.ok) {
     return NextResponse.json(

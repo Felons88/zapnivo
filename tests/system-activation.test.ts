@@ -46,6 +46,8 @@ const ENV_KEYS = [
   "VERCEL_TOKEN", "VERCEL_PROJECT_ID",
   "NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY",
   "KIOSK_INGEST_SECRET",
+  "CRON_SECRET", "ALERT_WEBHOOK_URL",
+  "NEXT_PUBLIC_GTM_ID", "NEXT_PUBLIC_GA_MEASUREMENT_ID", "NEXT_PUBLIC_MAPBOX_TOKEN",
 ];
 
 let saved: Record<string, string | undefined>;
@@ -67,11 +69,12 @@ afterEach(() => {
 
 const PROVIDER_IDS = [
   "stripe", "brevo", "resend", "twilio", "openrouter",
-  "github", "vercel", "supabase", "kiosk-gateway", "newsletter-mail",
+  "github", "vercel", "supabase", "kiosk-gateway",
+  "uptime", "alerts", "analytics", "newsletter-mail",
 ];
 
 describe("activationProbe — shape", () => {
-  it("returns all 10 required providers with the documented fields", async () => {
+  it("returns all 13 required providers with the documented fields", async () => {
     const probe = await activationProbe(fakeDb([{ data: [], error: null }, { data: [], error: null }]));
     expect(probe.providers.map((p) => p.provider)).toEqual(PROVIDER_IDS);
     for (const p of probe.providers) {
@@ -85,7 +88,7 @@ describe("activationProbe — shape", () => {
       expect(p.missing.every((m) => /^[A-Z0-9_]+$/.test(m))).toBe(true);
       expect(p.ownerAction.length).toBeGreaterThan(10);
     }
-    expect(probe.summary.total).toBe(10);
+    expect(probe.summary.total).toBe(13);
   });
 
   it("clean env: nothing envConfigured, nothing verified, honest missing lists", async () => {
@@ -102,6 +105,12 @@ describe("activationProbe — shape", () => {
     expect(stripe.webhookConfigured).toBe(false); // STRIPE_WEBHOOK_SECRET unset
     const nl = probe.providers.find((p) => p.provider === "newsletter-mail")!;
     expect(nl.missing).toEqual(["BREVO_API_KEY", "RESEND_API_KEY"]);
+    const alerts = probe.providers.find((p) => p.provider === "alerts")!;
+    expect(alerts.missing).toEqual(["ALERT_WEBHOOK_URL"]);
+    const analytics = probe.providers.find((p) => p.provider === "analytics")!;
+    expect(analytics.missing).toEqual(["NEXT_PUBLIC_GTM_ID", "NEXT_PUBLIC_GA_MEASUREMENT_ID", "NEXT_PUBLIC_MAPBOX_TOKEN"]);
+    const uptime = probe.providers.find((p) => p.provider === "uptime")!;
+    expect(uptime.missing).toEqual(["CRON_SECRET"]);
   });
 });
 
@@ -167,7 +176,7 @@ describe("activationProbe — verification honesty", () => {
 
   it("db=null still returns the full matrix with honest nulls", async () => {
     const probe = await activationProbe(null);
-    expect(probe.providers).toHaveLength(10);
+    expect(probe.providers).toHaveLength(13);
     expect(probe.providers.every((p) => p.lastOperation === null)).toBe(true);
     expect(probe.providers.every((p) => p.credentialVerified === false)).toBe(true);
   });

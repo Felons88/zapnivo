@@ -1,5 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { systemAudit, type SystemActor } from "./audit";
+import {
+  LAST_KNOWN_PROVIDER_SNAPSHOT,
+  deriveBackupState,
+  type BackupState,
+  type ProviderBackupSnapshot,
+} from "./readiness";
 
 /**
  * Disaster-recovery surface for the system console.
@@ -155,3 +161,156 @@ export async function recordRecoveryTest(
   });
   return { ok: true, test: row };
 }
+
+/* ── Backup posture (Phase 4.4) ────────────────────────────────────────── */
+
+export type BackupPosture = {
+  /** Last-known provider snapshot — a manually refreshed CLI record, NEVER live. */
+  providerSnapshot: ProviderBackupSnapshot;
+  /**
+   * State derived via readiness.deriveBackupState from the snapshot + recorded
+   * recovery tests. `recoveryVerifiedRecorded` is always false — no verified
+   * marker column exists, so 'recovery_verified' is unreachable from live data.
+   */
+  state: BackupState;
+  /** Count of recorded recovery tests; null when the table/probe failed. */
+  testsTotal: number | null;
+  /** Count with result='passed' — self-reported by operators. */
+  testsPassed: number | null;
+  /** Newest recorded test (self-reported). */
+  lastTest: { result: string | null; tested_at: string | null; environment: string | null; method: string | null } | null;
+  /** Always false — the snapshot is a dated record, not a live provider query. */
+  snapshotIsLive: false;
+  note: string;
+};
+
+/**
+ * Combines the last-known provider snapshot (WAL-G/PITR/backup list from the
+ * Supabase CLI — see docs/RECOVERY.md) with recorded recovery tests into one
+ * posture object for /system/recovery. Provider state is NEVER queried live;
+ * the snapshot carries its own as_of date and is labeled as such.
+ */
+export async function getBackupPosture(db: SupabaseClient | null): Promise<BackupPosture> {
+  const snap = LAST_KNOWN_PROVIDER_SNAPSHOT;
+  const base = {
+    providerSnapshot: snap,
+    snapshotIsLive: false as const,
+    note: "Provider backup state comes from LAST_KNOWN_PROVIDER_SNAPSHOT — a dated, manually refreshed `supabase backups list` record (see docs/RECOVERY.md), NOT a live query. Refresh it with the CLI, then update readiness.ts.",
+  };
+  if (!db) {
+    return {
+      ...base,
+      state: deriveBackupState({ pitrEnabled: snap.pitr_enabled, backupCount: snap.backup_count, recoveryTests: null, recoveryPassed: false, recoveryVerifiedRecorded: false }),
+      testsTotal: null,
+      testsPassed: null,
+      lastTest: null,
+    };
+  }
+  const { tests, error } = await listRecoveryTests(db, 200);
+  if (error) {
+    return {
+      ...base,
+      state: deriveBackupState({ pitrEnabled: snap.pitr_enabled, backupCount: snap.backup_count, recoveryTests: null, recoveryPassed: false, recoveryVerifiedRecorded: false }),
+      testsTotal: null,
+      testsPassed: null,
+      lastTest: null,
+    };
+  }
+  const testsPassed = tests.filter((t) => t.result === "passed").length;
+  const latest = tests[0] ?? null;
+  return {
+    ...base,
+    state: deriveBackupState({
+      pitrEnabled: snap.pitr_enabled,
+      backupCount: snap.backup_count,
+      recoveryTests: tests.length,
+      recoveryPassed: testsPassed > 0,
+      recoveryVerifiedRecorded: false,
+    }),
+    testsTotal: tests.length,
+    testsPassed,
+    lastTest: latest
+      ? { result: latest.result, tested_at: latest.tested_at, environment: latest.environment, method: latest.method }
+      : null,
+  };
+}
+
+/* ── Isolated restore procedure (Phase 4.4) ────────────────────────────── */
+
+/**
+ * Detailed owner runbook for restoring into an ISOLATED target before any
+ * production cutover. Rendered on /system/recovery and mirrored in
+ * docs/RECOVERY.md. Every step is a human/dashboard/CLI action — the app
+ * performs no restore itself.
+ */
+export const ISOLATED_RESTORE_RUNBOOK: readonly RunbookStep[] = [
+  {
+    title: "1. Create the isolated target",
+    detail: "Supabase Dashboard → new project in the same org (free/Pro tier is fine), or a branch of the production project if the plan supports branching. Name it clearly, e.g. zapnivo-restore-drill. This target must NEVER receive live traffic.",
+  },
+  {
+    title: "2. Get the data across",
+    detail: "Preferred: Dashboard → Database → Backups on the SOURCE project → restore into the isolated project (PITR timestamp or nearest daily backup). Alternative: owner-run `pg_dump` from production → `pg_restore`/`psql` into the isolated project's connection string (see scripts/backup-db.sh for the dump side). Auth users live in the auth schema — a plain pg_dump of public does NOT carry them; use Supabase's native restore or dashboard export for auth.",
+    warning: true,
+  },
+  {
+    title: "3. Align schema & verify migrations",
+    detail: "In the isolated project run `supabase link --project-ref <new-ref>` then `supabase migration list` — every repo migration through the latest file must show as applied (or apply missing ones with `supabase db push` ONLY if the restore left the schema behind). Confirm system_* tables exist with RLS enabled.",
+  },
+  {
+    title: "4. Point a PREVIEW deployment at it",
+    detail: "In Vercel, set NEXT_PUBLIC_SUPABASE_URL / anon key / SUPABASE_SERVICE_ROLE_KEY (and any other required vars) on a PREVIEW environment or a throwaway deployment pointing at the isolated project. NEVER overwrite the production env vars for a drill.",
+  },
+  {
+    title: "5. Validate before trusting it",
+    detail: "Run the post-restore checklist in docs/RECOVERY.md: row counts on payments/rentals/profiles/system_audit_events, spot-check one known transaction, confirm auth sign-in works, spot-check RLS isolation, hit the preview deploy's health endpoint. Record elapsed wall time — that is your measured RTO; the restore-point gap is your measured RPO.",
+  },
+  {
+    title: "6. Record the exercise, then destroy",
+    detail: "Record the test on /system/recovery (environment=isolated-project, method=supabase_backup_restore|supabase_pitr|point_in_time_dump, result, measured rpo/rto minutes). Then DELETE the isolated project/branch — do not leave a stale copy of production data running.",
+    warning: true,
+  },
+];
+
+/* ── Independent backup strategy (UNVERIFIED) ─────────────────────────── */
+
+export type BackupStrategyStep = { title: string; detail: string; status: "unverified" | "documented" };
+
+/**
+ * Documented independent-backup strategy. HONESTY: nothing here has been
+ * executed — no encrypted dump has ever been taken and no restore from one has
+ * ever succeeded. Status stays 'unverified' until the first restore test is
+ * recorded with result='passed'. Do NOT cite this as a backup until then.
+ */
+export const INDEPENDENT_BACKUP_STRATEGY: readonly BackupStrategyStep[] = [
+  {
+    title: "UNVERIFIED — encrypted pg_dump on a schedule",
+    detail: "Owner-run script (scripts/backup-db.sh, or a scheduled GitHub Action / operator cron — pg_dump cannot run inside Vercel serverless). Dumps the public schema (+ auth if using GoTrue export) nightly. Status: unverified — never executed.",
+    status: "unverified",
+  },
+  {
+    title: "UNVERIFIED — private destination, 3-2-1",
+    detail: "Encrypted dumps go to private object storage owned separately from the database provider where feasible (owner S3 bucket / private Supabase Storage bucket / private Vercel Blob). Never a public bucket, never committed to the repo. Keep ≥3 copies across ≥2 media, 1 off-site. Status: unverified — no bucket or upload path configured.",
+    status: "unverified",
+  },
+  {
+    title: "UNVERIFIED — key separation",
+    detail: "Encrypt dumps with a dedicated BACKUP_ENCRYPTION_KEY (age or GPG symmetric, or KMS). This key MUST be separate from DEVICE_CREDENTIAL_KEK and every application secret — compromise of the app must not yield readable backups. Store the key in the owner's password manager / KMS, not in Vercel env unless strictly required.",
+    status: "unverified",
+  },
+  {
+    title: "UNVERIFIED — retention policy",
+    detail: "Suggested starting point (owner to finalize): daily dumps kept 35 days, weekly kept 12 weeks, monthly kept 12 months. Apply bucket lifecycle rules or manual pruning; verify the oldest retained dump is still decryptable quarterly.",
+    status: "unverified",
+  },
+  {
+    title: "UNVERIFIED — monitoring",
+    detail: "The dump job must emit a heartbeat (dead-man's switch — e.g. healthchecks.io or a row in cron_runs if run from infra you control). Alert if no successful encrypted dump lands within 25 hours. A backup you are not monitoring is not a backup.",
+    status: "unverified",
+  },
+  {
+    title: "UNVERIFIED — routine restore-test cadence",
+    detail: "Quarterly isolated restore drill using ISOLATED_RESTORE_RUNBOOK above, recorded in system_recovery_tests. First recorded pass moves backup.state to restore_tested (self-reported); keep drills going — an untested backup is a hypothesis, not a backup.",
+    status: "unverified",
+  },
+];

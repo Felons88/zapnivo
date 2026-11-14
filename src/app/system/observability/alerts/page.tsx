@@ -3,7 +3,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { SystemGate } from "@/components/SystemGate";
 import { serviceClient } from "@/lib/supabase";
+import { getSessionUser } from "@/lib/auth";
+import { roleCan, systemRole } from "@/lib/system/rbac";
 import { getAlertsOverview } from "@/lib/system/obs-extra";
+import { TestAlertButton } from "./TestAlertButton";
 
 export const metadata: Metadata = { title: "Observability — Alerts & incidents" };
 
@@ -32,7 +35,10 @@ const statusTone = (status: string) =>
 
 export default async function SystemAlertsPage() {
   const db = serviceClient();
-  const a = await getAlertsOverview(db);
+  const [a, user] = await Promise.all([getAlertsOverview(db), getSessionUser()]);
+  const role = user ? await systemRole(user) : null;
+  const canTest = roleCan(role, "system.changes.request");
+  const d = a.delivery;
 
   return (
     <SystemGate perm="system.security.audit.view">
@@ -56,8 +62,48 @@ export default async function SystemAlertsPage() {
           <Card title="Open incidents"><p className={`font-mono text-3xl font-bold ${a.incidents.open ? "text-amber-300" : ""}`}>{a.incidents.open}</p><p className="mt-1 text-xs text-slate-400">of {a.incidents.recent.length} recent</p></Card>
           <Card title="Uptime 24h"><p className={`font-mono text-3xl font-bold ${a.uptime.overallOkPct24h !== null && a.uptime.overallOkPct24h < 99 ? "text-red-300" : ""}`}>{a.uptime.overallOkPct24h === null ? "—" : `${a.uptime.overallOkPct24h}%`}</p><p className="mt-1 text-xs text-slate-400">{a.uptime.targets.length} targets</p></Card>
           <Card title="Cron failures 24h"><p className={`font-mono text-3xl font-bold ${a.cron.failures24h ? "text-red-300" : ""}`}>{a.cron.failures24h}</p><p className="mt-1 text-xs text-slate-400">of {a.cron.runs24h} runs</p></Card>
-          <Card title="Alert channel"><p className="font-mono text-lg font-bold leading-8">GitHub issues</p><p className="mt-1 text-xs text-slate-400">external monitor</p></Card>
+          <Card title="Alert channel"><p className="font-mono text-lg font-bold leading-8">{d.configured ? "webhook + email" : "email only"}</p><p className="mt-1 text-xs text-slate-400">{d.configured ? "ALERT_WEBHOOK_URL set" : "ALERT_WEBHOOK_URL not set"}</p></Card>
         </div>
+
+        {/* Alert delivery ledger */}
+        <Card title="Alert delivery">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="font-mono text-xs">
+              <p className="flex flex-wrap gap-x-5 gap-y-1">
+                <span>webhook: <b className={d.configured ? "text-lime" : "text-amber-300"}>{d.configured ? "configured" : "not configured"}</b></span>
+                <span>env: <span className="text-slate-400">{d.webhookEnv}</span></span>
+                <span>sent 24h: <b>{d.sent24h}</b></span>
+                <span>failed 24h: <b className={d.failed24h ? "text-red-300" : ""}>{d.failed24h}</b></span>
+                <span>skipped 24h: <b>{d.skipped24h}</b></span>
+                <span>last sent: <span className="text-slate-400">{when(d.lastSentAt)}</span></span>
+                <span>ledger: <span className="text-slate-400">{d.storeAvailable ? "alert_notifications" : "table unavailable (migration 0068 pending?)"}</span></span>
+              </p>
+              <p className="mt-2 max-w-2xl text-[11px] text-slate-500">
+                New warning/critical error issues notify staff by email and post to ALERT_WEBHOOK_URL via externalAlert;
+                this ledger records each delivery decision (6h fingerprint dedup). UPTIME_ALERT_WEBHOOK_URL is a
+                GitHub-Actions secret for the uptime workflow — not an app destination.
+              </p>
+              {d.recent.length > 0 && (
+                <ul className="mt-3 space-y-1">
+                  {d.recent.slice(0, 5).map((r) => (
+                    <li key={r.id} className="flex items-center justify-between gap-3 text-[11px]">
+                      <span className="truncate text-slate-400">{r.fingerprint}</span>
+                      <span className="flex shrink-0 gap-2">
+                        <span className="text-slate-500">{r.kind}</span>
+                        <span className={r.status === "sent" ? "text-lime" : r.status === "failed" ? "text-red-300" : "text-amber-300"}>{r.status}</span>
+                        <span className="text-slate-600">{when(r.sent_at ?? r.created_at)}</span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <div className="flex flex-col items-end gap-1.5">
+              {canTest && <TestAlertButton configured={d.configured} />}
+              {!canTest && <p className="text-[11px] text-slate-500">Test send requires <code className="font-mono">system.changes.request</code>.</p>}
+            </div>
+          </div>
+        </Card>
 
         <div className="grid gap-6 lg:grid-cols-2">
           {/* Incidents */}
@@ -71,7 +117,7 @@ export default async function SystemAlertsPage() {
                     <li key={i.id} className="px-3 py-2.5 text-xs">
                       <div className="flex items-center justify-between gap-3">
                         <div className="min-w-0">
-                          <span className="font-mono font-bold text-slate-200">{i.number}</span>
+                          <Link href={`/system/incidents/${i.id}`} className="font-mono font-bold text-slate-200 hover:text-lime">{i.number}</Link>
                           <span className="ml-2 text-slate-300">{i.title}</span>
                         </div>
                         <div className="flex shrink-0 items-center gap-2">
