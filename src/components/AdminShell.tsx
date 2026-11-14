@@ -39,6 +39,7 @@ export type AdminNavKey = keyof typeof NAV_ITEMS;
 const NAV_ITEMS = {
   dashboard: { href: "/admin", label: "Dashboard", icon: icons.dashboard, group: "Overview" },
   analytics: { href: "/admin/analytics", label: "Analytics", icon: icons.chart, group: "Growth" },
+  forecasting: { href: "/admin/forecasting", label: "Forecasting", icon: icons.chart, group: "Growth" },
   inbox: { href: "/admin/support", label: "Inbox", icon: icons.inbox, group: "Support" },
   partner: { href: "/admin/support?queue=partner", label: "Partner relations", icon: icons.building, group: "Support" },
   safety: { href: "/admin/support?queue=safety", label: "Safety", icon: icons.shield, group: "Support" },

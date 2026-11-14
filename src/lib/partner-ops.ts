@@ -101,3 +101,58 @@ export function monthlyCommission(rows: { period: string; commission_cents: numb
   }
   return buckets;
 }
+
+/* ─── Partner self-serve performance reporting ─────────────────────────── */
+
+/** Rental states that mean a power bank was actually dispensed (utilization numerator). */
+export const DISPENSED_RENTAL_STATES = new Set(["dispense_pending", "active", "returned", "unreturned", "charged_off"]);
+
+export type RentalWindowRow = { state: string; created_at: string };
+export type WindowStats = { rentals: number; completed: number; utilizationPct: number | null };
+
+/** Counts rentals created in [startIso, endIso) and the share that reached a dispensed state. */
+export function rentalWindowStats(rows: RentalWindowRow[], startIso: string, endIso: string): WindowStats {
+  const win = rows.filter((r) => r.created_at >= startIso && r.created_at < endIso);
+  const completed = win.filter((r) => DISPENSED_RENTAL_STATES.has(r.state)).length;
+  return { rentals: win.length, completed, utilizationPct: win.length ? Math.round((completed / win.length) * 1000) / 10 : null };
+}
+
+export type PaymentWindowRow = { amount_captured_cents: number | null; amount_refunded_cents: number | null; created_at: string };
+
+/** Net captured revenue (captured − refunded) for payments created in [startIso, endIso). */
+export function paymentWindowStats(rows: PaymentWindowRow[], startIso: string, endIso: string): { payments: number; netCents: number } {
+  const win = rows.filter((p) => p.created_at >= startIso && p.created_at < endIso);
+  const netCents = win.reduce((s, p) => s + (p.amount_captured_cents ?? 0) - (p.amount_refunded_cents ?? 0), 0);
+  return { payments: win.length, netCents };
+}
+
+/** Percent change current vs prior. null when there is no prior baseline to divide by (unless both are 0). */
+export function pctDelta(current: number, prior: number): number | null {
+  if (prior === 0) return current === 0 ? 0 : null;
+  return Math.round(((current - prior) / prior) * 1000) / 10;
+}
+
+export const DEVICE_STALE_MS = 24 * 3600_000;
+
+/** Fleet summary for a venue's devices. "stale" = status active but no heartbeat within 24h (or never). */
+export function deviceStatusSummary(devices: { status: string; last_heartbeat_at: string | null }[], now = new Date()) {
+  let online = 0, stale = 0, inactive = 0;
+  for (const d of devices) {
+    if (d.status !== "active") { inactive++; continue; }
+    const hb = d.last_heartbeat_at ? Date.parse(d.last_heartbeat_at) : NaN;
+    if (Number.isFinite(hb) && now.getTime() - hb <= DEVICE_STALE_MS) online++; else stale++;
+  }
+  return { total: devices.length, online, stale, inactive };
+}
+
+/** Neutralizes spreadsheet formula injection and quotes per RFC 4180 (same approach as the admin CSV export). */
+export const csvCell = (v: unknown) => {
+  let s = v == null ? "" : typeof v === "object" ? JSON.stringify(v) : String(v);
+  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+  return `"${s.replace(/"/g, '""')}"`;
+};
+export const toCsv = (rows: Record<string, unknown>[]) => {
+  if (!rows.length) return "no_rows\n";
+  const cols = Object.keys(rows[0]);
+  return [cols.join(","), ...rows.map((r) => cols.map((c) => csvCell(r[c])).join(","))].join("\n") + "\n";
+};
