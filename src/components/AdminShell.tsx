@@ -52,7 +52,7 @@ const NAV_ITEMS = {
   emailStudio: { href: "/admin/email-studio", label: "Email studio", icon: icons.mail, group: "Support" },
   fleet: { href: "/admin/fleet", label: "Fleet", icon: icons.battery, group: "Operations" },
   profitability: { href: "/admin/profitability", label: "Profitability", icon: icons.coins, group: "Operations" },
-  vendingOps: { href: "/admin/vending", label: "Vending ops", icon: icons.chart, group: "Operations" },
+  vendingOps: { href: "/admin/vending-ops", label: "Vending ops", icon: icons.chart, group: "Operations" },
   placements: { href: "/admin/placements", label: "Placements", icon: icons.steps, group: "Operations" },
   equipment: { href: "/admin/equipment", label: "Equipment", icon: icons.battery, group: "Operations" },
   inventory: { href: "/admin/inventory", label: "Inventory", icon: icons.battery, group: "Operations" },

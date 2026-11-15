@@ -3,7 +3,7 @@ import { getSessionUser, isStaff } from "@/lib/auth";
 import { serviceClient } from "@/lib/supabase";
 import { loadVendingOpsDashboard } from "@/lib/vending-ops";
 
-/** Staff JSON feed for the /admin/vending ops dashboard. Sections degrade honestly. */
+/** Staff JSON feed for the /admin/vending-ops dashboard. Sections degrade honestly. */
 export async function GET() {
   const user = await getSessionUser();
   if (!isStaff(user)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
