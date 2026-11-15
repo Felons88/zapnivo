@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { PartnerGate } from "@/components/PartnerShell";
 import { serviceClient } from "@/lib/supabase";
+import { equipmentLabelOr } from "@/lib/equipment";
 import { SponsorPanel } from "./SponsorPanel";
 
 export const metadata: Metadata = { title: "Settings", robots: { index: false, follow: false } };
@@ -30,12 +31,12 @@ export default async function PartnerSettings({ searchParams }: { searchParams: 
         const db = serviceClient();
         const [profileRes, venuesRes, agrRes] = db ? await Promise.all([
           db.from("profiles").select("full_name").eq("id", user.id).single(),
-          orgId ? db.from("venues").select("id,name,venue_type,street,city,state,zip,hours").eq("organization_id", orgId).order("name").limit(50) : Promise.resolve({ data: [] }),
+          orgId ? db.from("venues").select("id,name,venue_type,street,city,state,zip,hours,equipment_category").eq("organization_id", orgId).order("name").limit(50) : Promise.resolve({ data: [] }),
           orgId ? db.from("partner_agreements").select("id,signed_at,document_path,venues(name)").eq("organization_id", orgId).order("signed_at", { ascending: false }).limit(20) : Promise.resolve({ data: [] }),
         ]) : [{ data: null }, { data: [] }, { data: [] }];
 
         const profile = profileRes?.data as { full_name: string | null } | null;
-        const venues = (venuesRes?.data ?? []) as { id: string; name: string; venue_type: string; street: string; city: string; state: string; zip: string | null; hours: string | null }[];
+        const venues = (venuesRes?.data ?? []) as { id: string; name: string; venue_type: string; street: string; city: string; state: string; zip: string | null; hours: string | null; equipment_category: string | null }[];
         const contactsRes = db && venues.length ? await db.from("venue_contacts").select("venue_id,name,email,phone").in("venue_id", venues.map((v) => v.id)).limit(100) : { data: [] };
         const contactByVenue = new Map(((contactsRes?.data ?? []) as { venue_id: string; name: string; email: string; phone: string | null }[]).map((c) => [c.venue_id, c]));
         const agrRows = (agrRes?.data ?? []) as unknown as { id: string; signed_at: string | null; document_path: string | null; venues: { name: string } | null }[];
@@ -73,7 +74,7 @@ export default async function PartnerSettings({ searchParams }: { searchParams: 
                 {tab === "venues" && (
                   <section aria-label="Business and venues">
                     <h2 className="font-display text-xl font-bold">Business &amp; venues</h2>
-                    <p className="mt-1 text-sm text-graphite">Location details used on the station map, statements and support. Only Zapnivo can publish a venue live.</p>
+                    <p className="mt-1 text-sm text-graphite">Location details used on the map, statements and support. Only Zapnivo can publish a venue live.</p>
                     {venues.length === 0 ? <p className="mt-6 text-sm text-graphite">No venues on your account yet — they're added when Zapnivo approves a location.</p> :
                       venues.map((v, i) => {
                         const c = contactByVenue.get(v.id);
@@ -83,6 +84,7 @@ export default async function PartnerSettings({ searchParams }: { searchParams: 
                             <div className="grid gap-4 sm:grid-cols-2">
                               <div><label className={lbl}>Venue name</label><input name="name" required defaultValue={v.name} className={input} /></div>
                               <div><label className={lbl}>Venue type</label><input name="venue_type" required defaultValue={v.venue_type} placeholder="Bar · Restaurant · Hotel" className={input} /></div>
+                              <div className="sm:col-span-2"><label className={lbl}>Equipment category</label><p className="rounded-lg bg-mist/60 px-3 py-2 text-sm font-semibold">{equipmentLabelOr(v.equipment_category, "unclassified")} <span className="text-xs font-normal text-graphite">— set by Zapnivo; contact support to change.</span></p></div>
                               <div><label className={lbl}>Street</label><input name="street" required defaultValue={v.street} className={input} /></div>
                               <div className="grid grid-cols-[1fr_64px_90px] gap-2">
                                 <div><label className={lbl}>City</label><input name="city" required defaultValue={v.city} className={input} /></div>

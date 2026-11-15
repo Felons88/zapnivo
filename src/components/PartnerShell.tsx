@@ -33,7 +33,7 @@ export async function PartnerGate({ title, nav, children }: { title: string; nav
     return (
       <div className="flex min-h-screen items-center justify-center bg-paper px-6">
         <div className="w-full max-w-xl">
-          <p className="eyebrow text-forest">Venue partner</p>
+          <p className="eyebrow text-forest">Vending equipment partner</p>
           <h1 className="display-md mt-4">{title}</h1>
           <div className="mt-8 text-left"><Notice title="Not configured yet.">
             Authentication isn't connected in this environment. Set <code>NEXT_PUBLIC_SUPABASE_URL</code>,

@@ -5,7 +5,7 @@ const FAQ = [
   { q: "How do I rent a power bank?", a: "At a participating station, scan its QR code, review the current rental terms, and complete checkout. A power bank is released after payment is confirmed." },
   { q: "Where can I return it?", a: "Return the power bank to an eligible participating Zapnivo station. Your rental shows eligible return locations." },
   { q: "How much does a rental cost?", a: "Pilot pricing is still proposed and may change before launch. The current terms and final rate are shown before you pay at a station." },
-  { q: "Can my business host a station?", a: "Yes. Tell us about your venue through the partner application. We review placement and discuss partnership terms privately." },
+  { q: "Can my business host Zapnivo equipment?", a: "Yes. Zapnivo Vending Services places vending machines and charging stations with Minnesota venues. Tell us about your space through the partner application — we review placement and discuss partnership terms privately." },
   { q: "What if I need help with a rental?", a: "Visit Zapnivo support for help with returns, billing, or a station issue." },
 ];
 

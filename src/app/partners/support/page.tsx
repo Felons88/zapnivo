@@ -32,7 +32,7 @@ export default async function PartnerSupport() {
           <div className="grid gap-8 lg:grid-cols-[1.2fr_.8fr]">
             <section aria-label="Your requests">
               <h2 className="font-display text-xl font-bold">Your requests</h2>
-              {tickets.length === 0 ? <div className="mt-4"><EmptyCard title="No requests yet">Open a request for anything about your station: it's offline, a hardware issue, a placement change, a statement question, or a guest complaint.</EmptyCard></div> : (
+              {tickets.length === 0 ? <div className="mt-4"><EmptyCard title="No requests yet">Open a request for anything about your equipment or venue: a station that's offline, a hardware issue, a placement change, a statement question, or a guest complaint.</EmptyCard></div> : (
                 <ul className="mt-4 space-y-3">
                   {tickets.map((t) => (
                     <li key={t.id}><Link href={`/partners/support/${t.number}`} className="block rounded-xl border border-mist bg-white p-4 shadow-sm hover:border-forest">

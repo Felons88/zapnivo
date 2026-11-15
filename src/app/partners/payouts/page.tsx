@@ -86,7 +86,7 @@ export default async function Payouts() {
             <section aria-label="Commission statements" className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
               <div className="border-b border-mist px-6 py-4"><h2 className="font-display text-lg font-bold">Monthly statements</h2></div>
               {ledgerRows.length === 0 ? (
-                <p className="px-6 py-10 text-sm text-graphite">No statements yet. Monthly gross and commission figures appear here once your station is live.</p>
+                <p className="px-6 py-10 text-sm text-graphite">No statements yet. Monthly gross and commission figures appear here once your equipment is live and a statement period closes.</p>
               ) : (
                 <table className="w-full min-w-[640px] text-left text-sm">
                   <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite"><tr>{["Period", "Venue", "Gross", "Commission"].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr></thead>

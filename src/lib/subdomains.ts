@@ -61,6 +61,7 @@ export function siteKeyForHost(host: string, base = baseDomain()): SiteKey | nul
 /** Top-level sections owned by the marketing site — on a subdomain these bounce to apex. */
 export const APEX_SECTIONS = new Set([
   "about", "advertise", "advertiser", "business", "contact", "how-it-works", "legal", "locations",
+  "vending", "get-a-vending-machine",
   "llms.txt", "llms-full.txt", "opengraph-image", "r", "account", "scam-awareness",
 ]);
 

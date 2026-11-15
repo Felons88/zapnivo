@@ -7,7 +7,7 @@ export const PIPELINE_STAGES = [
   { key: "approved", label: "Application approved" },
   { key: "agreement", label: "Agreement recorded" },
   { key: "venue", label: "Venue created" },
-  { key: "installed", label: "Kiosk installed" },
+  { key: "installed", label: "Equipment installed" },
   { key: "published", label: "Venue published" },
 ] as const;
 export type StageKey = (typeof PIPELINE_STAGES)[number]["key"];

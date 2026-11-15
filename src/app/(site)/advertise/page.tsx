@@ -10,14 +10,14 @@ import { serviceClient } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
-  title: { absolute: "Advertise on Phone Charging Stations | Zapnivo" },
-  description: "Explore advertising opportunities on Zapnivo charging stations. Inquire about screen placements, venue targeting and sponsorships.",
+  title: { absolute: "Advertise on Zapnivo Vending Equipment | Zapnivo Vending Services" },
+  description: "Explore advertising opportunities on Zapnivo vending machines and charging stations. Inquire about screen placements, venue targeting and sponsorships.",
 };
 
 const POSSIBILITIES = [
-  { t: "Screen placements", d: "Kiosk touchscreens can display content between rental interactions. Placement options depend on the final screen interface." },
+  { t: "Screen placements", d: "Equipment touchscreens can display content between customer interactions. Placement options depend on the final screen interface." },
   { t: "Venue targeting", d: "As the network grows, advertisers will be able to focus on venue types — nightlife, hospitality, campuses — that fit their audience." },
-  { t: "Sponsorships", d: "Station-level and venue-level sponsorship possibilities will be explored with early advertising partners." },
+  { t: "Sponsorships", d: "Machine-level and venue-level sponsorship possibilities will be explored with early advertising partners." },
 ];
 
 const PLACEMENT_LABEL: Record<string, string> = { kiosk_screen: "Kiosk screens", website: "Website", email: "Email", event: "Events" };
@@ -29,7 +29,7 @@ export default async function Advertise() {
   const cards: AdRateCard[] = db ? await listRateCards(db) : [];
   return (
     <>
-      <MarketingHero eyebrow="Brand partnerships" title={<>Be part of the places people gather.</>} description="We're exploring advertising alongside Zapnivo's station rollout. Share your goals and we'll discuss what may become possible as capabilities are verified." actions={<><Button href="#advertising-inquiry">Start an inquiry</Button><Button href="/business" variant="ghost" className="border-white/40 text-white">Explore venue partnerships</Button></>} visual={<KioskScenePhoto scene="event" />} note="Illustrative kiosk placement · advertising is in development" />
+      <MarketingHero eyebrow="Brand partnerships" title={<>Be part of the places people gather.</>} description="We're exploring advertising alongside Zapnivo's equipment rollout. Share your goals and we'll discuss what may become possible as capabilities are verified." actions={<><Button href="#advertising-inquiry">Start an inquiry</Button><Button href="/business" variant="ghost" className="border-white/40 text-white">Explore venue partnerships</Button></>} visual={<KioskScenePhoto scene="event" />} note="Illustrative equipment placement · advertising is in development" />
 
       <Section><Eyebrow className="text-forest">What we're exploring</Eyebrow><h2 className="display-lg mt-5 max-w-3xl">A new canvas for local attention.</h2><div className="mt-10 grid gap-4 md:grid-cols-3">{POSSIBILITIES.map((p, i) => <Reveal key={p.t} delay={i * 70} className="flex min-h-64 flex-col rounded-xl bg-white p-7"><span className="font-display text-5xl font-bold text-forest">0{i + 1}</span><h3 className="mt-auto font-display text-2xl font-bold">{p.t}</h3><p className="mt-3 text-sm leading-6 text-graphite">{p.d}</p></Reveal>)}</div><div className="mt-8"><Notice title="In development:"> Advertising features are planned, not live. We cannot guarantee reach, impressions, or placements until they are verified on real hardware.</Notice></div></Section>
 

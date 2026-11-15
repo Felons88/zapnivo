@@ -5,7 +5,7 @@ import { trackEvent } from "@/components/Analytics";
 import { VENUE_TYPES } from "@/lib/validation";
 import { btnClass } from "@/components/ui";
 import { inputCls } from "@/components/forms";
-import { NEXT_STEPS, STEP_FIELDS, STEP_LABELS, validateApplication, validateStep, type FieldErrors } from "./form";
+import { NEXT_STEPS, PRODUCT_INTEREST_OPTIONS, STEP_FIELDS, STEP_LABELS, validateApplication, validateStep, type FieldErrors } from "./form";
 
 type State = { status: "idle" | "sending" | "done" | "error"; message?: string };
 
@@ -29,8 +29,14 @@ const Honeypot = () => (
   </div>
 );
 
+/** Multi-value fields (checkbox groups) arrive as repeated entries — join them comma-separated. */
 function jsonOf(form: HTMLFormElement) {
-  return Object.fromEntries([...new FormData(form).entries()].map(([k, v]) => [k, typeof v === "string" ? v : ""]));
+  const out: Record<string, string> = {};
+  for (const [k, v] of new FormData(form).entries()) {
+    const val = typeof v === "string" ? v : "";
+    out[k] = out[k] ? `${out[k]},${val}` : val;
+  }
+  return out;
 }
 
 export function PartnerApplicationForm() {
@@ -47,8 +53,9 @@ export function PartnerApplicationForm() {
   const stepValid = () => {
     const form = ref.current!;
     const nativeOk = (STEP_FIELDS[step] ?? []).every((n) => {
-      const el = form.elements.namedItem(n) as HTMLInputElement | null;
-      return !el || el.reportValidity();
+      const el = form.elements.namedItem(n) as (HTMLInputElement & { reportValidity?: () => boolean }) | null;
+      // Checkbox groups resolve to a RadioNodeList without reportValidity — they're optional, so skip native checks.
+      return !el || (typeof el.reportValidity === "function" ? el.reportValidity() : true);
     });
     if (!nativeOk) return false;
     const schemaErrors = validateStep(values(), step);
@@ -159,6 +166,19 @@ export function PartnerApplicationForm() {
         {wrap("Approximate guest traffic", "guestTraffic", <input {...props("guestTraffic")} maxLength={100} placeholder="e.g. 300 guests per weekend night" />, undefined, true)}
         {wrap("Preferred installation location", "installLocation", <input {...props("installLocation")} maxLength={300} placeholder="e.g. Near the bar entrance, on the counter" />, undefined, true)}
         {wrap("Anything else we should know", "questions", <textarea {...props("questions")} rows={4} maxLength={2000} placeholder="Timing, questions about revenue share, accessibility needs…" />, undefined, true)}
+        <fieldset>
+          <legend className="mb-1.5 block text-sm font-bold">What are you interested in hosting?<span className="ml-1 font-semibold text-graphite/60">(optional — select all that apply)</span></legend>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {PRODUCT_INTEREST_OPTIONS.map((o) => (
+              <label key={o.value} className="flex items-center gap-2.5 rounded-lg border border-mist bg-mist/40 px-3.5 py-2.5 text-sm font-semibold">
+                <input type="checkbox" name="productInterest" value={o.value} className="h-4 w-4 accent-forest" />
+                {o.label}
+              </label>
+            ))}
+          </div>
+          {errors.productInterest && <p role="alert" className="mt-1 text-sm font-semibold text-red-700">{errors.productInterest}</p>}
+          <p className="mt-1 text-xs text-graphite/80">Equipment availability varies by category and location — this just helps us prepare for the conversation.</p>
+        </fieldset>
       </fieldset>
 
       {s.status === "error" && <p role="alert" className="rounded-md bg-red-50 p-4 text-sm font-semibold text-red-800">{s.message}</p>}

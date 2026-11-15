@@ -10,10 +10,10 @@ export const metadata: Metadata = { title: "Portal preview", robots: { index: fa
 
 /* ── Sample data for preview only — never written to the database ────────── */
 const KIOSKS = [
-  { id: "ZN-4K2A1", venue: "Northern Pour Bar", state: "online", rentals: 96, seen: "2 min ago" },
-  { id: "ZN-7X9B4", venue: "Riverside Hotel — Lobby", state: "online", rentals: 74, seen: "5 min ago" },
-  { id: "ZN-2F8C3", venue: "Skyline Events Center", state: "maintenance", rentals: 51, seen: "3 hrs ago" },
-  { id: "ZN-9M3D7", venue: "Depot Coffee House", state: "online", rentals: 26, seen: "12 min ago" },
+  { id: "ZN-4K2A1", venue: "Northern Pour Bar", type: "Charger station", state: "online", rentals: 96, seen: "2 min ago" },
+  { id: "ZN-7X9B4", venue: "Riverside Hotel — Lobby", type: "Charger station", state: "online", rentals: 74, seen: "5 min ago" },
+  { id: "ZN-2F8C3", venue: "Skyline Events Center", type: "Charger station", state: "maintenance", rentals: 51, seen: "3 hrs ago" },
+  { id: "ZN-9M3D7", venue: "Depot Coffee House", type: "Charger station", state: "online", rentals: 26, seen: "12 min ago" },
 ] as const;
 const STATEMENTS = [
   { venue: "Northern Pour Bar", period: "June 2026", gross: 21480, commission: 5370 },
@@ -68,15 +68,16 @@ export default function PartnerDemo() {
           </section>
 
           <section aria-label="Your stations" className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
-            <div className="border-b border-mist px-6 py-4"><h2 className="font-display text-lg font-bold">Your stations</h2></div>
+            <div className="border-b border-mist px-6 py-4"><h2 className="font-display text-lg font-bold">Your stations</h2><p className="mt-1 text-xs text-graphite">Charging product line — phone-charger kiosks.</p></div>
             <table className="w-full min-w-[720px] text-left text-sm">
               <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite">
-                <tr>{["Station", "Venue", "Status", "Rentals (30d)", "Last seen"].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr>
+                <tr>{["Station", "Type", "Venue", "Status", "Rentals (30d)", "Last seen"].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr>
               </thead>
               <tbody>
                 {KIOSKS.map((k) => (
                   <tr key={k.id} className="border-b border-mist/70 last:border-0">
                     <td className="px-4 py-3 font-bold">{k.id}</td>
+                    <td className="px-4 py-3 text-xs text-graphite">{k.type}</td>
                     <td className="px-4 py-3 text-xs font-semibold">{k.venue}</td>
                     <td className="px-4 py-3"><Pill tone={KIOSK_TONE[k.state]}>{k.state}</Pill></td>
                     <td className="px-4 py-3 font-display font-bold">{k.rentals}</td>

@@ -6,8 +6,8 @@ import { MarketingHero } from "@/components/MarketingHero";
 import { getPublishedContent, text as cmsText } from "@/lib/site-content";
 
 const META_FALLBACK = {
-  title: "Contact Zapnivo | Venue Partnerships & Support",
-  description: "Contact Zapnivo for venue partnerships, customer support, advertising and general inquiries.",
+  title: "Contact Zapnivo Vending Services | Vending, Partnerships & Support",
+  description: "Contact Zapnivo Vending Services for vending machine placement inquiries, venue partnerships, charging rental support, advertising and general inquiries.",
 };
 
 /** Contact-page metadata — CMS-overridable via /system/sites → apex/contact. */
@@ -20,9 +20,9 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 const ROUTES = [
-  { t: "Venue partnerships", d: "Own or manage a space? Start with a partnership application.", href: "/business/apply", cta: "Apply" },
-  { t: "Customer support", d: "Rental, return or billing issue? A ticket gets it to the right queue.", href: "/support/new", cta: "Create ticket" },
-  { t: "Advertising", d: "Interested in kiosk screen placements? See what's possible.", href: "/advertise", cta: "Explore" },
+  { t: "Vending & venue partnerships", d: "Own or manage a space? Apply to host Zapnivo vending equipment — snacks, drinks, food, chargers and more.", href: "/business/apply", cta: "Apply" },
+  { t: "Charging support", d: "Rental, return or billing issue with a power bank? A ticket gets it to the right queue.", href: "/support/new", cta: "Create ticket" },
+  { t: "Advertising", d: "Interested in screen placements on our equipment? See what's possible.", href: "/advertise", cta: "Explore" },
 ];
 
 export default async function Contact() {
@@ -31,7 +31,7 @@ export default async function Contact() {
   const hero = {
     eyebrow: cmsText(cms, "hero_eyebrow", "Contact Zapnivo"),
     title: cmsText(cms, "hero_title", "Start the right conversation."),
-    description: cmsText(cms, "hero_description", "Questions about rentals, partnerships, or advertising? Choose the route that fits, or send a general message below."),
+    description: cmsText(cms, "hero_description", "Questions about vending machines, charger rentals, partnerships, or advertising? Choose the route that fits, or send a general message below."),
   };
   return (
     <>

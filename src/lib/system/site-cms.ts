@@ -63,6 +63,18 @@ export type FieldDef = {
 const f = (key: string, label: string, type: FieldType, extra: Partial<FieldDef> = {}): FieldDef =>
   ({ key, label, type, ...extra });
 
+/** Uniform field set for the apex vending_* / placement landing pages. */
+const vendingPageFields = (): FieldDef[] => [
+  f("hero_eyebrow", "Hero eyebrow", "string", { maxLength: 120 }),
+  f("hero_title", "Hero title", "string", { maxLength: 120 }),
+  f("hero_description", "Hero description", "richtext", { maxLength: 600 }),
+  f("intro_body", "Intro body", "richtext", { maxLength: 1200 }),
+  f("meta_title", "Meta title", "string", { maxLength: 70 }),
+  f("meta_description", "Meta description", "string", { maxLength: 170 }),
+  f("cta_label", "CTA label", "string", { maxLength: 60 }),
+  f("cta_href", "CTA link", "url"),
+];
+
 /**
  * page_key "home"    → apex homepage hero + metadata (src/app/(site)/page.tsx)
  * page_key "global"  → announcement bar (src/components/Header.tsx via (site)/layout)
@@ -72,6 +84,14 @@ const f = (key: string, label: string, type: FieldType, extra: Partial<FieldDef>
  * page_key "global" (partners)→ portal announcement banner (components/PartnerShell.tsx)
  * page_key "global" (internal)→ portal announcement banner (components/AdminShell.tsx)
  * page_key "home" (customer)  → account portal hero + intro ((site)/account/page.tsx)
+ * page_key "vending_snacks"    → apex /vending/snacks page (hero + intro + meta + CTA)
+ * page_key "vending_drinks"    → apex /vending/drinks page (same field set)
+ * page_key "vending_food"      → apex /vending/food page (same field set)
+ * page_key "vending_chargers"  → apex /vending/chargers page (same field set)
+ * page_key "vending_cards"     → apex /vending/cards page (same field set)
+ * page_key "vending_specialty" → apex /vending/specialty page (same field set)
+ * page_key "vending_locations" → apex /vending/locations page (same field set)
+ * page_key "placement"         → apex /get-a-vending-machine page (same field set)
  *
  * Cataloged per site (multi-site phase):
  *  - support:  help-center hero eyebrow/headline + page meta — wired via HelpCenter props.
@@ -97,6 +117,20 @@ export const FIELD_CATALOG: Record<string, Record<string, FieldDef[]>> = {
       f("hero_subhead", "Hero subhead", "richtext", { maxLength: 600, help: "Plain text; **bold** is the only markup rendered." }),
       f("meta_title", "Meta title", "string", { maxLength: 70, help: "<title> / social title for the homepage." }),
       f("meta_description", "Meta description", "string", { maxLength: 170, help: "Search + share description for the homepage." }),
+      // Homepage hero buttons — label/href pairs; empty href hides the button.
+      f("hero_cta1_label", "Hero CTA 1 label", "string", { maxLength: 60 }),
+      f("hero_cta1_href", "Hero CTA 1 link", "url"),
+      f("hero_cta2_label", "Hero CTA 2 label", "string", { maxLength: 60 }),
+      f("hero_cta2_href", "Hero CTA 2 link", "url"),
+      f("hero_cta3_label", "Hero CTA 3 label", "string", { maxLength: 60 }),
+      f("hero_cta3_href", "Hero CTA 3 link", "url"),
+      // Vending solutions grid section on the homepage.
+      f("solutions_eyebrow", "Solutions eyebrow", "string", { maxLength: 120 }),
+      f("solutions_title", "Solutions title", "string", { maxLength: 120 }),
+      f("solutions_intro", "Solutions intro", "richtext", { maxLength: 600 }),
+      // Closing B2B call-to-action band at the bottom of the homepage.
+      f("bottom_cta_title", "Bottom CTA title", "string", { maxLength: 120 }),
+      f("bottom_cta_body", "Bottom CTA body", "richtext", { maxLength: 400 }),
     ],
     global: [
       f("announcement_enabled", "Show announcement bar", "boolean"),
@@ -105,6 +139,8 @@ export const FIELD_CATALOG: Record<string, Record<string, FieldDef[]>> = {
     ],
     footer: [
       f("contact_email", "Footer contact email", "string", { format: "email", maxLength: 120, help: "Replaces the first footer contact address." }),
+      f("contact_phone", "Footer contact phone", "string", { maxLength: 40, help: "Optional — empty hides the phone line." }),
+      f("mailing_address", "Footer mailing address", "richtext", { maxLength: 200, help: "Optional — empty hides the address block." }),
     ],
     // Newsletter popup — consumed by src/components/NewsletterPopup.tsx via
     // (site)/layout.tsx → getPublishedContent("apex", "newsletter").
@@ -128,6 +164,14 @@ export const FIELD_CATALOG: Record<string, Record<string, FieldDef[]>> = {
       f("meta_title", "Meta title", "string", { maxLength: 70 }),
       f("meta_description", "Meta description", "string", { maxLength: 170 }),
     ],
+    // Vending category + placement pages — same uniform field set per page.
+    // Consumed by (site)/vending/[slug] pages and (site)/get-a-vending-machine.
+    ...Object.fromEntries(
+      [
+        "vending_snacks", "vending_drinks", "vending_food", "vending_chargers",
+        "vending_cards", "vending_specialty", "vending_locations", "placement",
+      ].map((pageKey) => [pageKey, vendingPageFields()]),
+    ),
   },
   support: {
     home: [

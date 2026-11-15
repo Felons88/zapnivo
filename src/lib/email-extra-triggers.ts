@@ -56,6 +56,24 @@ export async function triggerPartnerApplicationReceived(adminEmail: string, app:
   }, { sender: "partners", template: "partner_application_received", event: "partner.application.staff_alert" });
 }
 
+/**
+ * Admin/ops alert for a public vending / equipment-sales inquiry. These land in
+ * the same partner_applications pipeline, so the staff alert reuses the
+ * partner_application_received template; `businessLocation` carries the
+ * product-interest summary (e.g. "Austin, TX · Snacks & vending machines").
+ */
+export async function triggerVendingInquiryReceived(adminEmail: string, app: PartnerApplicationFields) {
+  return send(adminEmail, `New Zapnivo vending inquiry — ${app.businessName}`, "partner_application_received", {
+    contact_name: app.contactName,
+    business_name: app.businessName,
+    business_location: app.businessLocation,
+    inquiry_id: app.inquiryId,
+    submitted_at: app.submittedAt ?? stamp(new Date().toISOString()),
+    admin_url: adminUrl(),
+    year: year(),
+  }, { sender: "partners", template: "partner_application_received", event: "vending.inquiry.staff_alert" });
+}
+
 /** Partner welcome email after an application is approved. */
 export async function triggerPartnerApproved(email: string, orgName: string) {
   return send(email, `Welcome to Zapnivo, ${orgName}`, "partner_approved", {

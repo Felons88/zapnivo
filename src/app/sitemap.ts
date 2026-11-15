@@ -11,6 +11,10 @@ const MAIN = [
   "/about", "/contact", "/advertise", "/legal/privacy", "/legal/terms",
   "/legal/rental-terms", "/legal/refund-policy", "/legal/cookie-policy",
   "/legal/accessibility", "/scam-awareness",
+  // vending machines
+  "/vending/snacks", "/vending/drinks", "/vending/food", "/vending/phone-chargers",
+  "/vending/trading-cards", "/vending/specialty", "/vending/locations",
+  "/vending/request", "/get-a-vending-machine",
 ];
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {

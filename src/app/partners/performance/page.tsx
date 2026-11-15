@@ -5,6 +5,7 @@ import { PartnerGate } from "@/components/PartnerShell";
 import { EmptyCard, Metric } from "@/components/PortalShell";
 import { Pill } from "@/components/SupportNav";
 import { loadOrgReport } from "@/lib/partner-ops-data";
+import { equipmentLabelOr } from "@/lib/equipment";
 import { computePartnerEarnings } from "@/lib/settlement";
 import { fmt } from "@/lib/pricing";
 import { serviceClient } from "@/lib/supabase";
@@ -26,7 +27,7 @@ export default async function PartnerPerformance() {
         const earnings = pair?.[1] ?? [];
 
         if (!report) {
-          return <EmptyCard title="No venue linked yet">Your account isn't attached to a venue organization yet, so there's no performance data to show. Once your agreement is active and a station is installed, rentals, revenue and device health appear here.</EmptyCard>;
+          return <EmptyCard title="No venue linked yet">Your account isn't attached to a venue organization yet, so there's no performance data to show. Once your agreement is active and equipment is installed, rentals, revenue and device health appear here.</EmptyCard>;
         }
 
         const { current, prior, deltas, commission, payouts, openTickets, devices, venues } = report;
@@ -34,6 +35,9 @@ export default async function PartnerPerformance() {
 
         return (
           <div className="space-y-6">
+            <p className="rounded-xl bg-mist/60 px-4 py-2.5 text-xs font-semibold text-graphite">
+              <b className="text-ink">Coverage:</b> transaction reporting on this page currently covers the charging product line (phone-charger kiosks). Other vending equipment categories — snacks, beverages, food, trading cards, specialty — will appear here as their integrations go live.
+            </p>
             <section aria-label="Last 30 days" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               <Metric label="Rentals (30 days)" value={current.rentals} sub={deltaLabel(deltas.rentalsPct)} />
               <Metric label="Completed rentals" value={current.completed} sub={`${current.utilizationPct ?? "—"}% utilization · ${deltaLabel(deltas.completedPct)}`} />
@@ -103,12 +107,13 @@ export default async function PartnerPerformance() {
             </section>
 
             {!hasActivity && (
-              <EmptyCard title="No activity yet">Once your station is live and renters start using it, rentals, revenue, commissions and device health show up here. <Link href="/partners/demo" className="font-bold underline">Preview a populated portal →</Link></EmptyCard>
+              <EmptyCard title="No activity yet">Once your equipment is live and renters start using it, rentals, revenue, commissions and device health show up here. <Link href="/partners/demo" className="font-bold underline">Preview a populated portal →</Link></EmptyCard>
             )}
 
             <div className="grid gap-6 lg:grid-cols-2">
               <section aria-label="Devices" className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
                 <h2 className="font-display text-lg font-bold">Device health</h2>
+                <p className="mt-1 text-xs text-graphite">Charging kiosks (charger-station product line).</p>
                 {devices.total === 0 ? (
                   <p className="mt-4 text-sm text-graphite">No devices registered to your venues yet.</p>
                 ) : (
@@ -132,7 +137,7 @@ export default async function PartnerPerformance() {
                   <ul className="mt-4 space-y-3">
                     {venues.map((v) => (
                       <li key={v.id} className="flex items-center justify-between gap-3 text-sm">
-                        <span className="font-bold">{v.name}</span>
+                        <span className="font-bold">{v.name} <span className="text-xs font-semibold text-graphite">· {equipmentLabelOr(v.equipmentCategory, "unclassified")}</span></span>
                         <Pill tone={v.published ? "lime" : "mist"}>{v.published ? "published" : "pending"}</Pill>
                       </li>
                     ))}
@@ -140,7 +145,7 @@ export default async function PartnerPerformance() {
                 )}
                 <div className="mt-6 border-t border-mist pt-4">
                   <h3 className="text-sm font-bold">Reports</h3>
-                  <p className="mt-1 text-xs text-graphite">Download your rentals for the last 12 months as CSV. Only your organization's stations are included.</p>
+                  <p className="mt-1 text-xs text-graphite">Download your rentals for the last 12 months as CSV. Only your organization's stations are included (charging product line).</p>
                   <a href="/api/partners/reports/rentals.csv" className="mt-3 inline-block rounded-lg bg-ink px-4 py-2 text-xs font-extrabold uppercase tracking-wider text-white hover:bg-forest">Download rentals CSV ↓</a>
                 </div>
               </section>

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { PartnerGate } from "@/components/PartnerShell";
 import { EmptyCard, Metric } from "@/components/PortalShell";
 import { Pill } from "@/components/SupportNav";
+import { equipmentLabelOr } from "@/lib/equipment";
 import { defaultCtx } from "@/lib/helpdesk/service";
 import { serviceClient } from "@/lib/supabase";
 
@@ -19,14 +20,14 @@ export default async function PartnerPortal() {
         const db = serviceClient();
         const ctx = await defaultCtx();
         const [venues, kiosks, rentalCounts, openTickets] = orgId && db ? await Promise.all([
-          db.from("venues").select("id,name,city,state,published,hours").eq("organization_id", orgId).limit(50),
-          db.from("kiosks").select("id,station_id,state,last_seen_at,venues!inner(name,organization_id)").eq("venues.organization_id", orgId).limit(50),
+          db.from("venues").select("id,name,city,state,published,hours,equipment_category").eq("organization_id", orgId).limit(50),
+          db.from("kiosks").select("id,station_id,state,last_seen_at,equipment_category,venues!inner(name,organization_id)").eq("venues.organization_id", orgId).limit(50),
           db.from("rentals").select("kiosk_id,state,created_at,kiosks!inner(venues!inner(organization_id))").eq("kiosks.venues.organization_id", orgId).gte("created_at", new Date(Date.now() - 30 * 86400_000).toISOString()).limit(5000),
           ctx ? ctx.repo.listTickets({ orgId, states: ["open", "pending_customer", "pending_internal"], limit: 5 }) : Promise.resolve([]),
         ]) : [{ data: null }, { data: null }, { data: null }, []];
 
-        const venueRows = (venues?.data ?? []) as { id: string; name: string; city: string; state: string; published: boolean; hours: string | null }[];
-        const kioskRows = (kiosks?.data ?? []) as unknown as { id: string; station_id: string; state: keyof typeof KIOSK_TONE; last_seen_at: string | null; venues: { name: string } | null }[];
+        const venueRows = (venues?.data ?? []) as { id: string; name: string; city: string; state: string; published: boolean; hours: string | null; equipment_category: string | null }[];
+        const kioskRows = (kiosks?.data ?? []) as unknown as { id: string; station_id: string; state: keyof typeof KIOSK_TONE; last_seen_at: string | null; equipment_category: string | null; venues: { name: string } | null }[];
         const rentalRows = (rentalCounts?.data ?? []) as { kiosk_id: string; state: string }[];
         const rentalsByKiosk = new Map<string, number>();
         for (const r of rentalRows) rentalsByKiosk.set(r.kiosk_id, (rentalsByKiosk.get(r.kiosk_id) ?? 0) + 1);
@@ -34,7 +35,8 @@ export default async function PartnerPortal() {
 
         return (
           <div className="space-y-6">
-            {!orgId && <EmptyCard title="No venue linked yet">Your account isn't attached to a venue organization. Once your agreement is active, your stations and statements appear here.</EmptyCard>}
+            {!orgId && <EmptyCard title="No venue linked yet">Your account isn't attached to a venue organization. Once your agreement is active, your equipment and statements appear here.</EmptyCard>}
+            <p className="text-xs text-graphite">Charging operations below cover the charger-station product line. Other vending equipment categories appear here as their integrations go live.</p>
             <section aria-label="Your business" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               <Metric label="Stations" value={kioskRows.length} sub={`${kioskRows.filter((k) => k.state === "online").length} online`} />
               <Metric label="Rentals (30 days)" value={rentalRows.length} sub={`${active} active now`} />
@@ -45,16 +47,17 @@ export default async function PartnerPortal() {
             <p className="text-sm text-graphite"><Link href="/partners/onboarding" className="font-bold underline">Onboarding progress</Link> · <Link href="/partners/documents" className="font-bold underline">Documents</Link></p>
 
             <section aria-label="Your stations" className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
-              <div className="border-b border-mist px-6 py-4"><h2 className="font-display text-lg font-bold">Your stations</h2></div>
+              <div className="border-b border-mist px-6 py-4"><h2 className="font-display text-lg font-bold">Your stations</h2><p className="mt-1 text-xs text-graphite">Charging product line — phone-charger kiosks.</p></div>
               {kioskRows.length === 0 ? (
                 <div className="px-6 py-10"><p className="text-sm text-graphite">No stations installed yet. Your kiosk appears here after installation.</p><Link href="/partners/demo" className="mt-3 inline-block text-xs font-extrabold uppercase tracking-wider text-forest hover:underline">Preview a populated portal →</Link></div>
               ) : (
                 <table className="w-full min-w-[640px] text-left text-sm">
-                  <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite"><tr>{["Station", "Venue", "Status", "Rentals (30d)", "Last seen"].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr></thead>
+                  <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite"><tr>{["Station", "Type", "Venue", "Status", "Rentals (30d)", "Last seen"].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr></thead>
                   <tbody>
                     {kioskRows.map((k) => (
                       <tr key={k.id} className="border-b border-mist/70 last:border-0">
                         <td className="px-4 py-3 font-bold">{k.station_id}</td>
+                        <td className="px-4 py-3 text-xs text-graphite">{equipmentLabelOr(k.equipment_category, "charger_station")}</td>
                         <td className="px-4 py-3 text-xs font-semibold">{k.venues?.name ?? "—"}</td>
                         <td className="px-4 py-3"><Pill tone={KIOSK_TONE[k.state] ?? "mist"}>{k.state}</Pill></td>
                         <td className="px-4 py-3 font-display font-bold">{rentalsByKiosk.get(k.id) ?? 0}</td>
@@ -73,7 +76,7 @@ export default async function PartnerPortal() {
                   <ul className="mt-4 space-y-3">
                     {venueRows.map((v) => (
                       <li key={v.id} className="flex items-center justify-between gap-3 text-sm">
-                        <span><b>{v.name}</b> <span className="text-graphite">· {v.city}, {v.state}</span></span>
+                        <span><b>{v.name}</b> <span className="text-graphite">· {v.city}, {v.state}</span>{" "}<span className="text-xs text-graphite">· {equipmentLabelOr(v.equipment_category, "unclassified")}</span></span>
                         <Pill tone={v.published ? "lime" : "mist"}>{v.published ? "published" : "pending"}</Pill>
                       </li>
                     ))}

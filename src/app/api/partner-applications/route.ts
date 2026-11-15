@@ -14,6 +14,7 @@ export const POST = (req: Request) =>
       business_name: d.businessName, contact_name: d.contactName, email: d.email, phone: d.phone,
       venue_type: d.venueType, street: d.street, city: d.city, state: d.state, hours: d.hours,
       guest_traffic: d.guestTraffic, install_location: d.installLocation, questions: d.questions,
+      product_interest: d.productInterest,
     }),
     after: async (d, row) => {
       recordLog("info", "partner_application_submitted", { service: "partners", route: "partner-applications", attrs: { applicationId: row.id, venueType: d.venueType } });
@@ -22,7 +23,7 @@ export const POST = (req: Request) =>
       await repo.queueEmail({
         ticketId: null, to: d.email,
         subject: "We received your Zapnivo partnership inquiry",
-        body: `Hi ${d.contactName},\n\nThanks for reaching out about hosting a Zapnivo station at ${d.businessName} in ${d.city}, ${d.state}. We've logged your inquiry (${row.id.slice(0, 8).toUpperCase()}) and will be in touch to schedule a consultation.\n\n— Zapnivo Team`,
+        body: `Hi ${d.contactName},\n\nThanks for reaching out about hosting Zapnivo vending equipment at ${d.businessName} in ${d.city}, ${d.state}. We've logged your inquiry (${row.id.slice(0, 8).toUpperCase()}) and will be in touch to schedule a consultation.\n\n— Zapnivo Team`,
         html: renderEmail("partner_inquiry", {
           business_name: d.businessName, contact_name: d.contactName,
           business_location: `${d.city}, ${d.state}`, inquiry_id: row.id.slice(0, 8).toUpperCase(),

@@ -72,7 +72,11 @@ describe("site registry", () => {
   });
 
   it("catalog only contains rendered fields; unknown lookups return null/empty", () => {
-    expect(catalogPages("apex")).toEqual(["home", "global", "footer", "newsletter", "contact"]);
+    expect(catalogPages("apex")).toEqual([
+      "home", "global", "footer", "newsletter", "contact",
+      "vending_snacks", "vending_drinks", "vending_food", "vending_chargers",
+      "vending_cards", "vending_specialty", "vending_locations", "placement",
+    ]);
     expect(catalogFields("internal", "admin")).toEqual([]);
     expect(catalogPageExists("apex", "home")).toBe(true);
     expect(catalogPageExists("apex", "nope")).toBe(false);

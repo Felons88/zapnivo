@@ -2,11 +2,16 @@ import { SITE } from "@/lib/site";
 
 const BODY = `# Zapnivo
 
-> ${SITE.tagline} Zapnivo is a portable phone-charger rental network rolling out across Minnesota, USA. Customers rent a power bank at a self-service kiosk, charge on the move, and return it to any eligible participating station.
+> ${SITE.tagline} Zapnivo Vending Services provides smart vending machines and portable phone-charger rentals across Minnesota, USA. Businesses can request a vending machine for their location; customers can rent a power bank at a self-service kiosk, charge on the move, and return it to any eligible participating station.
 
-Zapnivo operates white eight-slot touchscreen charging kiosks placed in partner venues (bars, restaurants, hotels, campuses, entertainment spaces). Zapnivo manages the equipment, payments, software, rental operations, and customer support; venues request installation through a partner application.
+Zapnivo operates self-service vending machines and white eight-slot touchscreen charging kiosks placed in partner venues (offices, gyms, bars, restaurants, hotels, campuses, entertainment spaces). Vending categories include snacks, drinks, fresh food, phone chargers, trading cards, and specialty items. Zapnivo manages the equipment, payments, software, operations, and customer support; venues request placement through an application.
 
-Status: pre-launch pilot. No live public stations are claimed until verified. Pilot pricing is proposed and shown to renters before payment.
+Status: pre-launch pilot. No live public stations or vending locations are claimed until verified. Pilot pricing is proposed and shown to renters before payment.
+
+## Vending machines
+- [Snacks](${SITE.url}/vending/snacks) · [Drinks](${SITE.url}/vending/drinks) · [Fresh food](${SITE.url}/vending/food) · [Phone chargers](${SITE.url}/vending/phone-chargers) · [Trading cards](${SITE.url}/vending/trading-cards) · [Specialty](${SITE.url}/vending/specialty)
+- [Vending locations](${SITE.url}/vending/locations): where Zapnivo machines are (or will be) placed.
+- [Request a vending machine](${SITE.url}/vending/request) · [Get a vending machine](${SITE.url}/get-a-vending-machine): request placement for your business.
 
 ## Product & pricing
 - [How rentals work](${SITE.url}/how-it-works): scan a station QR code, check out, take the power bank, return it to an eligible station.
@@ -18,7 +23,7 @@ Status: pre-launch pilot. No live public stations are claimed until verified. Pi
 
 ## For businesses
 - [Venue partnerships](${SITE.url}/business): who hosting suits, how placement works, what Zapnivo manages.
-- [Partner application](${SITE.url}/business/apply): request a station at your venue.
+- [Partner application](${SITE.url}/business/apply): request a station or vending machine at your venue.
 - [Advertising](${SITE.url}/advertise): screen and sponsorship opportunities on the kiosk network.
 
 ## Support

@@ -1,0 +1,10 @@
+We received your Zapnivo vending inquiry
+
+Hi {{contact_name}},
+
+Thanks for your interest in Zapnivo vending and equipment for {{business_name}} ({{business_location}}). We've logged your inquiry ({{inquiry_id}}) and will be in touch to talk through options.
+
+Interest: {{product_interest}}
+
+— Zapnivo Team
+{{year}}

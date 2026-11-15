@@ -50,6 +50,9 @@ export const PUBLIC_EVENT_NAMES = [
   "support_otp_requested", "support_otp_verified", "support_ticket_created",
   // retention
   "customer_return_visit", "customer_feedback_submitted",
+  // vending funnel (category pages, CTAs, machine request form)
+  "vending_category_view", "vending_cta_click", "machine_request_form_start",
+  "machine_request_form_submitted", "equipment_inquiry_view",
 ] as const;
 export type PublicEventName = (typeof PUBLIC_EVENT_NAMES)[number];
 

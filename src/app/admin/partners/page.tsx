@@ -4,26 +4,31 @@ import Link from "next/link";
 import { AdminGate } from "@/components/AdminShell";
 import { EmptyCard, Metric } from "@/components/PortalShell";
 import { Pill } from "@/components/SupportNav";
+import { EQUIPMENT_LABELS, equipmentLabel, equipmentLabelOr, isEquipmentCategory } from "@/lib/equipment";
 import { serviceClient } from "@/lib/supabase";
 
 export const metadata: Metadata = { title: "Partners", robots: { index: false, follow: false } };
 
 const STATUS_TONE = { new: "cyan", reviewed: "mist", consultation: "gold", approved: "lime", declined: "mist", installed: "ink" } as const;
 const when = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+/** partner_applications.product_interest is a free-text list of category keys (comma/space separated). */
+const interestLabels = (s: string | null) =>
+  [...new Set((s ?? "").split(/[,;\s]+/).map((t) => t.trim()).filter(Boolean))]
+    .map((t) => (isEquipmentCategory(t) ? EQUIPMENT_LABELS[t] : equipmentLabel(t) ?? t));
 
 export default async function Partners({ searchParams }: { searchParams: Promise<{ result?: string; detail?: string; stm?: string }> }) {
   const feedback = await searchParams;
   const db = serviceClient();
   const [apps, orgs, venues] = db ? await Promise.all([
-    db.from("partner_applications").select("id,business_name,contact_name,email,phone,venue_type,city,state,status,created_at").order("created_at", { ascending: false }).limit(200),
+    db.from("partner_applications").select("id,business_name,contact_name,email,phone,venue_type,city,state,status,created_at,product_interest,space_notes,timeline").order("created_at", { ascending: false }).limit(200),
     db.from("organizations").select("id,name").order("created_at", { ascending: false }).limit(100),
-    db.from("venues").select("id,name,city,state,published,organization_id,lat,lng").order("created_at", { ascending: false }).limit(200),
+    db.from("venues").select("id,name,city,state,published,organization_id,lat,lng,equipment_category").order("created_at", { ascending: false }).limit(200),
   ]) : [null, null, null];
 
-  type App = { id: string; business_name: string; contact_name: string; email: string; phone: string | null; venue_type: string; city: string; state: string; status: keyof typeof STATUS_TONE; created_at: string };
+  type App = { id: string; business_name: string; contact_name: string; email: string; phone: string | null; venue_type: string; city: string; state: string; status: keyof typeof STATUS_TONE; created_at: string; product_interest: string | null; space_notes: string | null; timeline: string | null };
   const appRows = (apps?.data ?? []) as unknown as App[];
   const orgRows = (orgs?.data ?? []) as { id: string; name: string }[];
-  const venueRows = (venues?.data ?? []) as { id: string; name: string; city: string; state: string; published: boolean; organization_id: string | null; lat: number | null; lng: number | null }[];
+  const venueRows = (venues?.data ?? []) as { id: string; name: string; city: string; state: string; published: boolean; organization_id: string | null; lat: number | null; lng: number | null; equipment_category: string | null }[];
 
   return (
     <AdminGate title="Partners" nav="partners">
@@ -55,7 +60,7 @@ export default async function Partners({ searchParams }: { searchParams: Promise
                     <tr key={a.id} className="border-b border-mist/70 last:border-0 hover:bg-lime/10">
                       <td className="px-4 py-3 font-bold">{a.business_name}</td>
                       <td className="px-4 py-3"><p className="font-semibold">{a.contact_name}</p><p className="text-xs text-graphite">{a.email}{a.phone ? ` · ${a.phone}` : ""}</p></td>
-                      <td className="px-4 py-3 text-xs font-semibold">{a.venue_type}</td>
+                      <td className="px-4 py-3 text-xs font-semibold">{a.venue_type}{a.product_interest && <p className="mt-1 font-bold text-forest">{interestLabels(a.product_interest).join(" · ")}</p>}{(a.space_notes || a.timeline) && <details className="mt-1"><summary className="cursor-pointer font-bold text-forest underline">Vending notes</summary><p className="mt-1 max-w-56 whitespace-pre-line font-normal text-graphite">{[a.space_notes && `Space: ${a.space_notes}`, a.timeline && `Timeline: ${a.timeline}`].filter(Boolean).join("\n")}</p></details>}</td>
                       <td className="px-4 py-3 text-xs text-graphite">{a.city}, {a.state}</td>
                       <td className="px-4 py-3"><form method="post" action="/api/admin/partners" className="flex items-center gap-2"><input type="hidden" name="action" value="update_application" /><input type="hidden" name="application_id" value={a.id} /><select name="status" defaultValue={a.status} aria-label={`Status for ${a.business_name}`} className="min-h-9 rounded-lg border border-silver/60 px-2 text-xs font-semibold">{Object.keys(STATUS_TONE).map((s) => <option key={s} value={s}>{s}</option>)}</select><button className="min-h-9 rounded-full bg-mist px-3 text-xs font-bold hover:bg-lime">Save</button></form></td>
                       <td className="px-4 py-3">{a.status === "approved" ? <form method="post" action="/api/admin/partners" className="flex items-center gap-2"><input type="hidden" name="action" value="create_venue_from_application" /><input type="hidden" name="application_id" value={a.id} /><select name="organization_id" required defaultValue="" aria-label={`Owner organization for ${a.business_name}`} className="min-h-9 rounded-lg border border-silver/60 px-2 text-xs font-semibold"><option value="" disabled>Organization…</option>{orgRows.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}</select><button className="min-h-9 rounded-full bg-ink px-3 text-xs font-bold text-white">Create venue</button></form> : <span className="text-xs text-graphite">Approve first</span>}</td>
@@ -130,12 +135,13 @@ export default async function Partners({ searchParams }: { searchParams: Promise
             ) : (
               <table className="w-full min-w-[900px] text-left text-sm">
                 <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite">
-                  <tr>{["Venue", "Owner organization", "City", "Status"].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr>
+                  <tr>{["Venue", "Equipment", "Owner organization", "City", "Status"].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr>
                 </thead>
                 <tbody>
                   {venueRows.map((v) => (
                     <tr key={v.id} className="border-b border-mist/70 last:border-0 hover:bg-lime/10">
                       <td className="px-4 py-3 font-bold">{v.name}</td>
+                      <td className="px-4 py-3"><Pill tone={v.equipment_category ? "cyan" : "mist"}>{equipmentLabelOr(v.equipment_category, "unclassified")}</Pill></td>
                       <td className="px-4 py-3 text-xs font-semibold"><form method="post" action="/api/admin/partners" className="flex items-center gap-2"><input type="hidden" name="action" value="assign_venue_org" /><input type="hidden" name="venue_id" value={v.id} /><select name="organization_id" defaultValue={v.organization_id ?? ""} aria-label={`Owner of ${v.name}`} className="min-h-9 rounded-lg border border-silver/60 px-2 text-xs font-semibold"><option value="">— unassigned —</option>{orgRows.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}</select><button className="min-h-9 rounded-full bg-mist px-3 text-xs font-bold hover:bg-lime">Save</button></form></td>
                       <td className="px-4 py-3 text-xs text-graphite">{v.city}, {v.state}</td>
                       <td className="px-4 py-3"><Pill tone={v.published ? "lime" : "mist"}>{v.published ? "published" : "unpublished"}</Pill><details className="mt-2"><summary className="cursor-pointer text-xs font-bold text-forest underline">Map settings</summary><form method="post" action="/api/admin/partners" className="mt-2 flex w-56 flex-col gap-2"><input type="hidden" name="action" value="save_venue_map" /><input type="hidden" name="venue_id" value={v.id} /><label className="text-xs">Latitude<input name="lat" type="number" step="any" min="-90" max="90" defaultValue={v.lat ?? ""} placeholder="45.5602" className="mt-1 min-h-9 w-full rounded-lg border border-silver/60 px-2" /></label><label className="text-xs">Longitude<input name="lng" type="number" step="any" min="-180" max="180" defaultValue={v.lng ?? ""} placeholder="-94.1625" className="mt-1 min-h-9 w-full rounded-lg border border-silver/60 px-2" /></label><label className="flex items-center gap-2 text-xs"><input name="published" type="checkbox" value="yes" defaultChecked={v.published} />Publish on map</label><p className="text-[11px] leading-4 text-graphite">Requires verified coordinates and an installed kiosk reporting online.</p><button className="min-h-9 rounded-full bg-ink px-3 text-xs font-bold text-white">Save map settings</button></form></details></td>

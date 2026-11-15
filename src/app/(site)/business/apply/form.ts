@@ -1,4 +1,4 @@
-import { partnerApplicationSchema } from "@/lib/validation";
+import { partnerApplicationSchema, PRODUCT_INTEREST_KEYS } from "@/lib/validation";
 
 /**
  * Client-safe helpers for the partner application form.
@@ -14,7 +14,7 @@ export const APPLICATION_SCHEMA = partnerApplicationSchema.omit({ website: true 
 export const STEP_FIELDS = [
   ["businessName", "contactName", "email", "phone"],
   ["venueType", "street", "city", "state"],
-  ["hours", "guestTraffic", "installLocation", "questions"],
+  ["hours", "guestTraffic", "installLocation", "questions", "productInterest"],
 ] as const;
 
 export type StepField = (typeof STEP_FIELDS)[number][number];
@@ -25,7 +25,7 @@ export type FieldErrors = Partial<Record<string, string>>;
 export const STEP_SCHEMAS = [
   APPLICATION_SCHEMA.pick({ businessName: true, contactName: true, email: true, phone: true }),
   APPLICATION_SCHEMA.pick({ venueType: true, street: true, city: true, state: true }),
-  APPLICATION_SCHEMA.pick({ hours: true, guestTraffic: true, installLocation: true, questions: true }),
+  APPLICATION_SCHEMA.pick({ hours: true, guestTraffic: true, installLocation: true, questions: true, productInterest: true }),
 ] as const;
 
 /** Wizard step labels shown to applicants. */
@@ -56,8 +56,8 @@ export const NEXT_STEPS = [
 
 /** Who is responsible for what, stated conservatively from existing site copy. */
 export const RESPONSIBILITIES = [
-  { who: "Zapnivo", items: "Supplies and installs the kiosk, manages the power banks, software, maintenance, and rental support." },
-  { who: "Your venue", items: "Provides a visible, practical spot for the station and helps us plan placement around your operation." },
+  { who: "Zapnivo", items: "Supplies and installs the equipment, manages inventory, power banks, software, maintenance, and customer support." },
+  { who: "Your venue", items: "Provides a visible, practical spot for the equipment and helps us plan placement around your operation." },
 ] as const;
 
 /** Guest-facing rental facts (confirmed pricing) — context for venue partners. */
@@ -66,6 +66,17 @@ export const GUEST_RENTAL_FACTS = [
   "24-hour return window",
   "$45 non-return fee",
 ] as const;
+
+/** Vending categories a venue can ask about — values map to partner_applications.product_interest. */
+export const PRODUCT_INTEREST_OPTIONS = [
+  { value: "snack", label: "Snacks" },
+  { value: "beverage", label: "Beverages" },
+  { value: "food", label: "Food" },
+  { value: "phone_charger", label: "Phone chargers" },
+  { value: "trading_cards", label: "Trading cards" },
+  { value: "specialty", label: "Specialty items" },
+  { value: "custom", label: "Custom / other" },
+] as const satisfies readonly { value: (typeof PRODUCT_INTEREST_KEYS)[number]; label: string }[];
 
 /** Flatten FormData-style string records into the shape the schema expects. */
 export function toApplicationInput(data: Record<string, string>) {
@@ -82,6 +93,7 @@ export function toApplicationInput(data: Record<string, string>) {
     guestTraffic: data.guestTraffic ?? "",
     installLocation: data.installLocation ?? "",
     questions: data.questions ?? "",
+    productInterest: data.productInterest ?? "",
   };
 }
 

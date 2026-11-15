@@ -9,10 +9,10 @@ const space = Space_Grotesk({ subsets: ["latin"], variable: "--font-space", disp
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE.url),
-  title: { default: "Zapnivo — Portable phone charger rental | Life moves. Power follows.", template: "%s | Zapnivo" },
+  title: { default: "Zapnivo Vending Services | Vending Solutions in Minnesota", template: "%s | Zapnivo" },
   description: SITE.description,
   alternates: { canonical: "./" },
-  openGraph: { type: "website", siteName: "Zapnivo", title: "Zapnivo — Life moves. Power follows.", description: SITE.description, locale: "en_US" },
+  openGraph: { type: "website", siteName: "Zapnivo Vending Services", title: "Zapnivo Vending Services | Vending Solutions in Minnesota", description: SITE.description, locale: "en_US" },
   twitter: { card: "summary_large_image" },
 };
 export const viewport: Viewport = { themeColor: "#11122B", width: "device-width", initialScale: 1 };

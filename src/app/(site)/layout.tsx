@@ -1,4 +1,7 @@
+import type { Metadata } from "next";
 import { Header } from "@/components/Header";
+import { JsonLd } from "@/components/JsonLd";
+import { SITE } from "@/lib/site";
 import { Footer } from "@/components/Footer";
 import { ConsentBanner } from "@/components/ConsentBanner";
 import { Analytics } from "@/components/Analytics";
@@ -7,6 +10,43 @@ import { getPublishedContent, flag, text } from "@/lib/site-content";
 import { NewsletterPopup } from "@/components/NewsletterPopup";
 import { newsletterConfigFromContent } from "@/lib/newsletter/core";
 import { getPublicMaintenanceNotice } from "@/lib/maintenance-notice";
+
+// Vending-positioned site-wide defaults. Page-level metadata exports still win;
+// the root layout's charger-era title/description only applies where pages don't override.
+export const metadata: Metadata = {
+  title: {
+    default: "Zapnivo Vending Services | Vending Solutions in Minnesota",
+    template: "%s | Zapnivo",
+  },
+  description:
+    "Zapnivo Vending Services places and manages smart vending machines across Minnesota — snacks, drinks, fresh food, phone chargers, trading cards, and specialty items for offices, gyms, campuses, and venues. Portable charger rentals also available.",
+};
+
+// Organization + WebSite JSON-LD complementing the root layout's graph. Same
+// @ids so search engines consolidate them into one entity. No SearchAction:
+// site search (SiteSearch) is a client-side page list — there is no /search endpoint.
+const siteJsonLd = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": `${SITE.url}/#org`,
+      name: "Zapnivo Vending Services",
+      url: SITE.url,
+      description:
+        "Zapnivo Vending Services provides smart vending machine placement and management across Minnesota, plus portable phone charger rentals.",
+      areaServed: { "@type": "AdministrativeArea", name: "Minnesota" },
+    },
+    {
+      "@type": "WebSite",
+      "@id": `${SITE.url}/#site`,
+      url: SITE.url,
+      name: "Zapnivo Vending Services",
+      publisher: { "@id": `${SITE.url}/#org` },
+      inLanguage: "en-US",
+    },
+  ],
+};
 
 export default async function SiteLayout({ children }: { children: React.ReactNode }) {
   // CMS announcement bar (apex/global) — cached read, falls back to the default strip.
@@ -45,6 +85,7 @@ export default async function SiteLayout({ children }: { children: React.ReactNo
       ) : null}
       <Header heroDark announcement={announcement?.text ? announcement : null} supportAnnouncement={supportAnnouncement?.text ? supportAnnouncement : null} />
       <main id="main">{children}</main>
+      <JsonLd data={siteJsonLd} />
       <Footer />
       <ConsentBanner />
       <NewsletterPopup config={newsletter} />

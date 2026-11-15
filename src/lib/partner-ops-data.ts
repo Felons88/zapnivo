@@ -45,7 +45,7 @@ export async function loadOnboarding(db: SupabaseClient, orgId?: string): Promis
 export type OrgReport = {
   orgId: string;
   generatedAt: string;
-  venues: { id: string; name: string; published: boolean }[];
+  venues: { id: string; name: string; published: boolean; equipmentCategory: string | null }[];
   current: { rentals: number; completed: number; utilizationPct: number | null; revenueCents: number; payments: number };
   prior: { rentals: number; completed: number; utilizationPct: number | null; revenueCents: number; payments: number };
   deltas: { rentalsPct: number | null; completedPct: number | null; revenuePct: number | null };
@@ -68,8 +68,10 @@ export async function loadOrgReport(db: SupabaseClient, orgId: string, now = new
   const curStart = new Date(now.getTime() - 30 * DAY_MS).toISOString();
   const prevStart = new Date(now.getTime() - 60 * DAY_MS).toISOString();
 
-  const { data: venueData } = await db.from("venues").select("id,name,published").eq("organization_id", orgId).limit(200);
-  const venues = ((venueData ?? []) as { id: string; name: string; published: boolean }[]);
+  const { data: venueData } = await db.from("venues").select("id,name,published,equipment_category").eq("organization_id", orgId).limit(200);
+  const venues = ((venueData ?? []) as { id: string; name: string; published: boolean; equipment_category: string | null }[]).map((v) => ({
+    id: v.id, name: v.name, published: v.published, equipmentCategory: v.equipment_category,
+  }));
   const venueIds = venues.map((v) => v.id);
 
   const scoped = venueIds.length > 0;

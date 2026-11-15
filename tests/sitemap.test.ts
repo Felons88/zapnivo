@@ -18,6 +18,9 @@ const MAIN_PATHS = [
   "/legal/privacy", "/legal/terms", "/legal/rental-terms",
   "/legal/refund-policy", "/legal/cookie-policy", "/legal/accessibility",
   "/scam-awareness",
+  "/vending/snacks", "/vending/drinks", "/vending/food", "/vending/phone-chargers",
+  "/vending/trading-cards", "/vending/specialty", "/vending/locations",
+  "/vending/request", "/get-a-vending-machine",
 ];
 const PRIVATE_PREFIXES = ["/admin", "/partners", "/account", "/api", "/login", "/r", "/support"];
 
