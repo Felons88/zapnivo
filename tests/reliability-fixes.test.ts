@@ -334,7 +334,8 @@ describe("D14 — runAlertSweep integration health", () => {
     const summary = await runAlertSweep(dbHolder.db as never);
     expect(summary.checks["integration_health"]).toMatchObject({ status: "ok", matched: 1, emitted: 1 });
     await vi.waitFor(() => expect(alertStaffSpy).toHaveBeenCalled(), { timeout: 2000 });
-    expect(String(alertStaffSpy.mock.calls.at(-1)?.[2])).toContain("integrations.health provider=fakeprov");
+    const bodies = alertStaffSpy.mock.calls.map((c) => String(c[2]));
+    expect(bodies.some((b) => b.includes("integrations.health provider=fakeprov"))).toBe(true);
   });
 
   it("skips unconfigured providers without emitting", async () => {

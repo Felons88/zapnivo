@@ -3,10 +3,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { AdminGate } from "@/components/AdminShell";
 import { Metric } from "@/components/PortalShell";
+import { Pill } from "@/components/SupportNav";
 import { serviceClient } from "@/lib/supabase";
 import { loadForecastInput, type LoadedForecastInput } from "@/lib/forecast-data";
 import { FORECAST_WINDOW_DAYS } from "@/lib/forecast-data";
-import { dayOfWeek } from "@/lib/forecast";
+import { backtestSeries, dayOfWeek } from "@/lib/forecast";
 import { Notice } from "@/components/ui";
 
 export const metadata: Metadata = { title: "Demand forecasting", robots: { index: false, follow: false } };
@@ -82,6 +83,7 @@ export default async function ForecastingPage({ searchParams }: { searchParams: 
     }
   }
   const a = data?.networkAnalysis ?? null;
+  const backtest = data ? backtestSeries(data.networkSeries, { horizon }) : null;
 
   return (
     <AdminGate title="Demand forecasting" nav="forecasting">
@@ -200,6 +202,75 @@ export default async function ForecastingPage({ searchParams }: { searchParams: 
                 </table>
               </div>
             </section>
+
+            {/* ── Forecast validation (rolling-origin backtest) ── */}
+            {backtest && (
+              <section className="rounded-2xl border border-mist bg-white p-6">
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <h2 className="text-lg font-bold">Forecast validation</h2>
+                  <p className="text-xs font-bold uppercase tracking-wider text-graphite">
+                    rolling-origin backtest · {horizon}-day horizon
+                  </p>
+                </div>
+                {backtest.status === "insufficient_data" ? (
+                  <div className="mt-4">
+                    <Pill tone="mist">insufficient data</Pill>
+                    <p className="mt-2 text-sm text-graphite">{backtest.caveat}</p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                      <Metric label="Reliability verdict" value={backtest.reliability} sub={`${backtest.origins.length} scored origins`} />
+                      <Metric label="Mean abs. error" value={backtest.meanMae ?? "—"} sub="rentals/day, primary model" />
+                      <Metric label="Naive baseline MAE" value={backtest.meanNaiveMae ?? "—"} sub="last-day repeat" />
+                      <Metric
+                        label="Rel. error"
+                        value={backtest.meanRelativeMae !== null ? `${(backtest.meanRelativeMae * 100).toFixed(0)}%` : "—"}
+                        sub="MAE ÷ mean actual"
+                      />
+                    </div>
+                    <div className="mt-4 overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-mist text-left text-xs uppercase tracking-wider text-graphite">
+                            <th className="py-2 pr-4">Model</th>
+                            <th className="py-2 pr-4 text-right">Origins</th>
+                            <th className="py-2 pr-4 text-right">Mean MAE</th>
+                            <th className="py-2">Note</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {Object.entries(backtest.byModel).map(([model, s]) => (
+                            <tr key={model} className="border-b border-mist/60">
+                              <td className="py-2 pr-4 font-semibold">{model === "seasonal-trend" ? "seasonal index × trend" : model === "linear-trend" ? "linear trend" : "last-day naive"}</td>
+                              <td className="py-2 pr-4 text-right">{s?.origins ?? 0}</td>
+                              <td className="py-2 pr-4 text-right">{s?.meanMae ?? "—"}</td>
+                              <td className="py-2 text-xs text-graphite">
+                                {model === "seasonal-trend" ? `seasonal model applicable at ${backtest.seasonalOrigins} origins` : ""}
+                              </td>
+                            </tr>
+                          ))}
+                          <tr className="border-b border-mist/60">
+                            <td className="py-2 pr-4 font-semibold">naive-last baseline</td>
+                            <td className="py-2 pr-4 text-right">{backtest.origins.length}</td>
+                            <td className="py-2 pr-4 text-right">{backtest.meanNaiveMae ?? "—"}</td>
+                            <td className="py-2 text-xs text-graphite">
+                              {backtest.betterModel === "tie" ? "primary model ≈ baseline (within 1%)" : backtest.betterModel === "primary" ? "primary model beats baseline" : "baseline beats primary model"}
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                    <p className="mt-3 text-xs text-graphite">{backtest.caveat}</p>
+                  </>
+                )}
+                <p className="mt-3 rounded-xl bg-mist/50 px-4 py-3 text-xs text-graphite">
+                  <b className="text-ink">Caveat:</b> backtest scores how the same model would have done on past windows of this series.
+                  It is evidence about fit, not a guarantee — forecasts are statistical estimates, never guaranteed revenue.
+                  Verdict thresholds: reliable ≤25% relative MAE, moderate ≤50%, unreliable above; fewer than 8 scored origins → insufficient data.
+                </p>
+              </section>
+            )}
 
             <section className="rounded-2xl border border-mist bg-paper p-6 text-sm text-graphite">
               <h2 className="text-lg font-bold text-ink">How to read this</h2>

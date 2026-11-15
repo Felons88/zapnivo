@@ -260,3 +260,197 @@ export function projectSeries(a: SeriesAnalysis, horizon: number): ForecastPoint
   }
   return out;
 }
+
+/* ── Backtesting (rolling-origin validation) ──────────────────────────────── */
+
+/**
+ * Reliability verdict thresholds (documented, not hidden):
+ *  - insufficient_data : fewer than MIN_BACKTEST_ORIGINS scored origins.
+ *  - reliable          : mean relative MAE ≤ 0.25 (avg error ≤ 25% of avg actual).
+ *  - moderate          : mean relative MAE ≤ 0.50.
+ *  - unreliable        : mean relative MAE > 0.50.
+ * "Relative MAE" = mean absolute error divided by the mean of all evaluated
+ * actual counts — scale-free, honest about series magnitude.
+ */
+export const MIN_BACKTEST_ORIGINS = 8;
+export const RELIABLE_REL_MAE = 0.25;
+export const MODERATE_REL_MAE = 0.5;
+export const DEFAULT_BACKTEST_MAX_ORIGINS = 60;
+
+export type BacktestOrigin = {
+  /** Last training day ("YYYY-MM-DD"). */
+  originDay: string;
+  trainDays: number;
+  /** Model analyzeSeries picked for this prefix. */
+  model: SeriesAnalysis["method"];
+  /** True when the seasonal-trend model was applicable for this origin. */
+  seasonalApplicable: boolean;
+  /** MAE of the primary model forecast vs actuals over the horizon. */
+  mae: number;
+  /** MAE of the naive-last baseline (repeat last training count). */
+  naiveMae: number;
+  /** Mean of the actual counts evaluated at this origin. */
+  meanActual: number;
+};
+
+export type BacktestModelSummary = { origins: number; meanMae: number | null };
+
+export type BacktestResult = {
+  status: "ok" | "insufficient_data";
+  reason: string | null;
+  horizon: number;
+  minTrainDays: number;
+  origins: BacktestOrigin[];
+  /** Mean MAE across origins (primary model). null when no origins scored. */
+  meanMae: number | null;
+  meanNaiveMae: number | null;
+  /** meanMae / mean(actual) — scale-free error. null when degenerate. */
+  meanRelativeMae: number | null;
+  /** Per-model breakdown: which method ran at each origin + its mean MAE. */
+  byModel: Partial<Record<SeriesAnalysis["method"], BacktestModelSummary>>;
+  /** How often the seasonal-trend model was applicable across scored origins. */
+  seasonalOrigins: number;
+  betterModel: "primary" | "naive" | "tie" | null;
+  reliability: "reliable" | "moderate" | "unreliable" | "insufficient_data";
+  caveat: string;
+};
+
+export type BacktestOptions = {
+  horizon?: number;
+  minTrainDays?: number;
+  /** Cap on scored origins — evenly strided when the series is longer. */
+  maxOrigins?: number;
+};
+
+const meanAbsErr = (estimates: number[], actuals: number[]): number => {
+  let s = 0;
+  for (let i = 0; i < actuals.length; i++) s += Math.abs((estimates[i] ?? 0) - actuals[i]);
+  return s / Math.max(1, actuals.length);
+};
+
+/**
+ * Rolling-origin backtest — PURE, no I/O.
+ *
+ * For every origin with ≥ `minTrainDays` of history AND a full `horizon` of
+ * actuals ahead, we fit analyzeSeries on the prefix, project `horizon` days,
+ * and score MAE against the real counts. A naive-last baseline (repeat the
+ * last observed count) is scored alongside so the fancy model must earn its
+ * keep. Origins are evenly strided when there are more candidates than
+ * `maxOrigins`.
+ *
+ * Nothing is fabricated: prefixes that analyzeSeries rejects (insufficient
+ * data) are skipped, and < MIN_BACKTEST_ORIGINS scored origins →
+ * status "insufficient_data".
+ */
+export function backtestSeries(input: DailyPoint[], opts: BacktestOptions = {}): BacktestResult {
+  const horizon = Math.min(Math.max(Math.floor(opts.horizon ?? 7), 1), MAX_HORIZON_DAYS);
+  const minTrainDays = Math.max(Math.floor(opts.minTrainDays ?? MIN_DAYS), MIN_DAYS);
+  const maxOrigins = Math.max(Math.floor(opts.maxOrigins ?? DEFAULT_BACKTEST_MAX_ORIGINS), 1);
+  const points = normalizeSeries(input);
+
+  const base: BacktestResult = {
+    status: "insufficient_data",
+    reason: null,
+    horizon, minTrainDays,
+    origins: [],
+    meanMae: null, meanNaiveMae: null, meanRelativeMae: null,
+    byModel: {}, seasonalOrigins: 0, betterModel: null,
+    reliability: "insufficient_data",
+    caveat: "",
+  };
+
+  // Candidate origins: prefix ends at index i, needs i+1 >= minTrainDays
+  // training points and points[i+1 .. i+horizon] as actuals.
+  const candidates: number[] = [];
+  for (let i = minTrainDays - 1; i + horizon < points.length; i++) candidates.push(i);
+  if (candidates.length === 0) {
+    return { ...base, reason: points.length < minTrainDays + horizon ? "not_enough_history" : "no_full_horizon" };
+  }
+
+  const stride = Math.max(1, Math.ceil(candidates.length / maxOrigins));
+  const origins: BacktestOrigin[] = [];
+
+  for (let ci = 0; ci < candidates.length; ci += stride) {
+    const i = candidates[ci];
+    const prefix = points.slice(0, i + 1);
+    const actuals = points.slice(i + 1, i + 1 + horizon).map((p) => p.count);
+    if (actuals.length !== horizon) continue;
+
+    const a = analyzeSeries(prefix);
+    if (a.status !== "ok" || a.naiveLast === null) continue; // honest skip
+
+    const fc = projectSeries(a, horizon);
+    if (fc.length !== horizon) continue;
+    const estimates = fc.map((f) => f.estimate);
+    const naiveEstimates = actuals.map(() => a.naiveLast!);
+
+    origins.push({
+      originDay: prefix[prefix.length - 1].day,
+      trainDays: prefix.length,
+      model: a.method,
+      seasonalApplicable: a.method === "seasonal-trend",
+      mae: meanAbsErr(estimates, actuals),
+      naiveMae: meanAbsErr(naiveEstimates, actuals),
+      meanActual: actuals.reduce((s, v) => s + v, 0) / actuals.length,
+    });
+  }
+
+  if (origins.length < MIN_BACKTEST_ORIGINS) {
+    return {
+      ...base,
+      reason: origins.length === 0 ? "no_scorable_origins" : `only_${origins.length}_origins`,
+      origins,
+      caveat:
+        `Backtest needs at least ${MIN_BACKTEST_ORIGINS} rolling origins with ≥${minTrainDays} ` +
+        `training days and ${horizon} days of actuals ahead — only ${origins.length} scored. ` +
+        "Forecast accuracy is unverified; treat projections as rough estimates only.",
+    };
+  }
+
+  const mean = (xs: number[]) => xs.reduce((s, v) => s + v, 0) / xs.length;
+  const meanMae = mean(origins.map((o) => o.mae));
+  const meanNaiveMae = mean(origins.map((o) => o.naiveMae));
+  const allActualsMean = mean(origins.map((o) => o.meanActual));
+  const meanRelativeMae = allActualsMean > 0 ? meanMae / allActualsMean : null;
+
+  const byModel: BacktestResult["byModel"] = {};
+  for (const o of origins) {
+    const cur = byModel[o.model] ?? { origins: 0, meanMae: null };
+    const prev = cur.meanMae ?? 0;
+    cur.origins += 1;
+    cur.meanMae = (prev * (cur.origins - 1) + o.mae) / cur.origins;
+    byModel[o.model] = cur;
+  }
+  for (const k of Object.keys(byModel) as (keyof typeof byModel)[]) {
+    if (byModel[k]?.meanMae != null) byModel[k]!.meanMae = roundCount(byModel[k]!.meanMae);
+  }
+
+  // Naive wins ties within 1% — the complex model must beat the baseline.
+  const betterModel: BacktestResult["betterModel"] =
+    Math.abs(meanMae - meanNaiveMae) <= meanNaiveMae * 0.01 ? "tie" : meanMae < meanNaiveMae ? "primary" : "naive";
+
+  const reliability: BacktestResult["reliability"] =
+    meanRelativeMae === null ? "unreliable"
+    : meanRelativeMae <= RELIABLE_REL_MAE ? "reliable"
+    : meanRelativeMae <= MODERATE_REL_MAE ? "moderate"
+    : "unreliable";
+
+  return {
+    ...base,
+    status: "ok",
+    origins,
+    meanMae: roundCount(meanMae),
+    meanNaiveMae: roundCount(meanNaiveMae),
+    meanRelativeMae: meanRelativeMae === null ? null : roundCount(meanRelativeMae * 1000) / 1000,
+    byModel,
+    seasonalOrigins: origins.filter((o) => o.seasonalApplicable).length,
+    betterModel,
+    reliability,
+    caveat:
+      `Rolling-origin backtest: ${origins.length} origins, ${horizon}-day horizon, ` +
+      `≥${minTrainDays} training days each. Mean absolute error ${roundCount(meanMae)} rentals/day ` +
+      `vs ${roundCount(meanNaiveMae)} for a naive-last baseline` +
+      (meanRelativeMae !== null ? ` (${roundCount(meanRelativeMae * 100)}% of mean actual).` : ".") +
+      " In-sample fit does not guarantee future accuracy — forecasts remain statistical estimates, never guaranteed revenue.",
+  };
+}

@@ -5,13 +5,15 @@ import { PartnerGate } from "@/components/PartnerShell";
 import { EmptyCard, Metric } from "@/components/PortalShell";
 import { Pill } from "@/components/SupportNav";
 import { loadOrgReport } from "@/lib/partner-ops-data";
+import { computePartnerEarnings } from "@/lib/settlement";
 import { fmt } from "@/lib/pricing";
 import { serviceClient } from "@/lib/supabase";
 
 export const metadata: Metadata = { title: "Performance", robots: { index: false, follow: false } };
 
 const deltaLabel = (v: number | null) => (v == null ? "no prior period" : `${v > 0 ? "+" : ""}${v}% vs prior 30d`);
-const month = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
+const month = (iso: string) => new Date(`${iso.slice(0, 10)}T00:00:00Z`).toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
+const day = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }) : "—");
 
 export default async function PartnerPerformance() {
   return (
@@ -19,7 +21,9 @@ export default async function PartnerPerformance() {
       {async ({ user }) => {
         const orgId = user.organizationId;
         const db = serviceClient();
-        const report = orgId && db ? await loadOrgReport(db, orgId) : null;
+        const pair = orgId && db ? await Promise.all([loadOrgReport(db, orgId), computePartnerEarnings(db, orgId)]) : null;
+        const report = pair?.[0] ?? null;
+        const earnings = pair?.[1] ?? [];
 
         if (!report) {
           return <EmptyCard title="No venue linked yet">Your account isn't attached to a venue organization yet, so there's no performance data to show. Once your agreement is active and a station is installed, rentals, revenue and device health appear here.</EmptyCard>;
@@ -42,6 +46,60 @@ export default async function PartnerPerformance() {
               <Metric label="Gross to date" value={fmt(commission.grossCents)} sub={`${commission.periods} statement${commission.periods === 1 ? "" : "s"}`} />
               <Metric label="Scheduled payout" value={fmt(payouts.scheduledCents)} sub={payouts.failed ? `${payouts.failed} failed — see payouts` : payouts.paidCents ? `${fmt(payouts.paidCents)} paid to date` : "No payouts yet"} />
               <Metric label="Open requests" value={openTickets} sub="With Zapnivo support" />
+            </section>
+
+            <section aria-label="Earnings by period" className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h2 className="font-display text-lg font-bold">Earnings by period</h2>
+                  <p className="mt-1 text-xs text-graphite">Commission is paid to you externally by Zapnivo — &quot;paid&quot; rows show the recorded transfer reference and date. Outstanding = commission not yet recorded as paid.</p>
+                </div>
+                {earnings.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {[...new Set(earnings.map((e) => e.period))].map((p) => (
+                      <a key={p} href={`/api/partners/statements/${p}`} className="rounded-lg border border-silver/60 px-3 py-1.5 text-xs font-bold text-forest underline">{month(`${p}-01`)} CSV ↓</a>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {earnings.length === 0 ? (
+                <p className="mt-4 text-sm text-graphite">No commission statements yet. Monthly gross and commission figures appear here once your agreement rate is on file and a ledger is generated.</p>
+              ) : (
+                <>
+                  <table className="mt-4 w-full min-w-[860px] text-left text-sm">
+                    <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite"><tr>{["Period", "Venue", "Gross", "Commission", "Rate", "Paid", "Outstanding", "Payout"].map((h) => <th key={h} className="px-3 py-3 font-extrabold">{h}</th>)}</tr></thead>
+                    <tbody>
+                      {earnings.map((e) => (
+                        <tr key={`${e.venueId}-${e.period}`} className="border-b border-mist/70 align-top last:border-0">
+                          <td className="px-3 py-3 font-bold">{month(`${e.period}-01`)}</td>
+                          <td className="px-3 py-3 text-xs font-semibold">{e.venueName}</td>
+                          <td className="px-3 py-3">{fmt(e.grossCents)}</td>
+                          <td className="px-3 py-3 font-display font-bold">{fmt(e.commissionCents)}</td>
+                          <td className="px-3 py-3 text-xs text-graphite">{e.pct == null ? "—" : `${e.pct}%`}</td>
+                          <td className="px-3 py-3 font-semibold text-forest">{fmt(e.paidCents)}</td>
+                          <td className="px-3 py-3 font-semibold">{fmt(e.outstandingCents)}</td>
+                          <td className="px-3 py-3 text-xs text-graphite">
+                            {e.payouts.length === 0 ? "not scheduled" : e.payouts.map((p) => (
+                              <p key={p.id}>{p.status}{p.providerReference ? ` · ref ${p.providerReference}` : ""}{p.paidAt ? ` · ${day(p.paidAt)}` : ""}</p>
+                            ))}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t border-mist font-bold">
+                        <td className="px-3 py-3" colSpan={2}>Totals</td>
+                        <td className="px-3 py-3">{fmt(earnings.reduce((a, e) => a + e.grossCents, 0))}</td>
+                        <td className="px-3 py-3">{fmt(earnings.reduce((a, e) => a + e.commissionCents, 0))}</td>
+                        <td className="px-3 py-3" />
+                        <td className="px-3 py-3 text-forest">{fmt(earnings.reduce((a, e) => a + e.paidCents, 0))}</td>
+                        <td className="px-3 py-3">{fmt(earnings.reduce((a, e) => a + e.outstandingCents, 0))}</td>
+                        <td className="px-3 py-3" />
+                      </tr>
+                    </tfoot>
+                  </table>
+                </>
+              )}
             </section>
 
             {!hasActivity && (

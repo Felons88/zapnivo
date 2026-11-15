@@ -11,6 +11,7 @@ import { defaultCtx } from "@/lib/helpdesk/service";
 import { humanDue } from "@/lib/helpdesk/sla";
 import { fmt } from "@/lib/pricing";
 import { serviceClient } from "@/lib/supabase";
+import { unreconciledPaymentIds, payoutBacklogHit, UNRECONCILED_CAPTURED_HOURS } from "@/lib/system/alert-sweep";
 
 export const metadata: Metadata = { title: "Dashboard", robots: { index: false, follow: false } };
 
@@ -124,6 +125,128 @@ export default async function AdminDashboard() {
   const rentalsActive = pick(stats?.rentalStates, "active") + pick(stats?.rentalStates, "dispense_pending");
   const attention = (m?.overdueFirstResponse ?? 0) + (m?.unassigned ?? 0);
 
+  /* ── Executive snapshot (Phase 6) ────────────────────────────────────────
+     Live DB-derived business metrics for the exec view. Every figure is a
+     real row count/sum — a failed query degrades THAT metric to
+     "unavailable" (never a fabricated number, never a page crash). No
+     client JS; all server-rendered. revenue-assurance.ts does not exist
+     yet, so the reconciliation count is computed inline with the same
+     rule the alert sweep uses (captured >48h on a pre-completion rental). */
+  type ExecItem = { label: string; value: string; sub: string; href: string; live: boolean };
+  const execItems: ExecItem[] = [];
+  const execSafe = async <T,>(fn: () => Promise<T | null>): Promise<T | null> => {
+    try { return await fn(); } catch { return null; }
+  };
+  const unavailable = (label: string, href: string, sub = "Query failed — metric unavailable"): ExecItem =>
+    ({ label, value: "—", sub, href, live: false });
+
+  if (db) {
+    // Revenue captured — net (captured − refunded, floored per payment) for
+    // the last 30d vs the prior 30d. "live": straight payments rows.
+    const prior30 = new Date(start30.getTime() - 30 * 86400_000);
+    const payRows = await execSafe(async () => {
+      const { data, error } = await db.from("payments")
+        .select("captured_at,amount_captured_cents,amount_refunded_cents")
+        .gte("captured_at", prior30.toISOString())
+        .limit(20000);
+      return error ? null : ((data ?? []) as { captured_at: string | null; amount_captured_cents: number | null; amount_refunded_cents: number | null }[]);
+    });
+    if (payRows == null) {
+      execItems.push(unavailable("Revenue captured · 30d", "/admin/finance"));
+    } else {
+      let cur = 0, prev = 0;
+      for (const p of payRows) {
+        const net = Math.max(0, (p.amount_captured_cents ?? 0) - (p.amount_refunded_cents ?? 0));
+        if (!p.captured_at) continue;
+        if (p.captured_at >= start30.toISOString()) cur += net; else prev += net;
+      }
+      const delta = prev > 0 ? Math.round(((cur - prev) / prev) * 100) : null;
+      execItems.push({
+        label: "Revenue captured · 30d",
+        value: fmt(cur),
+        sub: delta == null ? `prior 30d ${fmt(prev)} — no baseline` : `${delta >= 0 ? "+" : ""}${delta}% vs prior 30d (${fmt(prev)})`,
+        href: "/admin/finance",
+        live: true,
+      });
+    }
+
+    // Rentals started (created) in the last 30d — head count, live.
+    const rentals30 = await execSafe(async () => {
+      const { count, error } = await db.from("rentals")
+        .select("id", { count: "exact", head: true })
+        .gte("created_at", start30.toISOString());
+      return error ? null : count;
+    });
+    execItems.push(rentals30 == null
+      ? unavailable("Rentals started · 30d", "/admin/rentals")
+      : { label: "Rentals started · 30d", value: String(rentals30), sub: "created_at window — live count", href: "/admin/rentals", live: true });
+
+    // Open rental exceptions — status not in resolved/dismissed (same rule
+    // as admin-insights openExceptions). Bounded status scan.
+    const exceptionRows = await execSafe(async () => {
+      const { data, error } = await db.from("rental_exceptions").select("status").limit(5000);
+      return error ? null : ((data ?? []) as { status: string | null }[]);
+    });
+    const openExceptions = exceptionRows == null ? null
+      : exceptionRows.filter((e) => !["resolved", "dismissed"].includes(e.status ?? "")).length;
+    execItems.push(openExceptions == null
+      ? unavailable("Open exceptions", "/admin/rentals")
+      : { label: "Open exceptions", value: String(openExceptions), sub: "rental_exceptions not resolved/dismissed — live", href: "/admin/rentals", live: true });
+
+    // Payout backlog — same aging rule as the finance.payout_backlog probe:
+    // approved >7d (approved_at, created_at fallback) or scheduled >14d.
+    const payoutRows = await execSafe(async () => {
+      const { data, error } = await db.from("payout_records")
+        .select("id,status,created_at,approved_at")
+        .in("status", ["scheduled", "approved"])
+        .limit(500);
+      return error ? null : ((data ?? []) as { id: string; status: string | null; created_at: string | null; approved_at: string | null }[]);
+    });
+    const backlog = payoutRows == null ? null
+      : payoutRows.filter((p) => payoutBacklogHit(p.status ?? "", p.approved_at, p.created_at, now.getTime())).length;
+    execItems.push(backlog == null
+      ? unavailable("Payout backlog", "/admin/payouts")
+      : { label: "Payout backlog", value: String(backlog), sub: "approved >7d or scheduled >14d — live", href: "/admin/payouts", live: true });
+
+    // Reconciliation exceptions — src/lib/revenue-assurance.ts does not exist
+    // yet, so this is the same approximation the alert sweep uses: payments
+    // captured >48h ago whose rental is still pre-completion (or orphaned).
+    // Labelled as an approximation, not ledger truth.
+    const reconCount = await execSafe(async () => {
+      const cutoff = new Date(now.getTime() - UNRECONCILED_CAPTURED_HOURS * 3_600_000).toISOString();
+      const { data: pays, error } = await db.from("payments")
+        .select("id,rental_id")
+        .gt("amount_captured_cents", 0)
+        .lt("captured_at", cutoff)
+        .limit(500);
+      if (error) return null;
+      const rows = (pays ?? []) as { id: string; rental_id: string | null }[];
+      const rentalIds = [...new Set(rows.map((p) => p.rental_id).filter((r): r is string => !!r))];
+      const states = new Map<string, string | null>();
+      for (let i = 0; i < rentalIds.length; i += 200) {
+        const { data: rs, error: rErr } = await db.from("rentals").select("id,state").in("id", rentalIds.slice(i, i + 200)).limit(200);
+        if (rErr) return null;
+        for (const r of (rs ?? []) as { id: string; state: string | null }[]) states.set(r.id, r.state);
+      }
+      return unreconciledPaymentIds(rows, states).length;
+    });
+    execItems.push(reconCount == null
+      ? unavailable("Reconciliation exceptions", "/admin/finance", "Approximation unavailable — payments/rentals query failed")
+      : { label: "Reconciliation exceptions", value: String(reconCount), sub: `captured >${UNRECONCILED_CAPTURED_HOURS}h on unfinished rentals — approx.`, href: "/admin/finance", live: true });
+
+    // Forecast pointer — link tile to the forecasting model.
+    execItems.push({ label: "Revenue forecast", value: "Open →", sub: "Scenario model & assumptions", href: "/admin/forecasting", live: true });
+  } else {
+    for (const [label, href] of [
+      ["Revenue captured · 30d", "/admin/finance"],
+      ["Rentals started · 30d", "/admin/rentals"],
+      ["Open exceptions", "/admin/rentals"],
+      ["Payout backlog", "/admin/payouts"],
+      ["Reconciliation exceptions", "/admin/finance"],
+      ["Revenue forecast", "/admin/forecasting"],
+    ] as const) execItems.push(unavailable(label, href, "Database not configured"));
+  }
+
   return (
     <AdminGate title="Dashboard" nav="dashboard">
       <div className="space-y-6">
@@ -143,6 +266,21 @@ export default async function AdminDashboard() {
           <Metric icon={icons.revenue} label="Revenue captured" value={stats?.revenueCents ? fmt(stats.revenueCents.captured) : "—"} sub={stats?.revenueCents ? `${fmt(stats.revenueCents.refunded)} refunded` : "Awaiting payment integration"} />
           <Metric icon={icons.inbox} label="Open tickets" value={m ? m.open : "—"} sub={m ? `${m.needsHuman} need a person · ${m.unassigned} unassigned` : "Helpdesk not connected"} />
         </section>
+
+        <Card title="Executive snapshot" href="/admin/finance">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {execItems.map((item) => (
+              <Link key={item.label} href={item.href} className="group rounded-xl border border-mist bg-mist/20 p-4 transition-colors hover:border-forest/40 hover:bg-mist/40">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[10px] font-extrabold uppercase tracking-widest text-silver">{item.label}</span>
+                  <span className={`rounded-full px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wider ${item.live ? "bg-forest/10 text-forest" : "bg-gold/30 text-ink"}`}>{item.live ? "live" : "unavailable"}</span>
+                </div>
+                <div className="mt-1.5 font-display text-2xl font-bold">{item.value}</div>
+                <div className="mt-0.5 text-xs text-graphite">{item.sub}</div>
+              </Link>
+            ))}
+          </div>
+        </Card>
 
         <section aria-label="Quick actions" className="flex flex-wrap gap-2">
           {QUICK_ACTIONS.map((a, i) => (

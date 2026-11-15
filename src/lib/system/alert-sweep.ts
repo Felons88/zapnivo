@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { reportError } from "@/lib/observability";
 import { heartbeatStale, HEARTBEAT_STALE_MIN } from "@/lib/kiosk/heartbeat";
 import { configStateDiff } from "./kiosk-detail";
+import { parseCommissionPct } from "@/lib/ledgers";
 
 /**
  * Alert sweep (Phase 2.5) — deferred ALERT_POLICY emitters that cannot fire
@@ -62,6 +63,38 @@ import { configStateDiff } from "./kiosk-detail";
  *  - recovery.test_overdue — no system_recovery_tests row within
  *    RECOVERY_TEST_STALE_DAYS (reminder-level; backups are provider-managed).
  *
+ * Phase 6 additions (business probes — same contract, aggregate/count signals,
+ * stable fingerprints, PII-free messages, fault-tolerant 'skipped'):
+ *  - finance.unreconciled_captured — payments captured >48h ago (real
+ *    amount_captured_cents) whose rental is still in a pre-completion state
+ *    (pending_payment | payment_authorized | authorized | dispense_pending |
+ *    cancelled) or whose rental row is missing. In-flight states
+ *    (active/return_pending/overdue/unreturned/…) are deliberately NOT
+ *    flagged — they are covered by finance.unresolved_settlement and are
+ *    legitimate. APPROXIMATION: event-pass/gift payments without a rental
+ *    are excluded (rental_id null); one alert per payment id, capped.
+ *  - finance.refund_spike — refunds created in the last 24h exceed
+ *    REFUND_SPIKE_MULTIPLIER × the trailing-7-day daily average AND
+ *    REFUND_SPIKE_MIN_LAST24 absolute. HEURISTIC: refunds are legit bursts
+ *    (incident response, promo reversal); the message says so.
+ *  - finance.payout_backlog — payout_records status='approved' whose
+ *    approved_at (fallback created_at) is older than
+ *    PAYOUT_APPROVED_STALE_DAYS, or status='scheduled' older than
+ *    PAYOUT_SCHEDULED_STALE_DAYS (created_at). One alert per payout id.
+ *  - finance.commission_drift — commission_ledgers rows whose
+ *    commission_cents != round(gross_cents × pct/100) under the venue's
+ *    LATEST known agreement pct (venue agreement wins over org agreement;
+ *    same parseCommissionPct rule as ledgers.ts). HEURISTIC: agreements can
+ *    change mid-history and period timing is not modelled, so this flags
+ *    candidates for review, not proven errors. Skips venues with no rate.
+ *  - ops.rental_decline — rentals created in the last 7d are <50% of the
+ *    prior 7d AND the prior 7d had >=10 rentals (noise guard for tiny
+ *    volumes). One stable alert per sweep window.
+ *  - ops.inventory_mismatch — kiosk_slots with an occupied state whose
+ *    power_bank_id set disagrees with power_banks.current_kiosk (non-retired)
+ *    beyond INVENTORY_MISMATCH_TOLERANCE bank ids per kiosk. Catches slot↔bank
+ *    drift in both directions. One alert per kiosk id.
+ *
  * Every probe is fault-tolerant: a missing table/column or query error marks
  * that check 'skipped' — the sweep NEVER throws and never crashes the cron.
  * Emissions go through reportError → error_events/error_issues, fingerprinted
@@ -88,6 +121,27 @@ const DEVICE_SCAN_LIMIT = 200;
 /** Wider scan for auth-rejection telemetry (need per-device counts). */
 const MESSAGE_SCAN_LIMIT = 500;
 
+/* ── Phase 6: business probe thresholds (pure helpers are unit-tested) ── */
+/** Captured payments older than this with a stuck pre-completion rental. */
+export const UNRECONCILED_CAPTURED_HOURS = 48;
+/** Refund spike: last-24h count must beat multiplier × trailing-7d daily avg. */
+export const REFUND_SPIKE_MIN_LAST24 = 3;
+export const REFUND_SPIKE_MULTIPLIER = 3;
+export const REFUND_SPIKE_BASELINE_DAYS = 7;
+/** Payout backlog age limits per status. */
+export const PAYOUT_APPROVED_STALE_DAYS = 7;
+export const PAYOUT_SCHEDULED_STALE_DAYS = 14;
+/** Rental decline: recent 7d < RATIO × prior 7d, prior 7d >= MIN baseline. */
+export const RENTAL_DECLINE_WINDOW_DAYS = 7;
+export const RENTAL_DECLINE_MIN_BASELINE = 10;
+export const RENTAL_DECLINE_RATIO = 0.5;
+/** Inventory: allowed bank-id symmetric difference per kiosk before alerting. */
+export const INVENTORY_MISMATCH_TOLERANCE = 1;
+/** Bounded scans for the business probes. */
+export const BUSINESS_SCAN_LIMIT = 500;
+export const REFUND_SCAN_LIMIT = 1000;
+export const INVENTORY_SCAN_LIMIT = 2000;
+
 /** Rental states that mean "money/return resolution still outstanding". */
 export const SETTLEMENT_PENDING_STATES = [
   "return_pending",
@@ -107,6 +161,135 @@ export type AlertSweepSummary = {
 
 const HOUR = 3_600_000;
 const MIN = 60_000;
+const DAY = 24 * HOUR;
+
+/* ── Phase 6 pure decision helpers (exported for tests/business-alerts) ── */
+
+/**
+ * Rental states where a captured payment is legitimately still in flight OR
+ * already resolved elsewhere: active/return_pending/overdue/unreturned/
+ * non_return_fee_pending are covered by finance.unresolved_settlement;
+ * returned/non_return_fee_paid/charged_off/closed are completed; disputed has
+ * its own dispute workflow. Only the states below mean "money captured but
+ * the rental never got going / was cancelled with money attached".
+ */
+export const UNRECONCILED_CAPTURED_STATES = new Set([
+  "pending_payment",
+  "payment_authorized",
+  "authorized",
+  "dispense_pending",
+  "cancelled",
+]);
+
+/**
+ * Payment ids that look captured-but-never-completed. Payments without a
+ * rental_id (event passes, gifts, …) are excluded — they cannot be
+ * attributed to a rental lifecycle. A payment whose rental row is missing
+ * from stateByRental IS flagged (orphaned money is exactly the anomaly).
+ */
+export function unreconciledPaymentIds(
+  payments: { id: string; rental_id: string | null }[],
+  stateByRental: ReadonlyMap<string, string | null>,
+): string[] {
+  const out: string[] = [];
+  for (const p of payments) {
+    if (!p.rental_id) continue;
+    const state = stateByRental.get(p.rental_id);
+    if (state === undefined || (state != null && UNRECONCILED_CAPTURED_STATES.has(state))) out.push(p.id);
+  }
+  return out;
+}
+
+/** Refund spike: last-24h count must clear BOTH the absolute floor and the
+ *  multiplier × trailing-7-day daily average (baseline excludes the last 24h). */
+export function refundSpikeHit(last24Count: number, baseline7Count: number): boolean {
+  return (
+    last24Count >= REFUND_SPIKE_MIN_LAST24 &&
+    last24Count > REFUND_SPIKE_MULTIPLIER * (baseline7Count / REFUND_SPIKE_BASELINE_DAYS)
+  );
+}
+
+/** Payout backlog: 'approved' ages from approved_at (created_at fallback);
+ *  'scheduled' ages from created_at. Other statuses never backlog. */
+export function payoutBacklogHit(
+  status: string,
+  approvedAt: string | null,
+  createdAt: string | null,
+  nowMs: number,
+): boolean {
+  if (status === "approved") {
+    const t = Date.parse(approvedAt ?? createdAt ?? "");
+    return Number.isFinite(t) && t < nowMs - PAYOUT_APPROVED_STALE_DAYS * DAY;
+  }
+  if (status === "scheduled") {
+    const t = Date.parse(createdAt ?? "");
+    return Number.isFinite(t) && t < nowMs - PAYOUT_SCHEDULED_STALE_DAYS * DAY;
+  }
+  return false;
+}
+
+/** Rental decline: prior week must be big enough to be meaningful. */
+export function rentalDeclineHit(recent7: number, prior7: number): boolean {
+  return prior7 >= RENTAL_DECLINE_MIN_BASELINE && recent7 < prior7 * RENTAL_DECLINE_RATIO;
+}
+
+export type InventorySlotRow = { kiosk_id: string; state: string | null; power_bank_id: string | null };
+export type InventoryBankRow = { id: string; current_kiosk: string | null; retired: boolean | null };
+
+/**
+ * Kiosks where the set of banks docked in occupied slots disagrees with the
+ * set of non-retired banks reporting current_kiosk = that kiosk, beyond
+ * `tolerance` bank ids (symmetric difference). 'empty' slots and null
+ * power_bank_id contribute nothing; retired banks are ignored.
+ */
+export function inventoryMismatchKiosks(
+  slots: InventorySlotRow[],
+  banks: InventoryBankRow[],
+  tolerance = INVENTORY_MISMATCH_TOLERANCE,
+): string[] {
+  const addTo = (m: Map<string, Set<string>>, k: string, v: string) => {
+    let s = m.get(k);
+    if (!s) { s = new Set(); m.set(k, s); }
+    s.add(v);
+  };
+  const slotBanks = new Map<string, Set<string>>();
+  const kioskBanks = new Map<string, Set<string>>();
+  for (const s of slots) {
+    if (s.state === "empty" || !s.power_bank_id) continue;
+    addTo(slotBanks, s.kiosk_id, s.power_bank_id);
+  }
+  for (const b of banks) {
+    if (b.retired || !b.current_kiosk) continue;
+    addTo(kioskBanks, b.current_kiosk, b.id);
+  }
+  const kioskIds = new Set([...slotBanks.keys(), ...kioskBanks.keys()]);
+  const out: string[] = [];
+  for (const k of kioskIds) {
+    const docked = slotBanks.get(k) ?? new Set<string>();
+    const reported = kioskBanks.get(k) ?? new Set<string>();
+    let diff = 0;
+    for (const id of docked) if (!reported.has(id)) diff += 1;
+    for (const id of reported) if (!docked.has(id)) diff += 1;
+    if (diff > tolerance) out.push(k);
+  }
+  return out.sort();
+}
+
+/** Commission drift candidates: ledger commission != round(gross × pct/100)
+ *  under the venue's latest agreement pct. Venues without a known rate are
+ *  skipped (no default rate exists — see ledgers.ts). */
+export function commissionDriftIds(
+  ledgers: { id: string; venue_id: string; gross_cents: number | null; commission_cents: number | null }[],
+  pctByVenue: ReadonlyMap<string, number>,
+): string[] {
+  return ledgers
+    .filter((l) => {
+      const pct = pctByVenue.get(l.venue_id);
+      if (pct == null) return false;
+      return (l.commission_cents ?? 0) !== Math.round(((l.gross_cents ?? 0) * pct) / 100);
+    })
+    .map((l) => l.id);
+}
 
 /** Fire-and-forget alert emit. Message MUST stay stable per entity — the
  *  observability fingerprint is derived from it, so counts/ages would defeat
@@ -699,6 +882,236 @@ export async function runAlertSweep(
         bump();
       }
       checks[name] = { status: "ok", matched: overdue ? 1 : 0, emitted: n };
+    }
+  }
+
+  /* ── Phase 6: business probes ──────────────────────────────────────────── */
+
+  /* ── finance.unreconciled_captured — captured money on rentals that never
+     reached a completed/fee state. Two bounded queries: captured payments
+     older than UNRECONCILED_CAPTURED_HOURS, then their rental states. Only
+     pre-completion states (UNRECONCILED_CAPTURED_STATES) or a missing rental
+     row count — in-flight states belong to finance.unresolved_settlement.
+     One alert per payment id; evidence link is a sanitized admin path. */
+  {
+    const name = "unreconciled_captured";
+    const cutoff = new Date(nowMs - UNRECONCILED_CAPTURED_HOURS * HOUR).toISOString();
+    const pays = await probe<{ id: string; rental_id: string | null }>(() =>
+      db
+        .from("payments")
+        .select("id,rental_id")
+        .gt("amount_captured_cents", 0)
+        .lt("captured_at", cutoff)
+        .limit(BUSINESS_SCAN_LIMIT),
+    );
+    if (!pays.ok) {
+      checks[name] = { status: "skipped", reason: pays.reason };
+    } else {
+      const rentalIds = [...new Set(pays.rows.map((p) => p.rental_id).filter((r): r is string => typeof r === "string" && r.length > 0))];
+      const states = new Map<string, string | null>();
+      let lookupFailed: string | null = null;
+      for (let i = 0; i < rentalIds.length && !lookupFailed; i += 200) {
+        const chunk = rentalIds.slice(i, i + 200);
+        const res = await probe<{ id: string; state: string | null }>(() =>
+          db.from("rentals").select("id,state").in("id", chunk).limit(200),
+        );
+        if (!res.ok) lookupFailed = res.reason;
+        else for (const r of res.rows) states.set(r.id, r.state);
+      }
+      if (lookupFailed) {
+        checks[name] = { status: "skipped", reason: `rental lookup failed: ${lookupFailed}` };
+      } else {
+        const ids = unreconciledPaymentIds(pays.rows, states);
+        let n = 0;
+        for (const id of ids.slice(0, ALERT_SWEEP_ROW_CAP)) {
+          emit(`finance.unreconciled_captured payment=${id} window_hours=${UNRECONCILED_CAPTURED_HOURS} evidence=/admin/finance`);
+          n += 1;
+          bump();
+        }
+        checks[name] = { status: "ok", matched: ids.length, emitted: n };
+      }
+    }
+  }
+
+  /* ── finance.refund_spike — heuristic: last-24h refunds vs the trailing
+     7-day daily average (baseline = the 7 days BEFORE the last 24h, so the
+     windows don't overlap). One stable alert — counts are deliberately NOT
+     in the message (fingerprint dedup). */
+  {
+    const name = "refund_spike";
+    const scanStart = new Date(nowMs - (REFUND_SPIKE_BASELINE_DAYS + 1) * DAY).toISOString();
+    const res = await probe<{ id: string; created_at: string | null }>(() =>
+      db
+        .from("refunds")
+        .select("id,created_at")
+        .gte("created_at", scanStart)
+        .limit(REFUND_SCAN_LIMIT),
+    );
+    if (!res.ok) {
+      checks[name] = { status: "skipped", reason: res.reason };
+    } else {
+      let last24 = 0, baseline = 0;
+      for (const r of res.rows) {
+        const t = r.created_at ? Date.parse(r.created_at) : NaN;
+        if (!Number.isFinite(t)) continue;
+        if (t >= nowMs - DAY) last24 += 1;
+        else if (t >= nowMs - (REFUND_SPIKE_BASELINE_DAYS + 1) * DAY) baseline += 1;
+      }
+      const hit = refundSpikeHit(last24, baseline);
+      let n = 0;
+      if (hit) {
+        emit(`finance.refund_spike heuristic=trailing_7d evidence=/admin/support/refunds`);
+        n = 1;
+        bump();
+      }
+      checks[name] = { status: "ok", matched: hit ? 1 : 0, emitted: n };
+    }
+  }
+
+  /* ── finance.payout_backlog — approved payouts unpaid >7d, scheduled
+     payouts untouched >14d. One alert per payout id. */
+  {
+    const name = "payout_backlog";
+    const res = await probe<{ id: string; status: string | null; created_at: string | null; approved_at: string | null }>(() =>
+      db
+        .from("payout_records")
+        .select("id,status,created_at,approved_at")
+        .in("status", ["scheduled", "approved"])
+        .limit(BUSINESS_SCAN_LIMIT),
+    );
+    if (!res.ok) {
+      checks[name] = { status: "skipped", reason: res.reason };
+    } else {
+      const stale = res.rows.filter((r) =>
+        payoutBacklogHit(r.status ?? "", r.approved_at, r.created_at, nowMs),
+      );
+      let n = 0;
+      for (const row of stale.slice(0, ALERT_SWEEP_ROW_CAP)) {
+        emit(`finance.payout_backlog payout=${row.id} status=${row.status ?? "unknown"} evidence=/admin/payouts`);
+        n += 1;
+        bump();
+      }
+      checks[name] = { status: "ok", matched: stale.length, emitted: n };
+    }
+  }
+
+  /* ── finance.commission_drift — ledger commission vs latest agreement pct.
+     HEURISTIC: pct comes from the venue's newest agreement (venue-level beats
+     org-level); agreements can change mid-history so this flags review
+     candidates, not proven errors. Venues without a rate are skipped — there
+     is no default commission (ledgers.ts). Bounded: recent ledgers only. */
+  {
+    const name = "commission_drift";
+    const ledgersRes = await probe<{ id: string; venue_id: string; gross_cents: number | null; commission_cents: number | null }>(() =>
+      db
+        .from("commission_ledgers")
+        .select("id,venue_id,gross_cents,commission_cents")
+        .order("period", { ascending: false })
+        .limit(200),
+    );
+    if (!ledgersRes.ok) {
+      checks[name] = { status: "skipped", reason: ledgersRes.reason };
+    } else {
+      const agreementsRes = await probe<{ venue_id: string | null; organization_id: string | null; terms: unknown }>(() =>
+        db.from("partner_agreements").select("venue_id,organization_id,terms").limit(500),
+      );
+      const venuesRes = agreementsRes.ok
+        ? await probe<{ id: string; organization_id: string | null }>(() =>
+            db.from("venues").select("id,organization_id").limit(2000),
+          )
+        : { ok: false as const, reason: agreementsRes.reason };
+      if (!agreementsRes.ok || !venuesRes.ok) {
+        const why = !agreementsRes.ok ? agreementsRes.reason : (venuesRes as { reason: string }).reason;
+        checks[name] = { status: "skipped", reason: `agreement lookup failed: ${why}` };
+      } else {
+        const orgByVenue = new Map(venuesRes.rows.map((v) => [v.id, v.organization_id]));
+        const pctByVenueAgreement = new Map<string, number>();
+        const pctByOrg = new Map<string, number>();
+        for (const a of agreementsRes.rows) {
+          const pct = parseCommissionPct(a.terms);
+          if (pct == null) continue;
+          if (a.venue_id && !pctByVenueAgreement.has(a.venue_id)) pctByVenueAgreement.set(a.venue_id, pct);
+          if (!a.venue_id && a.organization_id && !pctByOrg.has(a.organization_id)) pctByOrg.set(a.organization_id, pct);
+        }
+        const pctByVenue = new Map<string, number>();
+        for (const l of ledgersRes.rows) {
+          const direct = pctByVenueAgreement.get(l.venue_id);
+          const orgPct = pctByOrg.get(orgByVenue.get(l.venue_id) ?? "");
+          const pct = direct ?? orgPct;
+          if (pct != null) pctByVenue.set(l.venue_id, pct);
+        }
+        const drifted = commissionDriftIds(ledgersRes.rows, pctByVenue);
+        let n = 0;
+        for (const id of drifted.slice(0, ALERT_SWEEP_ROW_CAP)) {
+          emit(`finance.commission_drift ledger=${id} heuristic=latest_agreement_pct evidence=/admin/payouts`);
+          n += 1;
+          bump();
+        }
+        checks[name] = { status: "ok", matched: drifted.length, emitted: n };
+      }
+    }
+  }
+
+  /* ── ops.rental_decline — last-7d created rentals <50% of prior-7d, with a
+     >=10 baseline so tiny volumes don't page. Two head counts; one stable
+     alert (counts stay out of the message for fingerprint dedup). */
+  {
+    const name = "rental_decline";
+    const w = RENTAL_DECLINE_WINDOW_DAYS * DAY;
+    const recentCut = new Date(nowMs - w).toISOString();
+    const priorCut = new Date(nowMs - 2 * w).toISOString();
+    // head:true count queries don't return rows — probe them directly.
+    const countCreated = async (gte: string, lt?: string): Promise<number | null> => {
+      try {
+        let q = db.from("rentals").select("id", { count: "exact", head: true }).gte("created_at", gte);
+        if (lt) q = q.lt("created_at", lt);
+        const { count, error } = await q;
+        return error ? null : count;
+      } catch {
+        return null;
+      }
+    };
+    const [recent7, prior7] = await Promise.all([countCreated(recentCut), countCreated(priorCut, recentCut)]);
+    if (recent7 == null || prior7 == null) {
+      checks[name] = { status: "skipped", reason: "count query failed" };
+    } else {
+        const hit = rentalDeclineHit(recent7, prior7);
+        let n = 0;
+        if (hit) {
+          emit(`ops.rental_decline window_days=${RENTAL_DECLINE_WINDOW_DAYS} evidence=/admin/rentals`);
+          n = 1;
+          bump();
+        }
+        checks[name] = { status: "ok", matched: hit ? 1 : 0, emitted: n };
+    }
+  }
+
+  /* ── ops.inventory_mismatch — occupied kiosk_slots' power_bank_id set vs
+     non-retired power_banks reporting current_kiosk, per kiosk, beyond
+     INVENTORY_MISMATCH_TOLERANCE. Two bounded full scans; one alert per
+     kiosk id. */
+  {
+    const name = "inventory_mismatch";
+    const [slotsRes, banksRes] = await Promise.all([
+      probe<InventorySlotRow>(() =>
+        db.from("kiosk_slots").select("kiosk_id,state,power_bank_id").limit(INVENTORY_SCAN_LIMIT),
+      ),
+      probe<InventoryBankRow>(() =>
+        db.from("power_banks").select("id,current_kiosk,retired").limit(INVENTORY_SCAN_LIMIT),
+      ),
+    ]);
+    if (!slotsRes.ok || !banksRes.ok) {
+      const skipReason = !slotsRes.ok ? slotsRes.reason : !banksRes.ok ? banksRes.reason : "unknown";
+      checks[name] = { status: "skipped", reason: skipReason };
+    } else {
+      const mismatched = inventoryMismatchKiosks(slotsRes.rows, banksRes.rows);
+      let n = 0;
+      for (const kioskId of mismatched.slice(0, ALERT_SWEEP_ROW_CAP)) {
+        emit(`ops.inventory_mismatch kiosk=${kioskId} evidence=/admin/fleet`);
+        n += 1;
+        bump();
+      }
+      checks[name] = { status: "ok", matched: mismatched.length, emitted: n };
     }
   }
 
