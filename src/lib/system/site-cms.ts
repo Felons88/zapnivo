@@ -75,11 +75,24 @@ const vendingPageFields = (): FieldDef[] => [
   f("cta_href", "CTA link", "url"),
 ];
 
+/** Industry pages share edit points while keeping venue-specific detail in code. */
+const industryPageFields = (): FieldDef[] => [
+  f("hero_eyebrow", "Hero eyebrow", "string", { maxLength: 120 }),
+  f("hero_title", "Hero title", "string", { maxLength: 120 }),
+  f("hero_description", "Hero description", "richtext", { maxLength: 600 }),
+  f("intro_body", "Industry introduction", "richtext", { maxLength: 1200 }),
+  f("meta_title", "Meta title", "string", { maxLength: 70 }),
+  f("meta_description", "Meta description", "string", { maxLength: 170 }),
+  f("cta_label", "CTA label", "string", { maxLength: 60 }),
+  f("cta_href", "CTA link", "url"),
+];
+
 /**
  * page_key "home"    → apex homepage hero + metadata (src/app/(site)/page.tsx)
  * page_key "global"  → announcement bar (src/components/Header.tsx via (site)/layout)
  * page_key "footer"  → footer contact email (src/components/Footer.tsx)
  * page_key "contact" → apex /contact hero + metadata ((site)/contact/page.tsx)
+ * page_key "about"   → apex /about hero, mission and metadata ((site)/about/page.tsx)
  * page_key "home" (support)   → help-center hero + metadata ((site)/support/page.tsx → HelpCenter)
  * page_key "global" (partners)→ portal announcement banner (components/PartnerShell.tsx)
  * page_key "global" (internal)→ portal announcement banner (components/AdminShell.tsx)
@@ -92,6 +105,7 @@ const vendingPageFields = (): FieldDef[] => [
  * page_key "vending_specialty" → apex /vending/specialty page (same field set)
  * page_key "vending_locations" → apex /vending/locations page (same field set)
  * page_key "placement"         → apex /get-a-vending-machine page (same field set)
+ * page_key "industry_<slug>"   → apex /industries/<slug> page (hero, intro, meta, CTA)
  *
  * Cataloged per site (multi-site phase):
  *  - support:  help-center hero eyebrow/headline + page meta — wired via HelpCenter props.
@@ -164,6 +178,15 @@ export const FIELD_CATALOG: Record<string, Record<string, FieldDef[]>> = {
       f("meta_title", "Meta title", "string", { maxLength: 70 }),
       f("meta_description", "Meta description", "string", { maxLength: 170 }),
     ],
+    about: [
+      f("hero_eyebrow", "Hero eyebrow", "string", { maxLength: 120 }),
+      f("hero_title", "Hero title", "string", { maxLength: 120 }),
+      f("hero_description", "Hero description", "richtext", { maxLength: 600 }),
+      f("mission_title", "Mission title", "string", { maxLength: 120 }),
+      f("mission_body", "Mission body", "richtext", { maxLength: 1200 }),
+      f("meta_title", "Meta title", "string", { maxLength: 70 }),
+      f("meta_description", "Meta description", "string", { maxLength: 170 }),
+    ],
     // Vending category + placement pages — same uniform field set per page.
     // Consumed by (site)/vending/[slug] pages and (site)/get-a-vending-machine.
     ...Object.fromEntries(
@@ -171,6 +194,12 @@ export const FIELD_CATALOG: Record<string, Record<string, FieldDef[]>> = {
         "vending_snacks", "vending_drinks", "vending_food", "vending_chargers",
         "vending_cards", "vending_specialty", "vending_locations", "placement",
       ].map((pageKey) => [pageKey, vendingPageFields()]),
+    ),
+    ...Object.fromEntries(
+      [
+        "offices", "hotels", "apartments", "retail",
+        "entertainment", "warehouses", "restaurants", "fitness",
+      ].map((slug) => [`industry_${slug}`, industryPageFields()]),
     ),
   },
   support: {

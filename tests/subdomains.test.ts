@@ -55,6 +55,7 @@ describe("subdomain rewrites", () => {
     expect(r("support.zapnivo.com", "/admin")).toEqual({ kind: "redirect", to: "https://internal.zapnivo.com/" });
     expect(r("support.zapnivo.com", "/legal/refund-policy")).toEqual({ kind: "redirect", to: "https://www.zapnivo.com/legal/refund-policy" });
     expect(r("support.zapnivo.com", "/contact")).toEqual({ kind: "redirect", to: "https://www.zapnivo.com/contact" });
+    expect(r("support.zapnivo.com", "/industries/offices")).toEqual({ kind: "redirect", to: "https://www.zapnivo.com/industries/offices" });
     // Regression: footer links to these sections were 404ing on portal subdomains.
     expect(r("support.zapnivo.com", "/scam-awareness")).toEqual({ kind: "redirect", to: "https://www.zapnivo.com/scam-awareness" });
     expect(r("support.zapnivo.com", "/advertiser")).toEqual({ kind: "redirect", to: "https://www.zapnivo.com/advertiser" });

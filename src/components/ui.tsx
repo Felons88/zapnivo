@@ -9,7 +9,7 @@ const styles: Record<Variant, string> = {
   ghost: "border border-current/25 hover:border-current/70",
 };
 export const btnClass = (v: Variant = "primary", extra = "") =>
-  `group inline-flex min-h-12 items-center justify-center gap-2 rounded-full px-6 text-[0.95rem] font-bold tracking-tight transition-[background-color,border-color,transform,box-shadow] duration-200 hover:shadow-[0_10px_30px_-10px_rgba(199,244,60,.55)] active:translate-y-px ${styles[v]} ${extra}`;
+  `group inline-flex min-h-12 items-center justify-center gap-2 rounded-md px-6 text-[0.95rem] font-bold tracking-tight transition-[background-color,border-color,transform] duration-200 active:translate-y-px ${styles[v]} ${extra}`;
 
 export function Button({ href, variant = "primary", className = "", children, ...rest }: { href: string; variant?: Variant; className?: string; children: ReactNode } & Omit<ComponentProps<typeof Link>, "href" | "className">) {
   return <Link href={href} className={btnClass(variant, className)} {...rest}>{children}<span aria-hidden className="transition-transform duration-300 group-hover:translate-x-1">→</span></Link>;

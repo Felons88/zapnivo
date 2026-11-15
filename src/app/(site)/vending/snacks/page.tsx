@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import VendingLanding from "@/components/VendingLanding";
-import { KioskScenePhoto } from "@/components/Photo";
+import { VendingCategoryVisual } from "@/components/VendingCategoryVisual";
 import { VENDING_PAGE_CONTENT } from "@/lib/vending-content";
 import { resolveVendingCategory, vendingCms, vendingCta, vendingIntro, vendingMetadata } from "@/lib/vending-seo";
 
@@ -20,7 +20,7 @@ export default async function VendingSnacksPage() {
       ctaHref={cta.href}
       ctaLabel={cta.label}
       introBody={vendingIntro(cms)}
-      visual={<KioskScenePhoto scene="shopping" />}
+      visual={<VendingCategoryVisual slug={SLUG} />}
     />
   );
 }

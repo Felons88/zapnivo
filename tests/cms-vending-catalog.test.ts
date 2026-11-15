@@ -27,7 +27,7 @@ describe("vending + placement page catalog", () => {
       expect(catalogPageExists("apex", page)).toBe(true);
       expect(catalogFields("apex", page)).toHaveLength(VENDING_FIELDS.length);
     }
-    expect(catalogPages("apex").slice(-8)).toEqual([...VENDING_PAGES]);
+    expect(catalogPages("apex").filter((key) => VENDING_PAGES.some((page) => page === key))).toEqual([...VENDING_PAGES]);
   });
 
   it("each page has the uniform field set", () => {

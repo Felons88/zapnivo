@@ -11,6 +11,7 @@ vi.mock("next/headers", () => ({ headers: async () => new Headers({ host: h.host
 import sitemap from "@/app/sitemap";
 import { SITE } from "@/lib/site";
 import { PUBLIC_ARTICLES } from "@/lib/support-articles";
+import { INDUSTRIES } from "@/app/(site)/industries/data";
 
 const MAIN_PATHS = [
   "/", "/how-it-works", "/locations", "/business", "/business/apply",
@@ -21,6 +22,7 @@ const MAIN_PATHS = [
   "/vending/snacks", "/vending/drinks", "/vending/food", "/vending/phone-chargers",
   "/vending/trading-cards", "/vending/specialty", "/vending/locations",
   "/vending/request", "/get-a-vending-machine",
+  "/industries", ...INDUSTRIES.map(({ slug }) => `/industries/${slug}`),
 ];
 const PRIVATE_PREFIXES = ["/admin", "/partners", "/account", "/api", "/login", "/r", "/support"];
 

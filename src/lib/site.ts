@@ -1,5 +1,4 @@
 import { SUB_PREFIX, baseDomain, type Subdomain } from "./subdomains";
-import { CONTACTS } from "./contacts";
 
 export const SITE = {
   name: "Zapnivo",
@@ -48,6 +47,16 @@ export const FOOTER = {
     { href: "/vending/trading-cards", label: "Trading Cards" },
     { href: "/vending/specialty", label: "Specialty Vending" },
   ],
+  Industries: [
+    { href: "/industries/offices", label: "Offices" },
+    { href: "/industries/hotels", label: "Hotels" },
+    { href: "/industries/retail", label: "Retail" },
+    { href: "/industries/apartments", label: "Apartments" },
+    { href: "/industries/entertainment", label: "Entertainment" },
+    { href: "/industries/warehouses", label: "Manufacturing" },
+    { href: "/industries/restaurants", label: "Restaurants" },
+    { href: "/industries/fitness", label: "Fitness" },
+  ],
   "For Businesses": [
     { href: "/get-a-vending-machine", label: "Request a Machine" },
     { href: "/business/apply", label: "Venue Partner" },
@@ -58,17 +67,12 @@ export const FOOTER = {
   Company: [
     { href: "/about", label: "About" },
     { href: "/contact", label: "Contact" },
-    { href: "/locations", label: "Find a Charger" },
-    { href: "/how-it-works", label: "How Charging Works" },
-    { href: "/support", label: "FAQs & Support" },
     { href: "/scam-awareness", label: "Scam Awareness" },
   ],
-  "Contact Zapnivo": [
-    { href: `mailto:${CONTACTS.general.email}`, label: CONTACTS.general.email },
-    { href: "/legal/privacy", label: "Privacy Policy" },
-    { href: "/legal/terms", label: "Terms of Service" },
-  ],
-  Legal: [
+  "Support & Legal": [
+    { href: "/support", label: "Support & FAQs" },
+    { href: "/locations", label: "Find a Charger" },
+    { href: "/how-it-works", label: "Charging Rentals" },
     { href: "/legal/privacy", label: "Privacy Policy" },
     { href: "/legal/terms", label: "Terms of Service" },
     { href: "/legal/rental-terms", label: "Rental Terms" },

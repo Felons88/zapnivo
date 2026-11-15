@@ -27,11 +27,23 @@ export async function vendingMetadata(
   pageKey: string,
   fallbackTitle: string,
   fallbackDescription: string,
+  canonicalPath?: string,
 ): Promise<Metadata> {
   const cms = await vendingCms(pageKey);
+  const paths: Record<string, string> = {
+    vending_snacks: "/vending/snacks",
+    vending_drinks: "/vending/drinks",
+    vending_food: "/vending/food",
+    vending_chargers: "/vending/phone-chargers",
+    vending_cards: "/vending/trading-cards",
+    vending_specialty: "/vending/specialty",
+    vending_locations: "/vending/locations",
+    placement: "/vending/request",
+  };
   return {
     title: { absolute: cmsText(cms, "meta_title", fallbackTitle) },
     description: cmsText(cms, "meta_description", fallbackDescription),
+    alternates: { canonical: canonicalPath ?? paths[pageKey] },
   };
 }
 

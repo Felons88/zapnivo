@@ -12,9 +12,11 @@ import {
 describe("multi-site FIELD_CATALOG", () => {
   it("apex keeps home/global/footer and gains contact (+ newsletter, owned by another workstream)", () => {
     expect(catalogPages("apex")).toEqual([
-      "home", "global", "footer", "newsletter", "contact",
+      "home", "global", "footer", "newsletter", "contact", "about",
       "vending_snacks", "vending_drinks", "vending_food", "vending_chargers",
       "vending_cards", "vending_specialty", "vending_locations", "placement",
+      "industry_offices", "industry_hotels", "industry_apartments", "industry_retail",
+      "industry_entertainment", "industry_warehouses", "industry_restaurants", "industry_fitness",
     ]);
     const contact = catalogFields("apex", "contact").map((f) => f.key);
     expect(contact).toEqual(["hero_eyebrow", "hero_title", "hero_description", "meta_title", "meta_description"]);

@@ -73,9 +73,11 @@ describe("site registry", () => {
 
   it("catalog only contains rendered fields; unknown lookups return null/empty", () => {
     expect(catalogPages("apex")).toEqual([
-      "home", "global", "footer", "newsletter", "contact",
+      "home", "global", "footer", "newsletter", "contact", "about",
       "vending_snacks", "vending_drinks", "vending_food", "vending_chargers",
       "vending_cards", "vending_specialty", "vending_locations", "placement",
+      "industry_offices", "industry_hotels", "industry_apartments", "industry_retail",
+      "industry_entertainment", "industry_warehouses", "industry_restaurants", "industry_fitness",
     ]);
     expect(catalogFields("internal", "admin")).toEqual([]);
     expect(catalogPageExists("apex", "home")).toBe(true);

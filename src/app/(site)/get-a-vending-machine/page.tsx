@@ -14,7 +14,7 @@ const META_FALLBACK = {
 
 export async function generateMetadata(): Promise<Metadata> {
   // Same CMS page_key ("placement") as /vending/request, with this page's own fallbacks.
-  return vendingMetadata(base.pageKey, META_FALLBACK.title, META_FALLBACK.description);
+  return vendingMetadata(base.pageKey, META_FALLBACK.title, META_FALLBACK.description, "/get-a-vending-machine");
 }
 
 const STEPS: VendingStep[] = [

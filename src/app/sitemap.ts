@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { SITE, subUrl } from "@/lib/site";
 import { baseDomain } from "@/lib/subdomains";
 import { PUBLIC_ARTICLES } from "@/lib/support-articles";
+import { INDUSTRIES } from "@/app/(site)/industries/data";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +16,7 @@ const MAIN = [
   "/vending/snacks", "/vending/drinks", "/vending/food", "/vending/phone-chargers",
   "/vending/trading-cards", "/vending/specialty", "/vending/locations",
   "/vending/request", "/get-a-vending-machine",
+  "/industries", ...INDUSTRIES.map(({ slug }) => `/industries/${slug}`),
 ];
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {

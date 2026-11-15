@@ -3,7 +3,8 @@ import type { ReactNode } from "react";
 import { Button, Eyebrow, Section } from "./ui";
 import { Reveal } from "./Reveal";
 import { MarketingHero } from "./MarketingHero";
-import { KioskPhoto } from "./Photo";
+import { VendingCategoryVisual } from "./VendingCategoryVisual";
+import { VendingCategoryDetails } from "./VendingCategoryDetails";
 import type { VendingPageContent } from "@/lib/vending-content";
 
 /**
@@ -94,11 +95,11 @@ export default function VendingLanding({
         actions={
           <>
             <Button href={ctaHref}>{ctaLabel}</Button>
-            <Button href="/vending/locations" variant="ghost" className="border-white/40 text-white">Explore locations</Button>
+            <Button href={category.slug === "phone-chargers" ? "/locations" : "/industries"} variant="ghost" className="border-white/40 text-white">{category.slug === "phone-chargers" ? "Find a charger" : "Explore industries"}</Button>
           </>
         }
-        visual={visual ?? <KioskPhoto className="h-full w-auto object-contain" priority />}
-        note="Zapnivo Vending Services · Minnesota"
+        visual={visual ?? <VendingCategoryVisual slug={category.slug} />}
+        note={category.slug === "phone-chargers" || category.slug === "locations" ? "Illustrative placement concept · Minnesota" : "Solutions subject to location and equipment review"}
       />
 
       {introBody.trim() !== "" && (
@@ -108,6 +109,8 @@ export default function VendingLanding({
           </div>
         </Section>
       )}
+
+      <VendingCategoryDetails slug={category.slug} />
 
       <Section>
         <Eyebrow className="text-forest">Where it fits</Eyebrow>
@@ -200,7 +203,7 @@ export default function VendingLanding({
             <Eyebrow className="text-forest">Next step</Eyebrow>
             <h2 className="display-md mt-5">Interested in {category.label.toLowerCase()}?</h2>
             <p className="lead mt-5 text-graphite">Tell us about your space and we'll review what fits — placement and availability depend on location and equipment.</p>
-            <div className="mt-7"><Button href={category.slug === "request" ? "/get-a-vending-machine" : "/vending/request"} variant="dark">Request a vending machine</Button></div>
+            <div className="mt-7"><Button href={category.slug === "request" ? "#vending-inquiry" : "/vending/request"} variant="dark">{category.slug === "request" ? "Go to the inquiry form" : "Request a vending machine"}</Button></div>
           </div>
           <div className="rounded-xl bg-white p-6 md:p-10">
             {children ?? (

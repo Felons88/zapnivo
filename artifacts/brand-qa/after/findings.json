@@ -1,0 +1,306 @@
+[
+  {
+    "name": "desktop",
+    "route": "/",
+    "status": 200,
+    "overflow": false,
+    "brokenImages": [],
+    "title": "Zapnivo Vending Services | Vending Solutions in Minnesota"
+  },
+  {
+    "name": "desktop",
+    "route": "/industries",
+    "status": 200,
+    "overflow": false,
+    "brokenImages": [],
+    "title": "Vending Solutions by Industry | Zapnivo"
+  },
+  {
+    "name": "desktop",
+    "route": "/industries/offices",
+    "status": 200,
+    "overflow": false,
+    "brokenImages": [],
+    "title": "Offices & Workplaces Vending Solutions | Zapnivo"
+  },
+  {
+    "name": "desktop",
+    "route": "/industries/hotels",
+    "status": 200,
+    "overflow": false,
+    "brokenImages": [],
+    "title": "Hotels & Hospitality Vending Solutions | Zapnivo"
+  },
+  {
+    "name": "desktop",
+    "route": "/industries/apartments",
+    "status": 200,
+    "overflow": false,
+    "brokenImages": [],
+    "title": "Apartments & Residential Properties Vending Solutions | Zapnivo"
+  },
+  {
+    "name": "desktop",
+    "route": "/industries/retail",
+    "status": 200,
+    "overflow": false,
+    "brokenImages": [],
+    "title": "Retail & Shopping Centers Vending Solutions | Zapnivo"
+  },
+  {
+    "name": "desktop",
+    "route": "/industries/entertainment",
+    "status": 200,
+    "overflow": false,
+    "brokenImages": [],
+    "title": "Entertainment Venues Vending Solutions | Zapnivo"
+  },
+  {
+    "name": "desktop",
+    "route": "/industries/warehouses",
+    "status": 200,
+    "overflow": false,
+    "brokenImages": [],
+    "title": "Manufacturing & Warehouses Vending Solutions | Zapnivo"
+  },
+  {
+    "name": "desktop",
+    "route": "/industries/restaurants",
+    "status": 200,
+    "overflow": false,
+    "brokenImages": [],
+    "title": "Restaurants & Bars Vending Solutions | Zapnivo"
+  },
+  {
+    "name": "desktop",
+    "route": "/industries/fitness",
+    "status": 200,
+    "overflow": false,
+    "brokenImages": [],
+    "title": "Recreation & Fitness Facilities Vending Solutions | Zapnivo"
+  },
+  {
+    "name": "desktop",
+    "route": "/vending/snacks",
+    "status": 200,
+    "overflow": false,
+    "brokenImages": [],
+    "title": "Snack Vending Machines in Minnesota | Zapnivo Vending Services"
+  },
+  {
+    "name": "desktop",
+    "route": "/vending/drinks",
+    "status": 200,
+    "overflow": false,
+    "brokenImages": [],
+    "title": "Drink Vending Machines in Minnesota | Zapnivo Vending Services"
+  },
+  {
+    "name": "desktop",
+    "route": "/vending/food",
+    "status": 200,
+    "overflow": false,
+    "brokenImages": [],
+    "title": "Food Vending Machines in Minnesota | Zapnivo Vending Services"
+  },
+  {
+    "name": "desktop",
+    "route": "/vending/phone-chargers",
+    "status": 200,
+    "overflow": false,
+    "brokenImages": [],
+    "title": "Phone Charger Rentals in Minnesota | Zapnivo"
+  },
+  {
+    "name": "desktop",
+    "route": "/vending/trading-cards",
+    "status": 200,
+    "overflow": false,
+    "brokenImages": [],
+    "title": "Trading Card & Collectible Vending | Zapnivo Vending Services"
+  },
+  {
+    "name": "desktop",
+    "route": "/vending/specialty",
+    "status": 200,
+    "overflow": false,
+    "brokenImages": [],
+    "title": "Specialty & Custom Vending Machines | Zapnivo Vending Services"
+  },
+  {
+    "name": "desktop",
+    "route": "/about",
+    "status": 200,
+    "overflow": false,
+    "brokenImages": [],
+    "title": "About Zapnivo | Minnesota Vending Services"
+  },
+  {
+    "name": "desktop",
+    "route": "/get-a-vending-machine",
+    "status": 200,
+    "overflow": false,
+    "brokenImages": [],
+    "title": "Get a Vending Machine for Your Business | Zapnivo"
+  },
+  {
+    "name": "desktop",
+    "route": "/locations",
+    "status": 200,
+    "overflow": false,
+    "brokenImages": [],
+    "title": "Find Portable Phone Charger Stations | Zapnivo"
+  },
+  {
+    "name": "mobile",
+    "route": "/",
+    "status": 200,
+    "overflow": false,
+    "brokenImages": [],
+    "title": "Zapnivo Vending Services | Vending Solutions in Minnesota"
+  },
+  {
+    "name": "mobile",
+    "route": "/industries",
+    "status": 200,
+    "overflow": false,
+    "brokenImages": [],
+    "title": "Vending Solutions by Industry | Zapnivo"
+  },
+  {
+    "name": "mobile",
+    "route": "/industries/offices",
+    "status": 200,
+    "overflow": false,
+    "brokenImages": [],
+    "title": "Offices & Workplaces Vending Solutions | Zapnivo"
+  },
+  {
+    "name": "mobile",
+    "route": "/industries/hotels",
+    "status": 200,
+    "overflow": false,
+    "brokenImages": [],
+    "title": "Hotels & Hospitality Vending Solutions | Zapnivo"
+  },
+  {
+    "name": "mobile",
+    "route": "/industries/apartments",
+    "status": 200,
+    "overflow": false,
+    "brokenImages": [],
+    "title": "Apartments & Residential Properties Vending Solutions | Zapnivo"
+  },
+  {
+    "name": "mobile",
+    "route": "/industries/retail",
+    "status": 200,
+    "overflow": false,
+    "brokenImages": [],
+    "title": "Retail & Shopping Centers Vending Solutions | Zapnivo"
+  },
+  {
+    "name": "mobile",
+    "route": "/industries/entertainment",
+    "status": 200,
+    "overflow": false,
+    "brokenImages": [],
+    "title": "Entertainment Venues Vending Solutions | Zapnivo"
+  },
+  {
+    "name": "mobile",
+    "route": "/industries/warehouses",
+    "status": 200,
+    "overflow": false,
+    "brokenImages": [],
+    "title": "Manufacturing & Warehouses Vending Solutions | Zapnivo"
+  },
+  {
+    "name": "mobile",
+    "route": "/industries/restaurants",
+    "status": 200,
+    "overflow": false,
+    "brokenImages": [],
+    "title": "Restaurants & Bars Vending Solutions | Zapnivo"
+  },
+  {
+    "name": "mobile",
+    "route": "/industries/fitness",
+    "status": 200,
+    "overflow": false,
+    "brokenImages": [],
+    "title": "Recreation & Fitness Facilities Vending Solutions | Zapnivo"
+  },
+  {
+    "name": "mobile",
+    "route": "/vending/snacks",
+    "status": 200,
+    "overflow": false,
+    "brokenImages": [],
+    "title": "Snack Vending Machines in Minnesota | Zapnivo Vending Services"
+  },
+  {
+    "name": "mobile",
+    "route": "/vending/drinks",
+    "status": 200,
+    "overflow": false,
+    "brokenImages": [],
+    "title": "Drink Vending Machines in Minnesota | Zapnivo Vending Services"
+  },
+  {
+    "name": "mobile",
+    "route": "/vending/food",
+    "status": 200,
+    "overflow": false,
+    "brokenImages": [],
+    "title": "Food Vending Machines in Minnesota | Zapnivo Vending Services"
+  },
+  {
+    "name": "mobile",
+    "route": "/vending/phone-chargers",
+    "status": 200,
+    "overflow": false,
+    "brokenImages": [],
+    "title": "Phone Charger Rentals in Minnesota | Zapnivo"
+  },
+  {
+    "name": "mobile",
+    "route": "/vending/trading-cards",
+    "status": 200,
+    "overflow": false,
+    "brokenImages": [],
+    "title": "Trading Card & Collectible Vending | Zapnivo Vending Services"
+  },
+  {
+    "name": "mobile",
+    "route": "/vending/specialty",
+    "status": 200,
+    "overflow": false,
+    "brokenImages": [],
+    "title": "Specialty & Custom Vending Machines | Zapnivo Vending Services"
+  },
+  {
+    "name": "mobile",
+    "route": "/about",
+    "status": 200,
+    "overflow": false,
+    "brokenImages": [],
+    "title": "About Zapnivo | Minnesota Vending Services"
+  },
+  {
+    "name": "mobile",
+    "route": "/get-a-vending-machine",
+    "status": 200,
+    "overflow": false,
+    "brokenImages": [],
+    "title": "Get a Vending Machine for Your Business | Zapnivo"
+  },
+  {
+    "name": "mobile",
+    "route": "/locations",
+    "status": 200,
+    "overflow": false,
+    "brokenImages": [],
+    "title": "Find Portable Phone Charger Stations | Zapnivo"
+  }
+]
