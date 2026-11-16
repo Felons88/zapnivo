@@ -7,7 +7,26 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 export const stripeConfigured = () => Boolean(process.env.STRIPE_SECRET_KEY);
 /** Presence check only — never exposes the webhook secret value. */
 export const isStripeWebhookConfigured = () => Boolean(process.env.STRIPE_WEBHOOK_SECRET);
-export const taxEnabled = () => process.env.STRIPE_TAX_ENABLED === "1";
+/** Flat tax rate (Stripe TaxRate id, e.g. txr_…) configured for checkout line items. */
+export const flatTaxRateId = () => process.env.STRIPE_TAX_RATE_ID || null;
+export const taxEnabled = () => flatTaxRateId() !== null || process.env.STRIPE_TAX_ENABLED === "1";
+
+/**
+ * Applies configured tax to a Checkout Session body. A flat STRIPE_TAX_RATE_ID is attached to
+ * every line item (exclusive); otherwise STRIPE_TAX_ENABLED=1 enables Stripe automatic tax.
+ * The two are mutually exclusive — Stripe rejects sessions that set both.
+ */
+export function applyCheckoutTax(body: Record<string, unknown>) {
+  const rateId = flatTaxRateId();
+  if (rateId) {
+    const items = body.line_items;
+    if (Array.isArray(items)) {
+      for (const item of items) if (item && typeof item === "object") (item as Record<string, unknown>).tax_rates = [rateId];
+    }
+    return;
+  }
+  if (process.env.STRIPE_TAX_ENABLED === "1") body.automatic_tax = { enabled: true };
+}
 
 export const PAYMENTS_UNCONFIGURED = { error: "Payments are not available yet.", code: "payments_unconfigured" } as const;
 
@@ -72,7 +91,7 @@ export function createCheckoutSession(i: CheckoutInput) {
     payment_intent_data: { capture_method: "manual", setup_future_usage: "off_session", receipt_email: i.email, metadata: { rental_id: i.rentalId, rental_reference: i.reference } },
     metadata: { rental_id: i.rentalId, rental_reference: i.reference, station_id: i.stationId },
   };
-  if (taxEnabled()) body.automatic_tax = { enabled: true };
+  applyCheckoutTax(body);
   return stripeCall<{ id: string; url: string | null }>("POST", "/checkout/sessions", body, `checkout_${i.rentalId}`);
 }
 
@@ -109,7 +128,7 @@ export function createAdCheckoutSession(i: AdCheckoutInput) {
     payment_intent_data: { receipt_email: i.email, metadata },
     metadata,
   };
-  if (taxEnabled()) body.automatic_tax = { enabled: true };
+  applyCheckoutTax(body);
   return stripeCall<{ id: string; url: string | null }>("POST", "/checkout/sessions", body, `adcheckout_${i.campaignId}`);
 }
 

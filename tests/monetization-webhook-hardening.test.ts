@@ -25,6 +25,7 @@ vi.mock("@/lib/supabase", () => ({
 vi.mock("@/lib/stripe", () => ({
   stripeConfigured: () => false,
   taxEnabled: () => false,
+  applyCheckoutTax: (body: Record<string, unknown>) => body,
   stripeCall: async () => ({ ok: false, status: 0, code: "unconfigured", message: "no key" }),
   retrievePaymentIntent: async () =>
     stripeState.piOk

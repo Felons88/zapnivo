@@ -67,6 +67,7 @@ const GROUPS: readonly GroupSpec[] = [
       { name: "STRIPE_SECRET_KEY", secret: true, features: ["rental checkout", "refunds", "disputes", "billing portal"] },
       { name: "STRIPE_WEBHOOK_SECRET", secret: true, features: ["/api/webhooks/stripe signature verification"] },
       { name: "STRIPE_TAX_ENABLED", optional: true, features: ["automatic tax on checkout (flag)"] },
+      { name: "STRIPE_TAX_RATE_ID", optional: true, features: ["flat sales-tax rate on checkout line items"] },
     ],
   },
   {

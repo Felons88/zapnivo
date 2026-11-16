@@ -36,6 +36,7 @@ vi.mock("@/lib/stripe", () => ({
     return Promise.resolve(stripeState.result);
   },
   taxEnabled: () => false,
+  applyCheckoutTax: (body: Record<string, unknown>) => body,
   PAYMENTS_UNCONFIGURED: { error: "Payments are not available yet.", code: "payments_unconfigured" },
 }));
 vi.mock("@/lib/email-groups", () => ({ sendGroupFunded: vi.fn(async () => true) }));

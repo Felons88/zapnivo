@@ -1,4 +1,4 @@
-import { stripeCall, taxEnabled } from "@/lib/stripe";
+import { applyCheckoutTax, stripeCall, taxEnabled } from "@/lib/stripe";
 
 /**
  * Stripe Checkout creators for monetization products. metadata.kind routes
@@ -23,7 +23,7 @@ export function createMembershipCheckout(i: Base & { planId: string; planName: s
     payment_intent_data: { receipt_email: i.email, metadata },
     metadata,
   };
-  if (taxEnabled()) body.automatic_tax = { enabled: true };
+  applyCheckoutTax(body);
   return stripeCall<{ id: string; url: string | null }>("POST", "/checkout/sessions", body, `memcheckout_${i.profileId}_${i.planId}_${Date.now()}`);
 }
 
@@ -44,7 +44,7 @@ export function createSubscriptionCheckout(i: Base & { planId: string; planName:
     subscription_data: { metadata },
     metadata,
   };
-  if (taxEnabled()) body.automatic_tax = { enabled: true };
+  applyCheckoutTax(body);
   return stripeCall<{ id: string; url: string | null }>("POST", "/checkout/sessions", body, `subcheckout_${i.profileId}_${i.planId}_${Date.now()}`);
 }
 
@@ -58,7 +58,7 @@ export function createGiftCheckout(i: Base & { giftId: string; packageLabel: str
     payment_intent_data: { receipt_email: i.email, metadata },
     metadata,
   };
-  if (taxEnabled()) body.automatic_tax = { enabled: true };
+  applyCheckoutTax(body);
   return stripeCall<{ id: string; url: string | null }>("POST", "/checkout/sessions", body, `giftcheckout_${i.giftId}`);
 }
 
@@ -72,7 +72,7 @@ export function createPackageCheckout(i: Base & { purchaseId: string; packageId:
     payment_intent_data: { receipt_email: i.email, metadata },
     metadata,
   };
-  if (taxEnabled()) body.automatic_tax = { enabled: true };
+  applyCheckoutTax(body);
   return stripeCall<{ id: string; url: string | null }>("POST", "/checkout/sessions", body, `pkgcheckout_${i.purchaseId}`);
 }
 
@@ -86,7 +86,7 @@ export function createGroupFundingCheckout(i: Base & { purchaseId: string; group
     payment_intent_data: { receipt_email: i.email, metadata },
     metadata,
   };
-  if (taxEnabled()) body.automatic_tax = { enabled: true };
+  applyCheckoutTax(body);
   return stripeCall<{ id: string; url: string | null }>("POST", "/checkout/sessions", body, `groupfund_${i.purchaseId}`);
 }
 
@@ -100,6 +100,6 @@ export function createEventPassCheckout(i: Base & { passId: string; eventName: s
     payment_intent_data: { receipt_email: i.email, metadata },
     metadata,
   };
-  if (taxEnabled()) body.automatic_tax = { enabled: true };
+  applyCheckoutTax(body);
   return stripeCall<{ id: string; url: string | null }>("POST", "/checkout/sessions", body, `eventcheckout_${i.passId}`);
 }
