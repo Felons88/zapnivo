@@ -3,7 +3,10 @@ import Image from "next/image";
 import Link from "next/link";
 import { Button, Eyebrow, Section } from "@/components/ui";
 import { HomeFaq } from "@/components/HomeFaq";
-import { KioskPhoto } from "@/components/Photo";
+import { KioskPhoto, KioskScenePhoto } from "@/components/Photo";
+import { Showcase } from "@/components/Showcase";
+import { NetworkMap } from "@/components/NetworkMap";
+import { getStations } from "@/lib/stations";
 import { getPublishedContent, text as cmsText } from "@/lib/site-content";
 import { VENDING_CATEGORIES } from "@/lib/vending";
 
@@ -45,8 +48,28 @@ const steps = [
   ["04", "Install and support", "When equipment is available, we schedule installation and start the service plan."],
 ];
 
+const glance = [
+  ["6", "vending categories", "Snacks to specialty"],
+  ["8", "industry guides", "Workplaces to fitness"],
+  ["8-slot", "charging kiosk", "First unit acquired"],
+  ["MN", "home market", "Statewide inquiries"],
+] as const;
+const chargingSteps = [
+  ["Find a station", "The map lists only verified, live stations."],
+  ["Scan and rent", "Scan the kiosk QR code, review the terms, pay on your phone."],
+  ["Charge on the move", "Take the power bank with you and keep using your phone."],
+  ["Return it", "Dock it at any eligible participating Zapnivo station."],
+] as const;
+const benefits = [
+  ["Snacks & drinks", "/vending/snacks", "Break-room and lobby staples"],
+  ["Fresh food", "/vending/food", "Longer shifts, longer stays"],
+  ["Phone charging", "/vending/phone-chargers", "Our first product line"],
+  ["Collectibles", "/vending/trading-cards", "Trading cards and hobby items"],
+  ["Specialty", "/vending/specialty", "Custom ideas for unusual spaces"],
+] as const;
+
 export default async function Home() {
-  const cms = await getPublishedContent("apex", "home");
+  const [cms, stations] = await Promise.all([getPublishedContent("apex", "home"), getStations()]);
   return <>
     <section className="overflow-hidden bg-ink text-white" aria-labelledby="hero-heading">
       <div className="container-z grid min-h-[680px] items-center gap-12 pb-20 pt-40 lg:grid-cols-[.9fr_1.1fr] lg:gap-16 lg:pb-24 lg:pt-44">
@@ -60,9 +83,14 @@ export default async function Home() {
         <div className="relative min-h-[340px] overflow-hidden bg-[#d8dddf] sm:min-h-[470px] lg:h-[550px]">
           <Image src="/images/vending-office-concept.webp" alt="Illustrative concept of snack and beverage vending machines in a modern office lobby" fill priority fetchPriority="high" sizes="(min-width: 1024px) 52vw, 100vw" className="object-cover object-[65%_center]" />
           <span className="absolute bottom-4 left-4 bg-ink/90 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-white">Illustrative concept · not an installed Zapnivo location</span>
+          <Link href="/vending/phone-chargers" className="absolute right-4 top-4 hidden w-36 bg-white p-2.5 text-ink shadow-2xl ring-1 ring-ink/10 transition-transform hover:-translate-y-1 sm:block"><KioskPhoto className="mx-auto h-28 w-auto object-contain" /><span className="mt-2 block text-[10px] font-bold uppercase tracking-wider text-forest">Actual Zapnivo kiosk</span><span className="block text-sm font-bold">Portable charging →</span></Link>
         </div>
       </div>
     </section>
+
+    <nav aria-label="Vending categories" className="border-y border-white/10 bg-[#1a1b3a] text-white"><div className="container-z flex gap-2 overflow-x-auto py-4 sm:flex-wrap sm:justify-center">{benefits.map(([label, href, note]) => <Link key={href} href={href} className="group flex min-h-11 shrink-0 items-center gap-3 border border-white/15 px-4 py-2 hover:border-lime hover:bg-white/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-lime"><span className="font-display text-sm font-bold">{label}</span><span className="hidden text-xs text-white/55 min-[1700px]:inline">{note}</span><span aria-hidden className="text-lime transition-transform group-hover:translate-x-0.5">→</span></Link>)}</div></nav>
+
+    <section className="bg-lime text-ink" aria-label="Zapnivo at a glance"><dl className="container-z grid grid-cols-2 gap-px py-0 md:grid-cols-4">{glance.map(([big, label, sub]) => <div key={label} className="px-2 py-7 md:px-6 md:py-9"><dt className="sr-only">{label}</dt><dd><span className="block font-display text-4xl font-bold tracking-tight md:text-5xl">{big}</span><span className="mt-1 block text-sm font-bold">{label}</span><span className="block text-xs text-ink/70">{sub}</span></dd></div>)}</dl></section>
 
     <Section className="bg-white" id="value"><div className="grid gap-10 lg:grid-cols-[.8fr_1.2fr] lg:gap-20"><div><Eyebrow className="text-graphite">Built around your venue</Eyebrow><h2 className="display-md mt-5 max-w-xl">Convenience that works for your business.</h2></div><div className="grid gap-x-9 gap-y-9 sm:grid-cols-2">{values.map(([title, body], i) => <div key={title} className="border-t border-ink/20 pt-5"><span className="text-xs font-bold text-graphite">0{i + 1}</span><h3 className="mt-5 font-display text-xl font-bold">{title}</h3><p className="mt-3 text-sm leading-7 text-graphite">{body}</p></div>)}</div></div></Section>
 
@@ -75,9 +103,20 @@ export default async function Home() {
 
     <Section className="bg-[#eef0ef]" id="process"><Eyebrow className="text-graphite">How it works</Eyebrow><h2 className="display-lg mt-5 max-w-4xl">A straightforward way to bring vending to your location.</h2><div className="mt-12 grid gap-px border border-ink/15 bg-ink/15 md:grid-cols-2 xl:grid-cols-4">{steps.map(([n, title, body]) => <div key={n} className="bg-[#eef0ef] p-7 md:p-8"><span className="font-display text-3xl font-bold text-forest">{n}</span><h3 className="mt-16 font-display text-xl font-bold">{title}</h3><p className="mt-4 text-sm leading-7 text-graphite">{body}</p></div>)}</div></Section>
 
-    <Section dark className="bg-ink" id="technology"><div className="grid items-center gap-12 lg:grid-cols-[1fr_.8fr]"><div><Eyebrow className="text-lime">Technology & service</Eyebrow><h2 className="display-lg mt-5 max-w-3xl">Useful technology. Thoughtful service.</h2><p className="lead mt-6 max-w-2xl text-white/70">Our portable charging experience connects a physical kiosk with a digital rental journey and support. For other vending categories, monitoring and management capabilities depend on the equipment selected for each placement.</p><div className="mt-9 flex flex-wrap gap-3"><Button href="/vending/phone-chargers">Explore phone charging</Button><Button href="/business" variant="ghost" className="border-white/40 text-white">For businesses</Button></div></div><div className="relative flex min-h-[400px] items-center justify-center bg-[#e9ebea]"><KioskPhoto className="h-[360px] w-auto object-contain" /><span className="absolute bottom-4 left-4 bg-ink px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-white">Actual Zapnivo charging kiosk</span></div></div></Section>
+    <Section className="bg-paper" id="charging">
+      <div className="grid items-center gap-12 lg:grid-cols-[.95fr_1.05fr] lg:gap-16">
+        <div className="relative aspect-[4/3] overflow-hidden bg-[#dce1e2]"><KioskScenePhoto scene="cafe" /><span className="absolute bottom-3 left-3 bg-ink/90 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-white">Illustrative placement concept</span></div>
+        <div><Eyebrow className="text-graphite">Portable charging</Eyebrow><h2 className="display-lg mt-5">Power for the people who visit.</h2><p className="lead mt-5 max-w-xl text-graphite">Our charger rental kiosk is our first product line. Guests rent a power bank, take it with them and return it to a participating station.</p>
+          <ol className="mt-8 grid gap-px border border-ink/15 bg-ink/15 sm:grid-cols-2">{chargingSteps.map(([t, d], i) => <li key={t} className="bg-paper p-5"><span className="font-display text-2xl font-bold text-forest">0{i + 1}</span><h3 className="mt-3 font-display text-lg font-bold">{t}</h3><p className="mt-1 text-sm leading-6 text-graphite">{d}</p></li>)}</ol>
+          <div className="mt-8 flex flex-wrap gap-3"><Button href="/how-it-works" variant="dark">How charging works</Button><Button href="/locations" variant="ghost" className="border-ink/30">Find a charger</Button></div></div>
+      </div>
+    </Section>
 
-    <Section className="bg-white" id="partners"><div className="grid gap-px bg-ink/15 lg:grid-cols-[1.15fr_.85fr]"><div className="bg-white py-2 pr-0 lg:py-4 lg:pr-14"><Eyebrow className="text-graphite">Venue partnerships</Eyebrow><h2 className="display-lg mt-5 max-w-3xl">Let’s build a better experience for your guests.</h2><p className="lead mt-6 max-w-xl text-graphite">Tell us what people need at your location and we’ll explore a vending or charging opportunity that suits it.</p><div className="mt-8"><Button href="/business/apply" variant="dark">Become a venue partner</Button></div></div><div className="bg-[#eef0ef] p-7 md:p-10"><Eyebrow className="text-graphite">Service area</Eyebrow><h3 className="display-md mt-5">Minnesota is home base.</h3><p className="mt-5 leading-7 text-graphite">Inquiries are welcome from businesses across the state. Our charger map lists only stations that are installed and verified.</p><div className="mt-7 flex flex-wrap gap-3"><Button href="/vending/locations" variant="dark">Service area</Button><Button href="/locations" variant="ghost" className="border-ink/30">Find a charger</Button></div></div></div></Section>
+    <Section dark className="bg-ink" id="technology"><Eyebrow className="text-lime">Technology & service</Eyebrow><h2 className="display-lg mt-5 max-w-3xl">Meet the hardware.</h2><p className="lead mt-5 max-w-2xl text-white/70">The real Zapnivo kiosk, from the touchscreen to the charging slots. For other vending categories, monitoring and management capabilities depend on the equipment chosen for each placement.</p><div className="mt-10"><Showcase /></div></Section>
+
+    <Section className="bg-white" id="locations"><div className="grid gap-6 lg:grid-cols-[1fr_.7fr] lg:items-end"><div><Eyebrow className="text-graphite">Station network</Eyebrow><h2 className="display-lg mt-5">Find power near you.</h2></div><div><p className="text-graphite">Locations appear only when a station is installed, verified and live.</p><div className="mt-5"><Button href="/locations" variant="dark">Open the station map</Button></div></div></div><NetworkMap stations={stations} interactive={false} className="mt-10 h-[340px] md:h-[460px]" /></Section>
+
+    <Section className="bg-paper" id="partners"><div className="grid gap-px bg-ink/15 lg:grid-cols-[1.15fr_.85fr]"><div className="bg-white py-2 pr-0 lg:py-4 lg:pr-14"><Eyebrow className="text-graphite">Venue partnerships</Eyebrow><h2 className="display-lg mt-5 max-w-3xl">Let’s build a better experience for your guests.</h2><p className="lead mt-6 max-w-xl text-graphite">Tell us what people need at your location and we’ll explore a vending or charging opportunity that suits it.</p><div className="mt-8"><Button href="/business/apply" variant="dark">Become a venue partner</Button></div></div><div className="bg-[#eef0ef] p-7 md:p-10"><Eyebrow className="text-graphite">Service area</Eyebrow><h3 className="display-md mt-5">Minnesota is home base.</h3><p className="mt-5 leading-7 text-graphite">Inquiries are welcome from businesses across the state. Our charger map lists only stations that are installed and verified.</p><div className="mt-7 flex flex-wrap gap-3"><Button href="/vending/locations" variant="dark">Service area</Button><Button href="/locations" variant="ghost" className="border-ink/30">Find a charger</Button></div></div></div></Section>
     <HomeFaq />
     <section className="bg-ink py-20 text-white md:py-28"><div className="container-z flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between"><div><Eyebrow className="text-lime">Start a conversation</Eyebrow><h2 className="display-lg mt-5 max-w-3xl">{cmsText(cms, "bottom_cta_title", "Ready to bring vending to your location?")}</h2><p className="lead mt-5 max-w-2xl text-white/70">{cmsText(cms, "bottom_cta_body", "Tell us about your business and we’ll help explore vending solutions that fit your space.")}</p></div><div className="flex shrink-0 flex-wrap gap-3"><Button href="/get-a-vending-machine">Request a machine</Button><Button href="/contact" variant="ghost" className="border-white/40 text-white">Contact our team</Button></div></div></section>
   </>;

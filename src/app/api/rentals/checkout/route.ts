@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getSessionUser } from "@/lib/auth";
+import { getBearerUser, getSessionUser } from "@/lib/auth";
 import { holdCents, PRICING_SELECT, pricingFromRow, type PricingRow } from "@/lib/billing";
 import { lookupPromo, promoUsable, PROMO_CODE_RE, redeemPromo, releasePromo } from "@/lib/promos";
 import { likeEscape } from "@/lib/customer";
@@ -40,6 +40,9 @@ export async function POST(req: Request) {
   if (!parsed.success) return NextResponse.json({ error: "Please check the details you entered.", fields: parsed.error.flatten().fieldErrors }, { status: 422 });
   const { station_id, email, bank_count, promo_code, consent, sms_consent, use_credits } = parsed.data;
   if (!consent) return NextResponse.json({ error: "Please accept the rental terms to continue.", fields: { consent: ["Rental terms acceptance is required."] } }, { status: 422 });
+  const hasBearer = Boolean(req.headers.get("authorization"));
+  const user = await (hasBearer ? getBearerUser(req) : getSessionUser()).catch(() => null);
+  if (hasBearer && (!user || user.role !== "customer")) return NextResponse.json({ error: "Sign in again to continue." }, { status: 401 });
   log("info", "checkout_started", { stationId: station_id, bankCount: bank_count, hasPromo: Boolean(promo_code), smsConsent: Boolean(sms_consent) });
 
   const db = serviceClient();
@@ -80,8 +83,8 @@ export async function POST(req: Request) {
   }
   const undoPromo = async () => { if (promoCode) await releasePromo(db, promoCode); };
 
-  const user = await getSessionUser().catch(() => null);
-  const customerId = user && user.role === "customer" && user.email.toLowerCase() === email && /^[0-9a-f-]{36}$/i.test(user.id) ? user.id : null;
+  // Native phone accounts may have a synthetic login email; the renter provides a separate receipt email.
+  const customerId = user && user.role === "customer" && (hasBearer || user.email.toLowerCase() === email) && /^[0-9a-f-]{36}$/i.test(user.id) ? user.id : null;
   const { count: out } = await db.from("rentals")
     .select("id,payments!inner(receipt_email)", { count: "exact", head: true })
     .in("state", ["active", "dispense_pending", "unreturned", "overdue"]).ilike("payments.receipt_email", likeEscape(email));

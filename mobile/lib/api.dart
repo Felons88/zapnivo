@@ -18,6 +18,8 @@ class Station {
     required this.lat,
     required this.lng,
     this.hours,
+    this.readyBanks,
+    this.rentalsAvailable,
   });
 
   final String id;
@@ -25,9 +27,11 @@ class Station {
   final String address;
   final String city;
   final String state;
-  final double lat;
-  final double lng;
+  final double? lat;
+  final double? lng;
   final String? hours;
+  final int? readyBanks;
+  final bool? rentalsAvailable;
 
   factory Station.fromJson(Map<String, dynamic> json) => Station(
     id: json['id'] as String,
@@ -35,9 +39,11 @@ class Station {
     address: json['address'] as String,
     city: json['city'] as String,
     state: json['state'] as String,
-    lat: (json['lat'] as num).toDouble(),
-    lng: (json['lng'] as num).toDouble(),
+    lat: (json['lat'] as num?)?.toDouble(),
+    lng: (json['lng'] as num?)?.toDouble(),
     hours: json['hours'] as String?,
+    readyBanks: json['ready_banks'] as int?,
+    rentalsAvailable: json['rentals_available'] as bool?,
   );
 }
 
@@ -113,6 +119,33 @@ class ZapnivoApi {
       throw const ApiException(
         'Station information could not be read. Please try again.',
       );
+    }
+  }
+
+  Future<({Station station, RentalPricing? pricing})> getStation(String id) async {
+    final http.Response response;
+    try {
+      response = await _client
+          .get(_url('/api/mobile/stations/${Uri.encodeComponent(id)}'))
+          .timeout(const Duration(seconds: 15));
+    } catch (_) {
+      throw const ApiException('Could not check this station. Try again when connected.');
+    }
+    if (response.statusCode == 404) {
+      throw const ApiException('This station is not available for rentals. Check the ID on the QR label.');
+    }
+    if (response.statusCode != 200) {
+      throw const ApiException('Station details are temporarily unavailable. Please try again.');
+    }
+    try {
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      final price = body['pricing'];
+      return (
+        station: Station.fromJson(body['station'] as Map<String, dynamic>),
+        pricing: price == null ? null : RentalPricing.fromJson(price as Map<String, dynamic>),
+      );
+    } catch (_) {
+      throw const ApiException('Station details could not be read. Please try again.');
     }
   }
 

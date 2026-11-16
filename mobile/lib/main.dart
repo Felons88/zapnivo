@@ -112,34 +112,19 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
     setState(() => tab = 0);
-    StationSnapshot current;
+    ({Station station, RentalPricing? pricing}) detail;
     try {
-      current = await api.getStations();
+      detail = await api.getStation(id);
     } on ApiException catch (e) {
       if (mounted) _message(e.message);
       return;
     }
     if (!mounted) return;
-    setState(() => snapshot = current);
-    Station? station;
-    for (final item in current.stations) {
-      if (item.id == id) {
-        station = item;
-        break;
-      }
-    }
-    if (station == null) {
-      _message(
-        'We cannot verify that station as live. Check the code or try again later.',
-      );
-      return;
-    }
-    final selected = station;
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => StationScreen(
-          station: selected,
-          pricing: current.pricing,
+          station: detail.station,
+          pricing: detail.pricing,
           api: api,
         ),
       ),
@@ -194,15 +179,7 @@ class _HomeScreenState extends State<HomeScreen> {
           onRefresh: refresh,
           onScan: () => setState(() => tab = 1),
           onManual: manualEntry,
-          onStation: (station) => Navigator.of(context).push(
-            MaterialPageRoute<void>(
-              builder: (_) => StationScreen(
-                station: station,
-                pricing: snapshot?.pricing,
-                api: api,
-              ),
-            ),
-          ),
+          onStation: (station) => openStation(station.id),
         ),
       },
     ),
@@ -708,7 +685,7 @@ class _StationScreenState extends State<StationScreen> {
                 ),
               ),
             const SizedBox(height: 18),
-            OutlinedButton.icon(
+            if (widget.station.lat != null && widget.station.lng != null) OutlinedButton.icon(
               onPressed: () => launchUrl(
                 Uri.parse(
                   'https://www.google.com/maps/search/?api=1&query=${widget.station.lat},${widget.station.lng}',
@@ -755,7 +732,11 @@ class _StationScreenState extends State<StationScreen> {
               ),
             ),
             const SizedBox(height: 26),
-            if (widget.pricing != null) ...[
+            if (widget.pricing != null && widget.station.rentalsAvailable == false)
+              const StateCard(icon: Icons.do_not_disturb_on_outlined,
+                title: 'No chargers ready right now',
+                body: 'This station is verified, but it cannot start a rental at the moment. Try another station or check back soon.'),
+            if (widget.pricing != null && widget.station.rentalsAvailable != false) ...[
               Text(
                 'Start a rental',
                 style: Theme.of(context).textTheme.headlineMedium,

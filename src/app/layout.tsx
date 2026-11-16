@@ -1,11 +1,11 @@
 import type { Metadata, Viewport } from "next";
-import { Manrope, Space_Grotesk } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 import { SITE, subUrl } from "@/lib/site";
 import { Analytics } from "@vercel/analytics/next";
 
-const manrope = Manrope({ subsets: ["latin"], variable: "--font-manrope", display: "swap" });
-const space = Space_Grotesk({ subsets: ["latin"], variable: "--font-space", display: "swap" });
+const manrope = localFont({ src: "./fonts/manrope-latin.woff2", variable: "--font-manrope", display: "swap", weight: "200 800" });
+const space = localFont({ src: "./fonts/space-grotesk-latin.woff2", variable: "--font-space", display: "swap", weight: "300 700" });
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE.url),

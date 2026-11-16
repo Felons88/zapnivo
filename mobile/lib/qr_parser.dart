@@ -3,7 +3,7 @@
 String? stationIdFromCode(String raw) {
   final code = raw.trim();
   final idPattern = RegExp(r'^[A-Za-z0-9_-]{3,40}$');
-  if (idPattern.hasMatch(code)) return code;
+  if (idPattern.hasMatch(code)) return code.toUpperCase();
 
   final url = Uri.tryParse(code);
   if (url == null ||

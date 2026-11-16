@@ -72,7 +72,7 @@ export type SmsSendResult = { sent: boolean; reason?: "opted_out" | "unconfigure
  * Non-transactional kinds are suppressed for phones with an sms_opt_outs row.
  * Never throws — SMS is best-effort alongside email.
  */
-export async function sendSms(db: SupabaseClient | null, opts: { to: string; body: string; rentalId?: string | null; ticketId?: string | null; kind?: string | null }): Promise<SmsSendResult> {
+export async function sendSms(db: SupabaseClient | null, opts: { to: string; body: string; rentalId?: string | null; ticketId?: string | null; kind?: string | null; redactBody?: boolean }): Promise<SmsSendResult> {
   const to = normalizePhone(opts.to);
   const from = normalizePhone(process.env.TWILIO_FROM_NUMBER);
   if (!smsConfigured() || !to || !from) return { sent: false, reason: "unconfigured" };
@@ -87,7 +87,7 @@ export async function sendSms(db: SupabaseClient | null, opts: { to: string; bod
     const errorCode = res.ok || json.code == null ? null : String(json.code);
     const errorMessage = res.ok ? null : (json.message ?? "send failed").slice(0, 300);
     if (db) await db.from("sms_messages").insert({
-      direction: "outbound", from_number: from, to_number: to, body: opts.body,
+      direction: "outbound", from_number: from, to_number: to, body: opts.redactBody ? "[redacted authentication code]" : opts.body,
       status: res.ok ? (json.status ?? "sent") : "failed", provider_sid: json.sid ?? null,
       rental_id: opts.rentalId ?? null, ticket_id: opts.ticketId ?? null,
       error_code: errorCode, error_message: errorMessage,

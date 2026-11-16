@@ -162,6 +162,26 @@ export async function getSessionUser(nowMs = Date.now()): Promise<SessionUser | 
   return { id: userId, email: data.user.email ?? "", role: profile.role as Role, organizationId: profile.organization_id };
 }
 
+/** Native clients use a Supabase bearer token instead of the website's HTTP-only cookie. */
+export async function getBearerUser(req: Request, nowMs = Date.now()): Promise<SessionUser | null> {
+  const authorization = req.headers.get("authorization") ?? "";
+  const match = /^Bearer ([A-Za-z0-9._-]+)$/.exec(authorization);
+  if (!match) return null;
+  const anon = anonClient();
+  const svc = serviceClient();
+  if (!anon || !svc) return null;
+  const { data, error } = await anon.auth.getUser(match[1]);
+  if (error || !data.user) return null;
+  const sid = jwtSessionId(match[1]);
+  if (!sid) return null;
+  const active = await enforceSession(svc, `sso:${sid}`, data.user.id, "mobile", nowMs).catch(() => null);
+  if (!active) return null;
+  const { data: profile } = await svc.from("profiles")
+    .select("role,organization_id,email").eq("id", data.user.id).maybeSingle();
+  if (!profile) return null;
+  return { id: data.user.id, email: profile.email, role: profile.role as Role, organizationId: profile.organization_id };
+}
+
 /** Revokes the registry session backing the current cookie (logout). Best-effort. */
 export async function revokeCurrentSession(): Promise<void> {
   try {
