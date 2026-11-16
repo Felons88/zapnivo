@@ -25,3 +25,19 @@ so every defect below was identified visually / functionally, not by geometry.
 
 Not defects: fbclid page is byte-identical in layout to the plain URL; `<script>`/`onerror` payloads in
 `fbclid`/`utm_*` are not reflected or executed; `?src=` is sanitized by `leadSourceTag`.
+
+## Performance measurements (Lighthouse 13, production, after deploy ccb2db1)
+
+Lab scores on this workstation are load-dependent: `environment.benchmarkIndex` was ~900-1000 for the
+post-deploy runs versus ~2400 for the earlier baselines, so absolute scores are NOT comparable with
+`artifacts/lighthouse-*.json`. To check for a regression, old (d335202) and new (ccb2db1) production builds
+were run locally, interleaved, on the same machine (mobile, 3 runs each):
+
+| build | run 1 | run 2 | run 3 |
+|---|---|---|---|
+| d335202 | 73 | 76 | 77 |
+| ccb2db1 | 65 | 79 | 77 |
+
+=> no measurable regression; run-to-run noise (+/-8) exceeds the difference. Accessibility 100, Best
+Practices 96, SEO 100 on all six production pages measured (`lighthouse-*.json` in this folder).
+No 90+ performance claim is made from these runs. Re-measure on an idle machine or with PageSpeed Insights / CrUX.
