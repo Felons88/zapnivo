@@ -17,7 +17,7 @@ export default async function StationPage({ params, searchParams }: { params: Pr
   if (db && STATION_ID_RE.test(station)) {
     const { data } = await db
       .from("kiosks")
-      .select("station_id,state,installed_at,venues(name,street,city,state,zip,hours,published)")
+      .select("station_id,state,installed_at,test_mode,venues(name,street,city,state,zip,hours,published)")
       .eq("station_id", station)
       .maybeSingle();
     row = (data as unknown as KioskVenueRow) ?? null;
@@ -53,6 +53,9 @@ export default async function StationPage({ params, searchParams }: { params: Pr
 
           {avail.ok ? (
             <>
+              {row?.test_mode === true && (
+                <div role="status"><Notice title="Test station.">This station is in test mode — it is not a live deployment. Payments still go through Stripe.</Notice></div>
+              )}
               <div className="rounded-xl bg-white p-6">
                 <h2 className="text-lg font-bold">{avail.venueName}</h2>
                 <p className="mt-1 text-graphite">{avail.address}</p>

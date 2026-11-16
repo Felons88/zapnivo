@@ -15,6 +15,17 @@ describe("availability", () => {
     expect(decideAvailability(kiosk({ venues: null }))).toEqual({ ok: false, reason: "unpublished" });
     expect(decideAvailability(kiosk(), false)).toEqual({ ok: false, reason: "unconfigured" });
   });
+
+  it("test_mode stations are available without live gates, with honest fallback labels", () => {
+    const testKiosk = kiosk({ state: "provisioning", installed_at: null, test_mode: true, venues: null });
+    expect(decideAvailability(testKiosk)).toMatchObject({ ok: true, venueName: "Test station S1" });
+    expect(decideAvailability(testKiosk)).toMatchObject({ address: expect.stringContaining("Test mode") });
+    // A published venue still supplies real names/addresses in test mode.
+    expect(decideAvailability(kiosk({ state: "offline", installed_at: null, test_mode: true }))).toMatchObject({ ok: true, venueName: "Demo Tavern" });
+    // Unknown stations and non-test offline stations stay unavailable.
+    expect(decideAvailability(null)).toEqual({ ok: false, reason: "unknown" });
+    expect(decideAvailability(kiosk({ state: "provisioning", installed_at: null }))).toEqual({ ok: false, reason: "offline" });
+  });
 });
 
 const rental = (ref: string, at: string): HistoryRentalRow => ({

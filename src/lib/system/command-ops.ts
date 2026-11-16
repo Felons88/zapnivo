@@ -98,10 +98,11 @@ export const COMMAND_ELIGIBLE_DEVICE_STATUSES: ReadonlySet<string> = new Set(["a
 /* ── Row shapes ───────────────────────────────────────────────────────────── */
 
 export const OPS_KIOSK_SELECT =
-  "id,station_id,state,venue_id,slot_count,last_seen_at,firmware_version,model,created_at";
+  "id,station_id,state,test_mode,venue_id,slot_count,last_seen_at,firmware_version,model,created_at";
 
 export type OpsKiosk = {
   id: string; station_id: string | null; state: string;
+  test_mode?: boolean | null;
   venue_id: string | null; slot_count: number | null;
   last_seen_at: string | null; firmware_version: string | null;
   model: string | null; created_at?: string | null;

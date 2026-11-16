@@ -56,9 +56,14 @@ export async function POST(req: Request) {
 
   // Station must be online, venue published, and have enough ready banks.
   const unavailable = () => { log("warning", "checkout_station_unavailable", { stationId: station_id }); return NextResponse.json({ error: "This station isn't available right now.", code: "station_unavailable" }, { status: 409 }); };
-  const { data: kiosk } = await db.from("kiosks").select("id,state,venues(id,city,venue_type,published)").eq("station_id", station_id).maybeSingle();
-  const venue = (kiosk as unknown as { venues: { id: string; city: string | null; venue_type: string | null; published: boolean } | null } | null)?.venues;
-  if (!kiosk || kiosk.state !== "online" || !venue?.published) return unavailable();
+  const { data: kiosk } = await db.from("kiosks").select("id,state,test_mode,venues(id,city,venue_type,published)").eq("station_id", station_id).maybeSingle();
+  const kioskRow = kiosk as unknown as { id: string; state: string; test_mode?: boolean | null; venues: { id: string; city: string | null; venue_type: string | null; published: boolean } | null } | null;
+  const venue = kioskRow?.venues;
+  // Staff-flagged test stations (System Control) skip the live-state/published-venue
+  // and ready-bank gates so the full checkout flow can be exercised pre-launch.
+  // Payment, pricing approval, promos, and maintenance blocks still apply.
+  const testMode = kioskRow?.test_mode === true;
+  if (!kiosk || !kioskRow || (!testMode && (kioskRow.state !== "online" || !venue?.published))) return unavailable();
   // Control-plane maintenance gate: a bound system_devices row in a
   // non-serving status, an open maintenance visit, or an accepted
   // maintenance_mode config intent blocks NEW rentals server-side —
@@ -69,8 +74,8 @@ export async function POST(req: Request) {
     log("warning", "checkout_station_in_maintenance", { stationId: station_id, reason: maint.reason });
     return NextResponse.json({ error: "This station is under maintenance right now.", code: "station_in_maintenance" }, { status: 409 });
   }
-  const { count } = await db.from("kiosk_slots").select("slot_number", { count: "exact", head: true }).eq("kiosk_id", kiosk.id).eq("state", "ready");
-  if ((count ?? 0) < bank_count) return unavailable();
+  const { count } = await db.from("kiosk_slots").select("slot_number", { count: "exact", head: true }).eq("kiosk_id", kioskRow.id).eq("state", "ready");
+  if (!testMode && (count ?? 0) < bank_count) return unavailable();
 
   // Promo: validate, then reserve a redemption atomically.
   let promoCode: string | null = null;

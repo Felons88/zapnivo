@@ -16,7 +16,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ station
   if (!db) return NextResponse.json({ error: "Station service is unavailable." }, { status: 503 });
 
   const { data, error } = await db.from("kiosks")
-    .select("id,station_id,state,installed_at,venues(name,street,city,state,zip,hours,published,lat,lng)")
+    .select("id,station_id,state,installed_at,test_mode,venues(name,street,city,state,zip,hours,published,lat,lng)")
     .eq("station_id", station).maybeSingle();
   if (error) return NextResponse.json({ error: "Station service is unavailable." }, { status: 503 });
   const row = data as unknown as (KioskVenueRow & { id: string; venues: NonNullable<KioskVenueRow>['venues'] & { lat: number | null; lng: number | null } }) | null;
@@ -38,7 +38,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ station
       city: venue?.city ?? "", state: venue?.state ?? "", hours: availability.hours,
       lat: venue?.lat ?? null, lng: venue?.lng ?? null,
       ready_banks: Math.max(0, slots.count ?? 0),
-      rentals_available: !maintenance && (slots.count ?? 0) > 0 && Boolean(approved),
+      // Test-mode stations skip the ready-bank gate; checkout re-validates everything else.
+      rentals_available: !maintenance && Boolean(approved) && (row!.test_mode === true || (slots.count ?? 0) > 0),
     },
     pricing: approved ? {
       first_hour_cents: approved.firstHourCents,

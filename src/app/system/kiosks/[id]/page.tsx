@@ -22,6 +22,7 @@ import { getDeviceOpsDashboard } from "@/lib/system/command-ops";
 import { listConfigRevisions, type ConfigRevisionRow } from "@/lib/system/device-config";
 import { ConfigPanel } from "./ConfigPanel";
 import { CreateAppStationButton } from "./CreateAppStationButton";
+import { TestModeButton } from "./TestModeButton";
 import type { ReadinessCheck } from "@/lib/system/hardware";
 import { capabilitiesFromDeviceRecord, resolveDeviceCapabilities } from "@/lib/kiosk/capabilities";
 import { stationRentalUrl } from "@/lib/station-qr";
@@ -176,7 +177,7 @@ export default async function KioskDevicePage({ params }: { params: Promise<{ id
                 <p>Print this QR for the kiosk. The Zapnivo app scans it to look up this station.</p>
                 <p className="break-all font-mono text-slate-400">{rentalUrl}</p>
                 <a href={rentalQr} download={`zapnivo-${appStation.station_id}-qr.png`} className="inline-block rounded-full bg-lime px-4 py-2 font-bold text-ink">Download QR</a>
-                <p className="text-amber-200">Rentals remain unavailable until the kiosk is online, installed at a published venue, has ready power banks, and pricing is approved.</p>
+                <p className="text-amber-200">Rentals remain unavailable until the kiosk is online, installed at a published venue, has ready power banks, and pricing is approved — unless test mode is enabled below.</p>
               </div>
             </div>
           ) : <div>
@@ -185,6 +186,12 @@ export default async function KioskDevicePage({ params }: { params: Promise<{ id
               <CreateAppStationButton deviceId={device.id} />
             )}
           </div>}
+          {appStation && canManage && (
+            <TestModeButton deviceId={device.id} enabled={appStation.test_mode === true} />
+          )}
+          {appStation && !canManage && appStation.test_mode === true && (
+            <p className="mt-3 text-[11px] font-bold text-amber-200">TEST MODE is enabled for this station — rentals bypass live-availability checks (payment still applies).</p>
+          )}
         </Section>
 
         <div className="grid gap-4 lg:grid-cols-2">

@@ -9,12 +9,23 @@ export type KioskVenueRow = {
   station_id: string;
   state: string;
   installed_at: string | null;
+  /** Staff-set flag (System Control) that relaxes live gates for pre-launch testing. */
+  test_mode?: boolean | null;
   venues: { name: string; street: string; city: string; state: string; zip: string | null; hours: string | null; published: boolean } | null;
 } | null;
 
 export function decideAvailability(row: KioskVenueRow, configured = true): StationAvailability {
   if (!configured) return { ok: false, reason: "unconfigured" };
   if (!row) return { ok: false, reason: "unknown" };
+  if (row.test_mode === true) {
+    const v = row.venues;
+    return {
+      ok: true,
+      venueName: v?.name ?? `Test station ${row.station_id}`,
+      address: v ? `${v.street}, ${v.city}, ${v.state}${v.zip ? ` ${v.zip}` : ""}` : "Test mode — not a public venue",
+      hours: v?.hours ?? null,
+    };
+  }
   if (row.state !== "online" || !row.installed_at) return { ok: false, reason: "offline" };
   const v = row.venues;
   if (!v || !v.published) return { ok: false, reason: "unpublished" };
