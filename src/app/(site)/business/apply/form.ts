@@ -60,11 +60,11 @@ export const RESPONSIBILITIES = [
   { who: "Your venue", items: "Provides a visible, practical spot for the equipment and helps us plan placement around your operation." },
 ] as const;
 
-/** Guest-facing rental facts (confirmed pricing) — context for venue partners. */
+/** Guest-facing rental process; monetary terms are shown only from approved pricing at checkout. */
 export const GUEST_RENTAL_FACTS = [
-  "$6.99 per started hour",
-  "24-hour return window",
-  "$45 non-return fee",
+  "Current approved pricing is shown before payment",
+  "Return timing is disclosed before payment",
+  "Non-return terms are disclosed in the rental agreement",
 ] as const;
 
 /** Vending categories a venue can ask about — values map to partner_applications.product_interest. */

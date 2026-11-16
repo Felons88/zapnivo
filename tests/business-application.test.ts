@@ -102,9 +102,10 @@ describe("honest partner copy", () => {
     expect(allCopy).toMatch(/agreement/i);
   });
 
-  it("guest rental facts match confirmed pricing", () => {
-    expect(GUEST_RENTAL_FACTS).toContain("$6.99 per started hour");
-    expect(GUEST_RENTAL_FACTS).toContain("24-hour return window");
-    expect(GUEST_RENTAL_FACTS).toContain("$45 non-return fee");
+  it("guest rental facts disclose pricing without hard-coding unapproved amounts", () => {
+    expect(GUEST_RENTAL_FACTS).toContain("Current approved pricing is shown before payment");
+    expect(GUEST_RENTAL_FACTS).toContain("Return timing is disclosed before payment");
+    expect(GUEST_RENTAL_FACTS).toContain("Non-return terms are disclosed in the rental agreement");
+    expect(GUEST_RENTAL_FACTS.join(" ")).not.toMatch(/\$\d/);
   });
 });
