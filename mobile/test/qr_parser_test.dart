@@ -9,6 +9,8 @@ void main() {
       'MN-001',
     );
     expect(stationIdFromCode('MN-001'), 'MN-001');
+    expect(stationIdFromCode('mn-001'), 'MN-001');
+    expect(stationIdFromCode('https://zapnivo.com/r/mn-001'), 'MN-001');
   });
 
   test('rejects foreign and malformed QR codes', () {

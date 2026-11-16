@@ -141,7 +141,8 @@ export async function POST(req: Request) {
   const base = SITE.url.replace(/\/$/, "");
   const session = await createCheckoutSession({
     rentalId: rental.id, reference: rental.reference, holdCents: hold, email, stationId: station_id, bankCount: bank_count,
-    successUrl: `${base}/r/${encodeURIComponent(station_id)}?status=success`, cancelUrl: `${base}/r/${encodeURIComponent(station_id)}?status=cancelled`,
+    successUrl: hasBearer ? `${base}/mobile-return?status=success` : `${base}/r/${encodeURIComponent(station_id)}?status=success`,
+    cancelUrl: hasBearer ? `${base}/mobile-return?status=cancelled` : `${base}/r/${encodeURIComponent(station_id)}?status=cancelled`,
   });
   if (!session.ok || !session.data.url) { await rollback(); log("error", "checkout_session_failed", { rental: rental.reference, reason: session.ok ? "no_url" : session.code }); return NextResponse.json({ error: "Payment couldn't be started. Please try again." }, { status: 502 }); }
 

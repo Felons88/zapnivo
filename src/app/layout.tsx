@@ -3,6 +3,7 @@ import localFont from "next/font/local";
 import "./globals.css";
 import { SITE, subUrl } from "@/lib/site";
 import { Analytics } from "@vercel/analytics/next";
+import FirebaseInit from "@/components/FirebaseInit";
 
 const manrope = localFont({ src: "./fonts/manrope-latin.woff2", variable: "--font-manrope", display: "swap", weight: "200 800" });
 const space = localFont({ src: "./fonts/space-grotesk-latin.woff2", variable: "--font-space", display: "swap", weight: "300 700" });
@@ -40,6 +41,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         {children}
         <Analytics />
+        <FirebaseInit />
       </body>
     </html>
   );

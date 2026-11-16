@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
       if (!smsConfigured()) return NextResponse.json({ error: "SMS isn't available yet." }, { status: 503 });
       const code = String(randomInt(100000, 1000000));
       await db.from("phone_otps").insert({ phone, code_hash: hash(code), expires_at: new Date(Date.now() + 10 * 60_000).toISOString() });
-      const res = await sendSms(db, { to: phone, body: `Your Zapnivo phone-verification code is ${code}. It expires in 10 minutes.`, redactBody: true });
+      const res = await sendSms(db, { to: phone, body: `Your Zapnivo phone-verification code is ${code}. It expires in 10 minutes.`, kind: "auth_code", redactBody: true });
       log(res.sent ? "delivered" : "send_failed");
       return NextResponse.json({ ok: true, delivered: res.sent });
     }
@@ -90,7 +90,7 @@ export async function POST(req: NextRequest) {
     const code = String(randomInt(100000, 1000000));
     await db.from("phone_otps").update({ used: true }).eq("phone", phone).eq("used", false);
     await db.from("phone_otps").insert({ phone, code_hash: hash(code), expires_at: new Date(Date.now() + 10 * 60_000).toISOString() });
-    const res = await sendSms(db, { to: phone, body: `Your Zapnivo sign-in code is ${code}. It expires in 10 minutes.`, redactBody: true });
+    const res = await sendSms(db, { to: phone, body: `Your Zapnivo sign-in code is ${code}. It expires in 10 minutes.`, kind: "auth_code", redactBody: true });
     log(res.sent ? "delivered" : "send_failed");
     return NextResponse.json({ ok: true, delivered: res.sent });
   }

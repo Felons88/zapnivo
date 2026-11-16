@@ -1,4 +1,4 @@
-package com.zapnivo.mobile
+package com.zapnivo.charging
 
 import io.flutter.embedding.android.FlutterActivity
 

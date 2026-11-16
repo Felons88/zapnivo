@@ -6,6 +6,15 @@
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLSchemes</key>
+			<array><string>com.zapnivo.charging</string></array>
+		</dict>
+	</array>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Zapnivo uses your location to show charger stations near you.</string>
 	<key>CFBundleDisplayName</key>
 	<string>Zapnivo</string>
 	<key>NSCameraUsageDescription</key>

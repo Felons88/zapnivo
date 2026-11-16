@@ -161,10 +161,12 @@ export const registerKioskSchema = z.object({
 });
 export type RegisterKioskInput = z.infer<typeof registerKioskSchema>;
 
-const newDeviceUid = () => `kiosk-${randomBytes(6).toString("hex")}`;
+// The app normalizes scanned station IDs to uppercase. Use the same ID for the
+// system device and rental kiosk so scans and hardware events resolve together.
+const newDeviceUid = () => `KIOSK-${randomBytes(6).toString("hex").toUpperCase()}`;
 
 /**
- * Inserts a system_devices row with status 'registered'. Honest failures:
+ * Inserts a system_devices row and its rental-facing kiosk/empty slots. Honest failures:
  * duplicate serial → 409 (pre-check + unique-violation fallback), missing venue → 400.
  */
 export async function registerKiosk(
@@ -181,8 +183,9 @@ export async function registerKiosk(
 
   // device_uid is unique; regenerate on the (astronomically rare) collision.
   for (let attempt = 0; attempt < 3; attempt++) {
+    const deviceUid = newDeviceUid();
     const { data, error } = await db.from("system_devices").insert({
-      device_uid: newDeviceUid(),
+      device_uid: deviceUid,
       serial_number: input.serial_number,
       manufacturer: input.manufacturer,
       model: input.model,
@@ -197,9 +200,30 @@ export async function registerKiosk(
     }).select(SYSTEM_DEVICE_SELECT).single();
     if (!error && data) {
       const device = data as SystemDeviceRow;
+      const { data: kiosk, error: kioskError } = await db.from("kiosks").insert({
+        station_id: deviceUid,
+        venue_id: input.venue_id ?? null,
+        model: input.model,
+        firmware_version: input.firmware_version ?? null,
+        slot_count: input.slot_count,
+        state: "provisioning",
+      }).select("id").single();
+      if (kioskError || !kiosk) {
+        await db.from("system_devices").delete().eq("id", device.id);
+        return { ok: false, status: 500, error: "Could not create the app station; registration was rolled back" };
+      }
+      const slots = Array.from({ length: input.slot_count }, (_, i) => ({
+        kiosk_id: kiosk.id, slot_number: i + 1, state: "empty" as const,
+      }));
+      const { error: slotError } = await db.from("kiosk_slots").insert(slots);
+      if (slotError) {
+        await db.from("kiosks").delete().eq("id", kiosk.id);
+        await db.from("system_devices").delete().eq("id", device.id);
+        return { ok: false, status: 500, error: "Could not create kiosk slots; registration was rolled back" };
+      }
       await systemAudit(db, {
         actor, action: "kiosk.registered", resource: deviceAuditResource(device.id),
-        detail: { device_uid: device.device_uid, serial_number: device.serial_number, model: device.model, venue_id: device.venue_id, slot_count: device.slot_count },
+        detail: { device_uid: device.device_uid, serial_number: device.serial_number, model: device.model, venue_id: device.venue_id, slot_count: device.slot_count, kiosk_id: kiosk.id },
       });
       return { ok: true, device };
     }
@@ -212,6 +236,55 @@ export async function registerKiosk(
     return { ok: false, status: 500, error: error?.message ?? "insert failed" };
   }
   return { ok: false, status: 500, error: "Could not allocate a unique device_uid" };
+}
+
+/** Bind a legacy, unprovisioned system device to an app station and QR ID. */
+export async function createAppStationForDevice(db: SupabaseClient, device: SystemDeviceRow, actor: SystemActor): Promise<
+  { ok: true; stationId: string } | { ok: false; status: number; error: string }
+> {
+  const oldUid = device.device_uid;
+  const stationId = oldUid?.toUpperCase() ?? "";
+  if (device.status !== "registered" || device.provision_token_hash || device.provision_token_used_at ||
+      device.device_secret_hash || device.credential_issued_at || device.auth_method === "hmac_sha256" ||
+      device.last_heartbeat_at || device.last_message_at || device.last_authed_at || device.installed_at || device.last_message_ts) {
+    return { ok: false, status: 409, error: "Only unprovisioned registered devices can have an app station created automatically" };
+  }
+  if (!oldUid || !/^[A-Za-z0-9_-]{3,40}$/.test(stationId) || !device.slot_count || device.slot_count < 1 || device.slot_count > 64) {
+    return { ok: false, status: 400, error: "Device ID or slot count cannot be used for an app station" };
+  }
+  const ids = [...new Set([oldUid, stationId, device.serial_number].filter((id): id is string => !!id))];
+  const { data: existing, error: lookupError } = await db.from("kiosks").select("id").in("station_id", ids).limit(1);
+  if (lookupError) return { ok: false, status: 503, error: "Could not check existing app stations" };
+  if (existing?.length) return { ok: false, status: 409, error: "An app station is already linked to this device" };
+
+  let uidChanged = false;
+  if (oldUid !== stationId) {
+    const { data: updated, error } = await db.from("system_devices").update({ device_uid: stationId })
+      .eq("id", device.id).eq("device_uid", oldUid).select("id").maybeSingle();
+    if (error || !updated) return { ok: false, status: 409, error: "Could not reserve an uppercase app station ID" };
+    uidChanged = true;
+  }
+  const rollbackUid = async () => {
+    if (uidChanged) await db.from("system_devices").update({ device_uid: oldUid }).eq("id", device.id).eq("device_uid", stationId);
+  };
+  const { data: kiosk, error: kioskError } = await db.from("kiosks").insert({
+    station_id: stationId, venue_id: device.venue_id, model: device.model,
+    firmware_version: device.firmware_version, slot_count: device.slot_count, state: "provisioning",
+  }).select("id").single();
+  if (kioskError || !kiosk) {
+    await rollbackUid();
+    return { ok: false, status: 500, error: "Could not create the app station" };
+  }
+  const slots = Array.from({ length: device.slot_count }, (_, i) => ({ kiosk_id: kiosk.id, slot_number: i + 1, state: "empty" as const }));
+  const { error: slotError } = await db.from("kiosk_slots").insert(slots);
+  if (slotError) {
+    await db.from("kiosks").delete().eq("id", kiosk.id);
+    await rollbackUid();
+    return { ok: false, status: 500, error: "Could not create the app station slots" };
+  }
+  await systemAudit(db, { actor, action: "kiosk.app_station_created", resource: deviceAuditResource(device.id),
+    detail: { previous_device_uid: oldUid, station_id: stationId, kiosk_id: kiosk.id, slot_count: device.slot_count } });
+  return { ok: true, stationId };
 }
 
 /* ── Lifecycle transitions ────────────────────────────────────────────────── */

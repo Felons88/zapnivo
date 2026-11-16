@@ -1,14 +1,15 @@
 import type { NextConfig } from "next";
 
 // Next.js App Router requires 'unsafe-inline' scripts (RSC/hydration); 'unsafe-eval' only in dev (HMR).
-// connect-src is the real exfil guard: browser may only call our origin, Supabase, and Mapbox.
+// connect-src is the real exfil guard: browser may only call our origin, Supabase, Mapbox,
+// and the Firebase/Google Analytics endpoints FirebaseInit needs (gtag + beacon).
 const csp = [
   "default-src 'self'",
-  `script-src 'self' 'unsafe-inline'${process.env.NODE_ENV === "production" ? "" : " 'unsafe-eval'"}`,
+  `script-src 'self' 'unsafe-inline' https://www.googletagmanager.com${process.env.NODE_ENV === "production" ? "" : " 'unsafe-eval'"}`,
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob: https://*.mapbox.com",
+  "img-src 'self' data: blob: https://*.mapbox.com https://*.google-analytics.com https://*.googletagmanager.com",
   "font-src 'self' data:",
-  "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.mapbox.com https://events.mapbox.com",
+  "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.mapbox.com https://events.mapbox.com https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com https://*.firebaseio.com https://firebaseinstallations.googleapis.com",
   "worker-src 'self' blob:",
   "frame-ancestors 'none'",
   "object-src 'none'",

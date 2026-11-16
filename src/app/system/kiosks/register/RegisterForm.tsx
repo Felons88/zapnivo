@@ -11,11 +11,10 @@ export function RegisterForm({ venues }: { venues: VenueOption[] }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState<string | null>(null);
 
   const submit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setBusy(true); setError(null); setDone(null);
+    setBusy(true); setError(null);
     const fd = new FormData(e.currentTarget);
     const num = (k: string) => { const v = String(fd.get(k) ?? "").trim(); return v === "" ? undefined : Number(v); };
     const str = (k: string) => { const v = String(fd.get(k) ?? "").trim(); return v === "" ? undefined : v; };
@@ -38,23 +37,10 @@ export function RegisterForm({ venues }: { venues: VenueOption[] }) {
       const j = await res.json().catch(() => ({}));
       if (!res.ok) { setError((j as { error?: string }).error ?? `HTTP ${res.status}`); return; }
       const id = (j as { device?: { id?: string } }).device?.id;
-      setDone(id ?? "registered");
-      router.refresh();
+      if (!id) { setError("Registration completed, but the device ID was missing. Reload the fleet registry."); return; }
+      router.push(`/system/kiosks/${id}`);
     } finally { setBusy(false); }
   };
-
-  if (done) {
-    return (
-      <div className="space-y-3">
-        <p className="text-sm text-lime">Kiosk registered.</p>
-        <p className="font-mono text-xs text-slate-400">device id: {done}</p>
-        <div className="flex gap-2">
-          <a href={`/system/kiosks/${done}`} className="rounded-full bg-lime px-4 py-2 text-xs font-bold text-ink hover:bg-[#e6ffa8]">Open device</a>
-          <button type="button" onClick={() => setDone(null)} className="rounded-full bg-white/10 px-4 py-2 text-xs font-bold text-slate-200 ring-1 ring-white/15 hover:bg-white/15">Register another</button>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <form onSubmit={submit} className="grid gap-4 sm:grid-cols-2">

@@ -4,6 +4,20 @@ import 'package:http/testing.dart';
 import 'package:zapnivo_mobile/api.dart';
 
 void main() {
+  test('direct lookup works without map coordinates', () async {
+    final api = ZapnivoApi(client: MockClient((request) async {
+      expect(request.url.path, '/api/mobile/stations/MN-001');
+      return http.Response('''{"station":{"id":"MN-001","name":"Test venue",
+        "address":"1 Main St","city":"Saint Paul","state":"MN",
+        "lat":null,"lng":null,"ready_banks":1,"rentals_available":true},
+        "pricing":null}''', 200);
+    }));
+    final detail = await api.getStation('MN-001');
+    expect(detail.station.lat, isNull);
+    expect(detail.station.readyBanks, 1);
+    expect(detail.station.rentalsAvailable, isTrue);
+  });
+
   test(
     'loads only stations and approved pricing returned by the server',
     () async {

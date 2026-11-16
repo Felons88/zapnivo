@@ -14,5 +14,5 @@ String? stationIdFromCode(String raw) {
     return null;
   }
   final id = url.pathSegments.last;
-  return idPattern.hasMatch(id) ? id : null;
+  return idPattern.hasMatch(id) ? id.toUpperCase() : null;
 }

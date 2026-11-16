@@ -29,6 +29,7 @@ export function normalizePhone(v: string | null | undefined): string | null {
  * The opt-out/resubscribe confirmations themselves are compliance messages and always send.
  */
 export const TRANSACTIONAL_KINDS = new Set([
+  "auth_code",
   "return_failed",
   "non_return_fee_charged",
   "payment_failed",

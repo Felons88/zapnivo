@@ -3,8 +3,9 @@ import { systemApiGuard, readJson } from "../../_shared";
 import { registerKiosk, registerKioskSchema } from "@/lib/system/kiosks";
 
 /**
- * POST /api/system/kiosks/register — add a device to the system_devices fleet
- * registry (status='registered', device_uid `kiosk-<random>` generated server-side).
+ * POST /api/system/kiosks/register — add a registered system device, its
+ * provisioning rental kiosk, and numbered empty slots. A matching uppercase
+ * device_uid/station_id is generated server-side for app QR and hardware binding.
  *
  * Permission: system.kiosks.manage (the narrower system.kiosks.register does not
  * exist in SYSTEM_PERMISSIONS yet — see src/lib/system/kiosks.ts header note).

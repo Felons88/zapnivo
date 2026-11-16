@@ -16,6 +16,13 @@ export const PUBLIC_PATHS = [
   "/legal/refund-policy",
   "/legal/cookie-policy",
   "/legal/accessibility",
+  "/scam-awareness",
+  "/vending/snacks", "/vending/drinks", "/vending/food",
+  "/vending/phone-chargers", "/vending/trading-cards", "/vending/specialty",
+  "/vending/locations", "/vending/request", "/get-a-vending-machine",
+  "/industries", "/industries/apartments", "/industries/entertainment",
+  "/industries/fitness", "/industries/hotels", "/industries/offices",
+  "/industries/restaurants", "/industries/retail", "/industries/warehouses",
 ];
 
 /** Other public pages that are not in the sitemap but must render. */

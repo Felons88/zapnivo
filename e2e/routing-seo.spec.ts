@@ -52,15 +52,15 @@ test.describe("apex canonical redirects (Host: zapnivo.com)", () => {
     expect(loc.search).toContain("ref=nav");
   });
 
-  test("marketing paths on the apex host are not redirected", async ({ request }) => {
+  test("marketing paths on the canonical www host are not redirected", async ({ request }) => {
     for (const path of ["/", "/about", "/locations", "/business", "/contact", "/legal/privacy", "/login"]) {
-      const res = await request.get(path, apex(path));
+      const res = await request.get(path, apex(path, WWW));
       expect(res.status(), path).toBe(200);
     }
   });
 
   test("prefix lookalikes do not redirect (/supportx stays put)", async ({ request }) => {
-    const res = await request.get("/supportx", apex("/supportx"));
+    const res = await request.get("/supportx", apex("/supportx", WWW));
     // Not a portal path → falls through to normal routing (404 is fine, must NOT 308 to a subdomain).
     expect(res.status()).not.toBe(308);
     if (res.status() === 200) expect(res.headers().location).toBeUndefined();
@@ -73,7 +73,7 @@ test.describe("stray and unknown hosts", () => {
       const res = await request.get(path, { headers: { host: `foo.zapnivo.com:3100` }, maxRedirects: 0 });
       expect(res.status(), path).toBe(308);
       const loc = new URL(res.headers().location);
-      expect(loc.hostname).toBe("zapnivo.com");
+      expect(loc.hostname).toBe("www.zapnivo.com");
       expect(loc.pathname).toBe(path);
     }
   });

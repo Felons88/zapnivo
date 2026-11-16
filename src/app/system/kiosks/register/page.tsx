@@ -22,9 +22,8 @@ export default async function RegisterKioskPage() {
           <p className="eyebrow text-lime">Kiosk Infrastructure</p>
           <h1 className="mt-2 font-display text-3xl font-bold tracking-tight">Register kiosk</h1>
           <p className="mt-1 text-sm text-slate-400">
-            Adds a row to <code className="font-mono text-xs">system_devices</code> with status{" "}
-            <code className="font-mono text-xs">registered</code>. A <code className="font-mono text-xs">kiosk-*</code>{" "}
-            device_uid is generated server-side. Duplicate serial numbers are rejected. Requires{" "}
+            Adds a registered device and a provisioning app station with empty slots. A <code className="font-mono text-xs">KIOSK-*</code>{" "}
+            station ID is generated server-side. The device page has its printable app QR. Duplicate serial numbers are rejected. Requires{" "}
             <code className="font-mono text-xs">system.kiosks.manage</code>.
           </p>
         </div>

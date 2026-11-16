@@ -8,6 +8,7 @@ import { sendSms } from "./sms";
 import { serviceClient } from "./supabase";
 import { SITE, subUrl } from "./site";
 import { signReceipt } from "./billing";
+import { pushToRentalCustomer } from "./push";
 
 /** Rental lifecycle email triggers — queue into the helpdesk outbox (so delivery state is visible), then flush. */
 
@@ -123,6 +124,7 @@ export async function triggerRentalStarted(rentalId: string) {
   if (!r) return false;
   const db0 = serviceClient();
   if (db0) await scheduleRentalSms(db0, rentalId, new Date(r.dispensed_at ?? r.started_at ?? Date.now()));
+  void pushToRentalCustomer(rentalId, { title: "Rental started", body: `Your charger is ready${r.kiosks?.venues ? ` at ${r.kiosks.venues.name}` : ""}. Return it to any live station.`, data: { type: "rental", reference: r.reference } });
   if (!to) return false;
   return sendToCustomer(to, "Your Zapnivo rental is active",
     `Your rental ${r.reference} is active${r.kiosks?.venues ? ` from ${r.kiosks.venues.name}` : ""}. Keep the power bank with you — return it to any eligible station when you're done.`,
@@ -139,6 +141,7 @@ export async function triggerRentalReturned(rentalId: string) {
   if (!r) return false;
   const db0 = serviceClient();
   if (db0) await cancelRentalSms(db0, rentalId);
+  void pushToRentalCustomer(rentalId, { title: "Return confirmed", body: `Rental ${r.reference} is returned. Total ${fmt(r.payments?.[0]?.amount_captured_cents ?? 0)}.`, data: { type: "rental", reference: r.reference } });
   if (!to) return false;
   return sendToCustomer(to, "Your Zapnivo return is confirmed",
     `Rental ${r.reference} is returned. Thanks for using Zapnivo.`,

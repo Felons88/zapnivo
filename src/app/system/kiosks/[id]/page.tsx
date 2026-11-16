@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic";
 import type { Metadata } from "next";
+import QRCode from "qrcode";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { SystemGate } from "@/components/SystemGate";
@@ -20,8 +21,10 @@ import { deviceCredentialStatus, kekStatus, type DeviceAuthRow } from "@/lib/sys
 import { getDeviceOpsDashboard } from "@/lib/system/command-ops";
 import { listConfigRevisions, type ConfigRevisionRow } from "@/lib/system/device-config";
 import { ConfigPanel } from "./ConfigPanel";
+import { CreateAppStationButton } from "./CreateAppStationButton";
 import type { ReadinessCheck } from "@/lib/system/hardware";
 import { capabilitiesFromDeviceRecord, resolveDeviceCapabilities } from "@/lib/kiosk/capabilities";
+import { stationRentalUrl } from "@/lib/station-qr";
 import {
   buildSlotInventory, buildVerificationStrip, configStateDiff, findDeviceIncidents,
   getHardwareProfileForDevice, listDeviceMessages, listInventoryForKiosks,
@@ -79,6 +82,9 @@ export default async function KioskDevicePage({ params }: { params: Promise<{ id
     // Tolerant: table arrives with migration 0059 — empty list pre-migration.
     listConfigRevisions(db, device.id, 50).catch(() => [] as ConfigRevisionRow[]),
   ]);
+  const appStation = ops.bound_kiosks.find((k) => k.station_id === device.device_uid) ?? ops.bound_kiosks[0] ?? null;
+  const rentalUrl = appStation?.station_id ? stationRentalUrl(appStation.station_id) : null;
+  const rentalQr = rentalUrl ? await QRCode.toDataURL(rentalUrl, { errorCorrectionLevel: "H", margin: 2, width: 480 }) : null;
   const diagnostics = commands.filter((c) => c.command_type === "diagnostic_ping");
   const conn = deriveConnectivity(device);
   const tokenState = provisionTokenState(device);
@@ -159,6 +165,27 @@ export default async function KioskDevicePage({ params }: { params: Promise<{ id
             audit only and never dispatched. Telemetry shown here comes solely from stored timestamps.
           </div>
         )}
+
+        <Section title="Customer app QR">
+          {appStation && rentalQr && rentalUrl ? (
+            <div className="flex flex-wrap items-center gap-5">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={rentalQr} alt={`Rental QR for station ${appStation.station_id}`} width={220} height={220} className="rounded-xl bg-white p-3" />
+              <div className="space-y-3 text-xs text-slate-300">
+                <p className="font-mono text-lg font-bold text-white">{appStation.station_id}</p>
+                <p>Print this QR for the kiosk. The Zapnivo app scans it to look up this station.</p>
+                <p className="break-all font-mono text-slate-400">{rentalUrl}</p>
+                <a href={rentalQr} download={`zapnivo-${appStation.station_id}-qr.png`} className="inline-block rounded-full bg-lime px-4 py-2 font-bold text-ink">Download QR</a>
+                <p className="text-amber-200">Rentals remain unavailable until the kiosk is online, installed at a published venue, has ready power banks, and pricing is approved.</p>
+              </div>
+            </div>
+          ) : <div>
+            <p className="text-xs text-amber-200">No app station is bound to this device yet. Create one before printing a customer rental QR.</p>
+            {canManage && device.status === "registered" && !device.provision_token_hash && !device.credential_issued_at && !device.last_heartbeat_at && (
+              <CreateAppStationButton deviceId={device.id} />
+            )}
+          </div>}
+        </Section>
 
         <div className="grid gap-4 lg:grid-cols-2">
           {/* Identity */}

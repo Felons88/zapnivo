@@ -68,7 +68,7 @@ test.describe("mobile navigation", () => {
     await dismissConsent(page);
     const toggle = page.locator('button[aria-controls="mobile-menu"]');
     for (let i = 0; i < 10 && (await toggle.getAttribute("aria-expanded")) !== "true"; i++) await toggle.click();
-    await page.locator("#mobile-menu").getByRole("link", { name: /how it works/i }).first().click();
+    await page.locator("#mobile-menu").getByRole("link", { name: /how charging works/i }).first().click();
     await expect(page).toHaveURL(/\/how-it-works/);
     await expect(page.locator('button[aria-controls="mobile-menu"]')).toHaveAttribute("aria-expanded", "false");
   });

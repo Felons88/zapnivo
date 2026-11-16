@@ -18,6 +18,7 @@ import { classify, followUp, HANDOFF_MESSAGE, HUMAN_REQUESTED_MESSAGE, replyIsSa
 import { HelpdeskError, type Actor, type Message, type Priority, type RefundReason, type RefundRequest, type RequesterType, type Ticket, type TicketState } from "./types";
 import { notifyTicketReceived } from "../notifications";
 import { recordLog } from "../observability";
+import { pushToEmail } from "../push";
 
 export type Ctx = { repo: HelpdeskRepo; chat: ChatFn | null; mailer: Mailer | null; rentals: RentalDirectory; refunds: RefundProvider; now: () => Date; siteUrl: string; agentGate?: AgentGateFn };
 
@@ -167,6 +168,7 @@ export async function agentReply(c: Ctx, actor: Actor, number: string, body: str
   await audit(c, t.id, actor, "agent_reply", { state });
   hdLog("agent_reply", { ticket: t.number, state });
   await notify(c, u, state === "resolved" ? "Your request has been resolved" : "A reply to your request", text);
+  if (t.requesterType === "customer") void pushToEmail(t.email, { title: state === "resolved" ? "Request resolved" : "New reply from Zapnivo Support", body: text.slice(0, 140), data: { type: "ticket", number: t.number } });
   return u;
 }
 

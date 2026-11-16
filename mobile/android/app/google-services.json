@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "787064134971",
+    "project_id": "zapnivo",
+    "storage_bucket": "zapnivo.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:787064134971:android:b445fe63533218d6386b1e",
+        "android_client_info": {
+          "package_name": "com.zapnivo.charging"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB8_Cm0xeWb8d2P6HBdMOkS65-y2Vf-5DU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -65,9 +65,9 @@ test.describe("partner application (/business/apply)", () => {
     await page.getByRole("button", { name: /Continue/ }).click();
     const bad = (await invalidFields(page)).map((f) => f.name);
     expect(bad).toEqual(expect.arrayContaining(["businessName", "contactName", "email", "phone"]));
-    const vm = await page.locator("#businessName").evaluate((el: HTMLInputElement) => el.validationMessage);
+    const vm = await page.locator("#partner-businessName").evaluate((el: HTMLInputElement) => el.validationMessage);
     expect(vm.length).toBeGreaterThan(0);
-    await expect(page.getByLabel("Progress").locator("li").nth(0)).toHaveAttribute("aria-current", "step");
+    await expect(page.getByLabel("Application progress").locator("li").nth(0)).toHaveAttribute("aria-current", "step");
   });
 
   test("invalid email blocks step 1", async ({ page }) => {
@@ -77,7 +77,7 @@ test.describe("partner application (/business/apply)", () => {
     await page.getByLabel("Business email").fill("nope");
     await page.getByLabel("Phone number").fill("6125550100");
     await page.getByRole("button", { name: /Continue/ }).click();
-    await expect(page.getByLabel("Progress").locator("li").nth(0)).toHaveAttribute("aria-current", "step");
+    await expect(page.getByLabel("Application progress").locator("li").nth(0)).toHaveAttribute("aria-current", "step");
     expect((await invalidFields(page)).map((f) => f.name)).toContain("email");
   });
 
@@ -101,10 +101,10 @@ test.describe("partner application (/business/apply)", () => {
     await page.getByLabel("Street address").fill("1 Test Street");
     await page.getByLabel("City").fill("Minneapolis");
     await next.click();
-    await expect(page.getByLabel("Estimated operating hours")).toBeVisible();
+    await expect(page.getByLabel(/Operating hours/)).toBeVisible();
 
-    await page.getByLabel("Estimated operating hours").fill("Mon-Fri 9-5");
-    await page.getByLabel("Preferred installation location").fill("Near the entrance");
+    await page.getByLabel(/Operating hours/).fill("Mon-Fri 9-5");
+    await page.getByLabel(/Preferred installation location/).fill("Near the entrance");
     const [res] = await Promise.all([
       page.waitForResponse((r) => r.url().includes("/api/partner-applications") && r.request().method() === "POST"),
       page.getByRole("button", { name: "Submit application" }).click(),

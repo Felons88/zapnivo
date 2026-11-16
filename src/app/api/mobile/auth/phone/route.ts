@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
       .insert({ phone, code_hash: codeHash, expires_at: new Date(Date.now() + 10 * 60_000).toISOString() })
       .select("id").single();
     if (error || !otp) return json({ error: "Couldn't create a code. Try again." }, 503);
-    const sms = await sendSms(db, { to: phone, body: `Your Zapnivo sign-in code is ${code}. It expires in 10 minutes.`, redactBody: true });
+    const sms = await sendSms(db, { to: phone, body: `Your Zapnivo sign-in code is ${code}. It expires in 10 minutes.`, kind: "auth_code", redactBody: true });
     if (!sms.sent) {
       await db.from("phone_otps").update({ used: true }).eq("id", otp.id);
       return json({ error: "Couldn't send the code. Try again later." }, 503);
