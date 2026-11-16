@@ -23,7 +23,7 @@ export function VendingCategoryVisual({ slug }: { slug: string }) {
   if (!content) return null;
   const concept = CONCEPT_IMAGE[slug];
   if (concept) return <div className="relative h-full w-full min-h-80 overflow-hidden bg-ink">
-    <Image src={concept.src} alt={concept.alt} fill priority sizes="(min-width: 1024px) 42vw, 100vw" className="object-cover" style={{ objectPosition: concept.position ?? "center" }} />
+    <Image src={concept.src} alt={concept.alt} fill priority fetchPriority="high" sizes="(min-width: 1024px) 42vw, 100vw" className="object-cover" style={{ objectPosition: concept.position ?? "center" }} />
     <span className="absolute left-4 top-4 rounded-sm bg-ink/90 px-3 py-2 text-[11px] font-bold uppercase tracking-[.12em] text-white">Representative concept · Not an installed Zapnivo machine</span>
   </div>;
   return (

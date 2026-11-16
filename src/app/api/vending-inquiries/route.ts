@@ -39,6 +39,7 @@ export const POST = (req: Request) =>
       space_notes: d.spaceNotes,
       timeline: d.timeline ? VENDING_TIMELINE_LABELS[d.timeline] ?? d.timeline : undefined,
       questions: d.questions,
+      lead_source: d.source,
     }),
     after: async (d, row) => {
       recordLog("info", "vending_inquiry_submitted", { service: "partners", route: "vending-inquiries", attrs: { applicationId: row.id, venueCategory: d.venueCategory, productInterest: d.productInterest } });

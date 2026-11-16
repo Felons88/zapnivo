@@ -3,6 +3,7 @@ import VendingLanding, { type VendingStep } from "@/components/VendingLanding";
 import VendingInquiryForm from "@/components/VendingInquiryForm";
 import { VENDING_PAGE_CONTENT } from "@/lib/vending-content";
 import { resolveVendingCategory, vendingCms, vendingCta, vendingIntro, vendingMetadata } from "@/lib/vending-seo";
+import { leadSourceTag } from "@/lib/lead-source";
 
 const SLUG = "request";
 const base = VENDING_PAGE_CONTENT[SLUG];
@@ -24,7 +25,8 @@ const STEPS: VendingStep[] = [
   { title: "Installation & service", body: "Once terms are agreed, Zapnivo coordinates placement and takes care of ongoing service." },
 ];
 
-export default async function GetAVendingMachinePage() {
+export default async function GetAVendingMachinePage({ searchParams }: { searchParams: Promise<{ src?: string | string[] }> }) {
+  const { src } = await searchParams;
   const cms = await vendingCms(base.pageKey);
   const cta = vendingCta(cms, SLUG);
   const category = {
@@ -41,7 +43,7 @@ export default async function GetAVendingMachinePage() {
       introBody={vendingIntro(cms)}
       steps={STEPS}
     >
-      <VendingInquiryForm category="general" source="placement_page" />
+      <VendingInquiryForm category="general" source={leadSourceTag(src, "placement_page")} />
     </VendingLanding>
   );
 }

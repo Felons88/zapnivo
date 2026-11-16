@@ -58,7 +58,7 @@ export default async function Home() {
           <p className="mt-8 text-sm text-white/60">Placement is subject to location review and equipment availability.</p>
         </div>
         <div className="relative min-h-[340px] overflow-hidden bg-[#d8dddf] sm:min-h-[470px] lg:h-[550px]">
-          <Image src="/images/vending-office-concept.webp" alt="Illustrative concept of snack and beverage vending machines in a modern office lobby" fill priority sizes="(min-width: 1024px) 52vw, 100vw" className="object-cover object-[65%_center]" />
+          <Image src="/images/vending-office-concept.webp" alt="Illustrative concept of snack and beverage vending machines in a modern office lobby" fill priority fetchPriority="high" sizes="(min-width: 1024px) 52vw, 100vw" className="object-cover object-[65%_center]" />
           <span className="absolute bottom-4 left-4 bg-ink/90 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-white">Illustrative concept · not an installed Zapnivo location</span>
         </div>
       </div>

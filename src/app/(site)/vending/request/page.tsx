@@ -4,6 +4,7 @@ import { Notice } from "@/components/ui";
 import VendingInquiryForm from "@/components/VendingInquiryForm";
 import { VENDING_PAGE_CONTENT } from "@/lib/vending-content";
 import { resolveVendingCategory, vendingCms, vendingCta, vendingIntro, vendingMetadata } from "@/lib/vending-seo";
+import { leadSourceTag } from "@/lib/lead-source";
 
 const SLUG = "request";
 const base = VENDING_PAGE_CONTENT[SLUG];
@@ -19,7 +20,8 @@ const STEPS: VendingStep[] = [
   { title: "Installation & service", body: "Once terms are agreed, Zapnivo coordinates placement and takes care of ongoing service." },
 ];
 
-export default async function VendingRequestPage() {
+export default async function VendingRequestPage({ searchParams }: { searchParams: Promise<{ src?: string | string[] }> }) {
+  const { src } = await searchParams;
   const cms = await vendingCms(base.pageKey);
   const cta = vendingCta(cms, SLUG);
   const category = resolveVendingCategory(SLUG, cms);
@@ -35,7 +37,7 @@ export default async function VendingRequestPage() {
         <Notice title="Equipment sales inquiry:">
           Zapnivo is exploring equipment sales through zapnivo.store, which is coming soon. Inquiries about purchasing machines are welcome — share details below and we'll follow up. No prices, stock, or warranty details are published yet.
         </Notice>
-        <VendingInquiryForm category="general" source="vending_request" />
+        <VendingInquiryForm category="general" source={leadSourceTag(src, "vending_request")} />
       </div>
     </VendingLanding>
   );

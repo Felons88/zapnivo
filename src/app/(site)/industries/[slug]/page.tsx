@@ -32,7 +32,7 @@ export default async function IndustryPage({ params }: Props) {
   const intro = cmsText(cms, "hero_description", industry.intro);
   const editorial = cmsText(cms, "intro_body", "");
   const ctaLabel = cmsText(cms, "cta_label", "Request a vending solution");
-  const ctaHref = cmsText(cms, "cta_href", "/vending/request");
+  const ctaHref = cmsText(cms, "cta_href", `/vending/request?src=industry_${slug}`);
   const crumbs = [
     { name: "Home", href: "/" },
     { name: "Industries", href: "/industries" },
