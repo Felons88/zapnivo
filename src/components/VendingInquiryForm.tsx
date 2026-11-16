@@ -1,5 +1,5 @@
 "use client";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { trackEvent } from "@/components/Analytics";
 import { inputCls } from "./forms";
 import { btnClass } from "./ui";
@@ -75,6 +75,13 @@ const Honeypot = () => (
 export default function VendingInquiryForm({ category, source }: { category?: string; source?: string }) {
   const [s, setS] = useState<State>({ status: "idle" });
   const started = useRef(false);
+  const formRef = useRef<HTMLFormElement>(null);
+  useEffect(() => {
+    if (s.status !== "error") return;
+    const target = formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]') ?? formRef.current?.querySelector<HTMLElement>('[role="alert"]');
+    target?.scrollIntoView({ block: "center", behavior: "smooth" });
+    if (target && "focus" in target && target.matches("input,select,textarea")) target.focus({ preventScroll: true });
+  }, [s]);
   const { props, wrap } = useField(s.fields);
 
   async function submit(e: React.FormEvent<HTMLFormElement>) {
@@ -112,7 +119,7 @@ export default function VendingInquiryForm({ category, source }: { category?: st
   }
 
   return (
-    <form onSubmit={submit} onFocus={() => { if (!started.current) { started.current = true; trackEvent("machine_request_form_start"); } }} className="relative space-y-8">
+    <form ref={formRef} onSubmit={submit} onFocus={() => { if (!started.current) { started.current = true; trackEvent("machine_request_form_start"); } }} className="relative space-y-8">
       <Honeypot />
       {source && <input type="hidden" name="source" value={source} />}
       <div className="border-b border-silver/60 pb-5"><p className="eyebrow text-forest">Location inquiry</p><h2 className="mt-3 font-display text-2xl font-bold">Tell us about your business.</h2><p className="mt-2 text-sm leading-6 text-graphite">We use these details to review whether a vending solution could fit your space. Fields without an optional label are required.</p></div>

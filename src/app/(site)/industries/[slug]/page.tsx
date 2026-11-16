@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Button, Eyebrow, Section } from "@/components/ui";
@@ -7,6 +8,17 @@ import { INDUSTRIES } from "../data";
 
 type Props = { params: Promise<{ slug: string }> };
 const getIndustry = (slug: string) => INDUSTRIES.find((item) => item.slug === slug);
+
+const HERO_IMAGE: Record<string, { src: string; alt: string; actual?: boolean }> = {
+  offices: { src: "/images/vending-office-concept.webp", alt: "Representative concept of snack and beverage machines in a workplace lobby" },
+  hotels: { src: "/images/vending-specialty-concept.webp", alt: "Representative concept of a vending machine in a hotel lobby" },
+  apartments: { src: "/images/vending-food-concept.webp", alt: "Representative concept of a food vending machine in a residential lounge" },
+  retail: { src: "/images/vending-cards-concept.webp", alt: "Representative concept of a collectible vending machine in a retail setting" },
+  entertainment: { src: "/images/vending-specialty-concept.webp", alt: "Representative concept of a specialty vending machine in a venue concourse" },
+  warehouses: { src: "/images/vending-snacks-concept.webp", alt: "Representative concept of a snack vending machine in a break room" },
+  restaurants: { src: "/images/kiosk.png", alt: "Zapnivo eight-slot portable charger rental kiosk", actual: true },
+  fitness: { src: "/images/vending-drinks-concept.webp", alt: "Representative concept of a cold beverage vending machine" },
+};
 
 export function generateStaticParams() { return INDUSTRIES.map(({ slug }) => ({ slug })); }
 
@@ -27,6 +39,7 @@ export default async function IndustryPage({ params }: Props) {
   const industry = getIndustry(slug);
   if (!industry) notFound();
   const cms = await getPublishedContent("apex", `industry_${slug}`);
+  const hero = HERO_IMAGE[slug];
   const eyebrow = cmsText(cms, "hero_eyebrow", industry.eyebrow);
   const headline = cmsText(cms, "hero_title", industry.headline);
   const intro = cmsText(cms, "hero_description", industry.intro);
@@ -43,9 +56,9 @@ export default async function IndustryPage({ params }: Props) {
     <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }} />
     <nav aria-label="Breadcrumb" className="border-b border-mist bg-paper"><ol className="container-z flex flex-wrap gap-2 py-3 text-xs font-semibold text-graphite">{crumbs.map((crumb, index) => <li key={crumb.href} className="flex gap-2">{index > 0 && <span aria-hidden="true">/</span>}{index === crumbs.length - 1 ? <span aria-current="page" className="text-ink">{crumb.name}</span> : <Link href={crumb.href} className="hover:text-forest hover:underline">{crumb.name}</Link>}</li>)}</ol></nav>
     <header className="bg-ink pb-20 pt-32 text-white md:pb-28 md:pt-40">
-      <div className="container-z grid items-end gap-12 lg:grid-cols-[1.15fr_.85fr]">
+      <div className="container-z grid items-center gap-12 lg:grid-cols-[1.1fr_.9fr]">
         <div><Eyebrow className="text-lime">{eyebrow}</Eyebrow><h1 className="display-lg mt-6 max-w-4xl">{headline}</h1><p className="lead mt-6 max-w-2xl text-white/75">{intro}</p><div className="mt-9 flex flex-wrap gap-3"><Button href={ctaHref}>{ctaLabel}</Button><Button href="/industries" variant="ghost" className="text-white">Explore industries</Button></div></div>
-        <div className="border-t border-white/25 py-7 lg:border-l lg:border-t-0 lg:py-0 lg:pl-9"><span className="text-xs font-bold uppercase tracking-[.18em] text-lime">Location first</span><p className="mt-5 font-display text-2xl font-semibold leading-snug">{industry.need}</p><p className="mt-7 text-sm leading-6 text-white/65">Placement is subject to location review and equipment availability.</p></div>
+        <div className="space-y-7"><figure className="relative aspect-[4/3] overflow-hidden bg-[#dce1e2] lg:aspect-[16/10]"><Image src={hero.src} alt={hero.alt} fill priority fetchPriority="high" sizes="(min-width: 1024px) 38vw, 100vw" className={hero.actual ? "object-contain p-4" : "object-cover"} /><figcaption className="absolute bottom-3 left-3 bg-ink/90 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-white">{hero.actual ? "Actual Zapnivo kiosk" : "Representative concept · not an installed machine"}</figcaption></figure><div className="border-t border-white/25 pt-6"><span className="text-xs font-bold uppercase tracking-[.18em] text-lime">Location first</span><p className="mt-5 font-display text-2xl font-semibold leading-snug">{industry.need}</p><p className="mt-5 text-sm leading-6 text-white/65">Placement depends on location and equipment availability.</p></div></div>
       </div>
     </header>
     {editorial && <Section className="!py-12 md:!py-16"><p className="lead mx-auto max-w-3xl text-graphite">{editorial}</p></Section>}

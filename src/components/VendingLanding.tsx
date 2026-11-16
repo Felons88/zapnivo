@@ -64,6 +64,19 @@ function Breadcrumbs({ label }: { label: string }) {
   );
 }
 
+/** Closing-section headings are written per page — never built from the page label. */
+const CLOSING_TITLE: Record<string, string> = {
+  snacks: "Interested in snack vending?",
+  drinks: "Interested in beverage vending?",
+  food: "Interested in food vending?",
+  "phone-chargers": "Interested in hosting a charging station?",
+  "trading-cards": "Interested in collectible vending?",
+  specialty: "Have a specialty vending idea?",
+  locations: "Wondering whether we can serve your location?",
+  request: "Ready to bring vending to your business?",
+};
+const closingTitle = (slug: string) => CLOSING_TITLE[slug] ?? "Ready to explore vending for your space?";
+
 export default function VendingLanding({
   category,
   ctaHref,
@@ -84,23 +97,47 @@ export default function VendingLanding({
   /** Inquiry/contact slot rendered near the bottom of the page. */
   children?: ReactNode;
 }) {
+  const formFirst = category.slug === "request" && children != null;
+  const inquirySection = (
+  <Section id="vending-inquiry" className="scroll-mt-32 bg-mist">
+    <div className="grid gap-10 lg:grid-cols-[.75fr_1.25fr]">
+      <div>
+        <Eyebrow className="text-forest">Next step</Eyebrow>
+        <h2 className="display-md mt-5">{closingTitle(category.slug)}</h2>
+        <p className="lead mt-5 text-graphite">Tell us about your space and we'll review what fits — placement and availability depend on location and equipment.</p>
+        {!formFirst && <div className="mt-7"><Button href="/vending/request" variant="dark">Request a vending machine</Button></div>}
+      </div>
+      <div className="rounded-xl bg-white p-6 md:p-10">
+        {children ?? (
+          <div className="flex h-full flex-col items-start justify-center gap-4">
+            <p className="text-sm leading-7 text-graphite">Use the request form to share your location details, or reach us through the contact page and we'll point you to the right conversation.</p>
+            <Button href="/contact" variant="ghost">Contact Zapnivo</Button>
+          </div>
+        )}
+      </div>
+    </div>
+  </Section>
+  );
   return (
     <>
       <Breadcrumbs label={category.label} />
 
       <MarketingHero
+        hideVisualOnMobile={formFirst}
         eyebrow={category.eyebrow}
         title={category.title}
         description={category.overview}
         actions={
           <>
-            <Button href={ctaHref}>{ctaLabel}</Button>
+            <Button href={formFirst ? "#vending-inquiry" : ctaHref}>{formFirst ? "Start your inquiry" : ctaLabel}</Button>
             <Button href={category.slug === "phone-chargers" ? "/locations" : "/industries"} variant="ghost" className="border-white/40 text-white">{category.slug === "phone-chargers" ? "Find a charger" : "Explore industries"}</Button>
           </>
         }
         visual={visual ?? <VendingCategoryVisual slug={category.slug} />}
-        note={category.slug === "phone-chargers" || category.slug === "locations" ? "Illustrative placement concept · Minnesota" : "Solutions subject to location and equipment review"}
+        note={category.slug === "phone-chargers" ? "Illustrative placement concept · Minnesota" : undefined}
       />
+
+      {formFirst && inquirySection}
 
       {introBody.trim() !== "" && (
         <Section className="!py-12 md:!py-16">
@@ -197,24 +234,7 @@ export default function VendingLanding({
         </Section>
       )}
 
-      <Section id="vending-inquiry" className="bg-mist">
-        <div className="grid gap-10 lg:grid-cols-[.75fr_1.25fr]">
-          <div>
-            <Eyebrow className="text-forest">Next step</Eyebrow>
-            <h2 className="display-md mt-5">Interested in {category.label.toLowerCase()}?</h2>
-            <p className="lead mt-5 text-graphite">Tell us about your space and we'll review what fits — placement and availability depend on location and equipment.</p>
-            <div className="mt-7"><Button href={category.slug === "request" ? "#vending-inquiry" : "/vending/request"} variant="dark">{category.slug === "request" ? "Go to the inquiry form" : "Request a vending machine"}</Button></div>
-          </div>
-          <div className="rounded-xl bg-white p-6 md:p-10">
-            {children ?? (
-              <div className="flex h-full flex-col items-start justify-center gap-4">
-                <p className="text-sm leading-7 text-graphite">Use the request form to share your location details, or reach us through the contact page and we'll point you to the right conversation.</p>
-                <Button href="/contact" variant="ghost">Contact Zapnivo</Button>
-              </div>
-            )}
-          </div>
-        </div>
-      </Section>
+      {!formFirst && inquirySection}
     </>
   );
 }

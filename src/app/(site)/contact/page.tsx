@@ -20,7 +20,7 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 const ROUTES = [
-  { t: "Vending & venue partnerships", d: "Own or manage a space? Apply to host Zapnivo vending equipment — snacks, drinks, food, chargers and more.", href: "/business/apply", cta: "Apply" },
+  { t: "Vending placement & partnerships", d: "Own or manage a space? Tell us about it and we will explore snacks, drinks, food, charging or specialty vending for your location.", href: "/get-a-vending-machine?src=contact_page", cta: "Request a machine" },
   { t: "Charging support", d: "Rental, return or billing issue with a power bank? A ticket gets it to the right queue.", href: "/support/new", cta: "Create ticket" },
   { t: "Advertising", d: "Interested in screen placements on our equipment? See what's possible.", href: "/advertise", cta: "Explore" },
 ];

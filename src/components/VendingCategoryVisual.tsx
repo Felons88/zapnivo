@@ -10,8 +10,8 @@ const CONTENT: Record<string, { index: string; heading: string; items: string[];
 };
 
 const CONCEPT_IMAGE: Record<string, { src: string; alt: string; position?: string }> = {
-  snacks: { src: "/images/vending-office-concept.webp", alt: "Representative concept of snack and beverage machines in a modern workplace", position: "65% center" },
-  drinks: { src: "/images/vending-office-concept.webp", alt: "Representative concept of beverage and snack machines in a modern workplace", position: "80% center" },
+  snacks: { src: "/images/vending-snacks-concept.webp", alt: "Representative concept of a snack vending machine beside a planter in a modern workplace" },
+  drinks: { src: "/images/vending-drinks-concept.webp", alt: "Representative concept of a cold beverage vending machine in a modern workplace" },
   food: { src: "/images/vending-food-concept.webp", alt: "Representative concept of a food vending machine in a workplace lounge" },
   "trading-cards": { src: "/images/vending-cards-concept.webp", alt: "Representative concept of collectible card vending equipment in a retail setting" },
   specialty: { src: "/images/vending-specialty-concept.webp", alt: "Representative concept of a specialty vending machine in a hospitality setting" },

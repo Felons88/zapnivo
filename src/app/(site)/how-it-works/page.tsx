@@ -37,7 +37,7 @@ export default function HowItWorks() {
         <div className="rounded-xl bg-white p-7">
           <span className="eyebrow text-forest">For venues</span>
           <h3 className="mt-3 font-display text-2xl font-bold">Vending machine services</h3>
-          <p className="mt-3 leading-7 text-graphite">Businesses can host Zapnivo vending equipment — self-service for guests, fully serviced by us. Now accepting vending placement inquiries; equipment availability varies by category and location.</p>
+          <p className="mt-3 leading-7 text-graphite">Businesses can host Zapnivo vending equipment — self-service for guests, with servicing agreed per location. Now accepting vending placement inquiries; equipment availability varies by category and location.</p>
           <div className="mt-5"><Button href="/business/apply">Host vending equipment</Button></div>
         </div>
       </div>

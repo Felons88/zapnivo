@@ -90,6 +90,7 @@ export function Header({ heroDark = false, announcement, supportAnnouncement }: 
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
   const [menu, setMenu] = useState<MenuId | null>(null);
+  const [pinned, setPinned] = useState<MenuId | null>(null);
   const bar = useRef<HTMLDivElement>(null);
   const solid = scrolled || open || menu !== null;
   // Pages whose top section is light need the light header variant even though the layout defaults to dark-hero.
@@ -107,7 +108,7 @@ export function Header({ heroDark = false, announcement, supportAnnouncement }: 
     window.addEventListener("scroll", on, { passive: true });
     return () => window.removeEventListener("scroll", on);
   }, []);
-  useEffect(() => { setOpen(false); setMenu(null); }, [path]);
+  useEffect(() => { setOpen(false); setMenu(null); setPinned(null); }, [path]);
   useEffect(() => {
     document.body.style.overflow = open ? "hidden" : "";
     const esc = (e: KeyboardEvent) => { if (e.key === "Escape") { setOpen(false); setMenu(null); } };
@@ -118,25 +119,25 @@ export function Header({ heroDark = false, announcement, supportAnnouncement }: 
   return (
     <>
       <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded-full focus:bg-lime focus:px-5 focus:py-3 focus:font-bold">Skip to content</a>
-      <header onMouseLeave={() => setMenu(null)} className={`fixed inset-x-0 top-0 z-[60] transition-[background-color,box-shadow,color] duration-300 ${open ? "bg-ink text-white" : solid ? "bg-paper/95 text-ink shadow-[0_1px_0_#e8ebe6] backdrop-blur-md" : onDark ? "text-white" : "text-ink"}`}>
+      <header onMouseLeave={() => { setMenu(null); setPinned(null); }} className={`fixed inset-x-0 top-0 z-[60] transition-[background-color,box-shadow,color] duration-300 ${open ? "bg-ink text-white" : solid ? "bg-paper/95 text-ink shadow-[0_1px_0_#e8ebe6] backdrop-blur-md" : onDark ? "text-white" : "text-ink"}`}>
         {picked.show ? (
         <div className="section-neon py-2 text-center text-[10px] font-extrabold uppercase tracking-[.13em] text-ink sm:text-xs">
           {active?.text ? (
             <>{active.text}{active.href ? <> · <Link href={active.href} className="ml-2 underline underline-offset-2">Learn more →</Link></> : null}</>
           ) : (
-            <>Vending solutions for Minnesota businesses · Now accepting machine placement inquiries <Link href="/get-a-vending-machine" className="ml-2 underline underline-offset-2">Request a machine →</Link></>
+            <><span className="hidden lg:inline">Vending solutions for Minnesota businesses · </span>Now accepting placement inquiries <Link href="/get-a-vending-machine" className="ml-2 underline underline-offset-2"><span className="md:hidden">Request →</span><span className="hidden md:inline">Request a machine →</span></Link></>
           )}
         </div>
         ) : null}
         <div className="container-z flex h-[72px] items-center justify-between">
           <Link href="/" aria-label="Zapnivo home" className="relative z-[60]"><Logo className={open ? "text-white" : ""} /></Link>
           <nav aria-label="Primary" className="hidden items-center gap-4 xl:flex">
-            {MENU_BUTTONS.map(([id, label]) => <button key={id} type="button" aria-expanded={menu === id} aria-controls="desktop-mega-menu" onMouseEnter={() => setMenu(id)} onClick={() => setMenu(menu === id ? null : id)} className="link-underline flex items-center gap-1 py-2 text-sm font-semibold">{label}<span className={`text-xs transition-transform ${menu === id ? "rotate-180" : ""}`} aria-hidden>⌄</span></button>)}
+            {MENU_BUTTONS.map(([id, label]) => <button key={id} type="button" aria-expanded={menu === id} aria-controls="desktop-mega-menu" onMouseEnter={() => setMenu(id)} onClick={() => { const close = menu === id && pinned === id; setMenu(close ? null : id); setPinned(close ? null : id); }} className="link-underline flex items-center gap-1 py-2 text-sm font-semibold">{label}<span className={`text-xs transition-transform ${menu === id ? "rotate-180" : ""}`} aria-hidden>⌄</span></button>)}
             <Link href="/support" className="link-underline py-2 text-sm font-semibold">Support</Link>
             <Link href="/locations" className={btnClass(onDark && !solid ? "ghost" : "ghost", "min-h-11 border-current/40 px-5 text-sm")}>Find a Charger</Link>
             <Link href="/get-a-vending-machine" className={btnClass("primary", "min-h-11 px-5 text-sm")}>Request a Machine</Link>
           </nav>
-          <div className="ml-auto mr-2 lg:ml-0 lg:mr-0"><SiteSearch /></div>
+          <div className="ml-auto mr-2 xl:ml-0 xl:mr-0"><SiteSearch /></div>
           <button type="button" aria-expanded={open} aria-controls="mobile-menu" onClick={() => setOpen((o) => !o)} className={`relative z-[60] flex h-12 w-12 items-center justify-center rounded-full xl:hidden ${open ? "text-white" : ""}`}>
             <span className="sr-only">{open ? "Close menu" : "Open menu"}</span>
             <span aria-hidden className="relative block h-3 w-6">
@@ -153,7 +154,7 @@ export function Header({ heroDark = false, announcement, supportAnnouncement }: 
         </div>}
         <div ref={bar} aria-hidden className="absolute inset-x-0 bottom-0 h-[3px] origin-left scale-x-0 bg-lime" />
       </header>
-      <div id="mobile-menu" data-open={open} aria-hidden={!open} className="mobile-menu on-dark fixed inset-0 z-[55] flex flex-col justify-between gap-5 overflow-y-auto bg-ink px-6 pb-10 pt-28 text-white xl:hidden">
+      <div id="mobile-menu" data-open={open} aria-hidden={!open} className="mobile-menu on-dark fixed inset-0 z-[55] flex flex-col justify-between gap-5 overflow-y-auto bg-ink px-6 pb-10 pt-40 text-white xl:hidden">
         <nav aria-label="Mobile" className="flex flex-col">
           <p className="eyebrow mb-2 text-lime">Vending solutions</p>
           <div className="grid grid-cols-2 gap-x-4">{VENDING_CATEGORIES.map(n => <Link key={n.href} href={n.href} tabIndex={open ? 0 : -1} className="border-b border-white/15 py-3 text-sm font-semibold">{n.shortLabel}</Link>)}</div>

@@ -14,7 +14,7 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 const solutions = [
-  { title: "Everyday vending", body: "Snack, beverage, and food concepts shaped around the people who use your space.", href: "/vending" },
+  { title: "Everyday vending", body: "Snack, beverage, and food concepts shaped around the people who use your space.", href: "/vending/snacks" },
   { title: "Portable charging", body: "A self-service rental experience for guests who need power while they are out.", href: "/how-it-works" },
   { title: "Specialty formats", body: "Collectibles and other product ideas considered against the venue and available equipment.", href: "/vending/specialty" },
 ];
@@ -59,7 +59,7 @@ export default async function About() {
     </Section>
 
     <Section>
-      <div className="flex flex-col justify-between gap-6 md:flex-row md:items-end"><div><Eyebrow className="text-forest">Our solutions</Eyebrow><h2 className="display-md mt-5">Convenience has more than one format.</h2></div><Link href="/vending" className="font-bold text-forest underline underline-offset-4">Explore all vending solutions →</Link></div>
+      <div className="flex flex-col justify-between gap-6 md:flex-row md:items-end"><div><Eyebrow className="text-forest">Our solutions</Eyebrow><h2 className="display-md mt-5">Convenience has more than one format.</h2></div><Link href="/#solutions" className="font-bold text-forest underline underline-offset-4">Explore all vending solutions →</Link></div>
       <div className="mt-10 grid gap-5 md:grid-cols-3">{solutions.map(item => <Link key={item.title} href={item.href} className="group flex min-h-64 flex-col border border-silver/60 bg-white p-7 transition-colors hover:bg-mist focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-forest"><h3 className="font-display text-2xl font-bold">{item.title}</h3><p className="mt-4 leading-7 text-graphite">{item.body}</p><span className="mt-auto pt-7 font-bold text-forest">Learn more <span aria-hidden>↗</span></span></Link>)}</div>
     </Section>
 

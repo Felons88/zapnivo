@@ -7,7 +7,7 @@ import { PartnerApplicationForm } from "./PartnerApplicationForm";
 
 export const metadata: Metadata = {
   title: { absolute: "Partner With Zapnivo Vending Services | Host Vending Equipment" },
-  description: "Apply to host Zapnivo vending equipment — snacks, beverages, food, phone chargers, trading cards and specialty items — at your Minnesota venue. Self-service for guests, fully managed for you. Now accepting vending placement inquiries.",
+  description: "Apply to host Zapnivo vending equipment — snacks, beverages, food, phone chargers, trading cards and specialty items — at your Minnesota venue. Self-service for guests, with servicing agreed per location. Now accepting vending placement inquiries.",
 };
 
 export default function Apply() {
@@ -25,7 +25,7 @@ export default function Apply() {
             <div className="mt-10">
               <Eyebrow className="text-forest">What guests pay for charger rentals</Eyebrow>
               <ul className="mt-4 flex flex-wrap gap-2">{GUEST_RENTAL_FACTS.map((fact) => <li key={fact} className="rounded-full bg-white px-4 py-2 text-sm font-bold text-ink">{fact}</li>)}</ul>
-              <p className="mt-3 text-sm leading-6 text-graphite">For our charging division, guests handle their own rental and payment. Vending pricing is set per machine and confirmed in your partnership terms. You don&apos;t staff it, stock it, or chase returns.</p>
+              <p className="mt-3 text-sm leading-6 text-graphite">For our charging division, guests handle their own rental and payment. Vending pricing is set per machine and confirmed in your partnership terms. Responsibilities for stocking and support are agreed for each location.</p>
             </div>
 
             <div className="mt-10">
