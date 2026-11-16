@@ -24,7 +24,7 @@ const schema = z.object({
 
 const clientIp = (req: Request) => req.headers.get("x-forwarded-for")?.split(",")[0].trim() || req.headers.get("x-real-ip") || "unknown";
 
-/** Creates a rental + payment row and a manual-capture Stripe Checkout Session. Refuses until pricing is approved. */
+/** Creates a rental + payment row and a manual-capture Stripe Checkout Session. Live stations refuse until pricing is approved; test-mode stations use the latest pricing version. */
 export async function POST(req: Request) {
   const traceId = newTraceId();
   const log = (level: "info" | "warning" | "error", message: string, attrs?: Record<string, unknown>) =>
@@ -48,20 +48,14 @@ export async function POST(req: Request) {
   const db = serviceClient();
   if (!stripeConfigured() || !db) { log("error", "checkout_unavailable", { reason: !stripeConfigured() ? "stripe_unconfigured" : "db_unconfigured" }); return NextResponse.json(PAYMENTS_UNCONFIGURED, { status: 503 }); }
 
-  // Pricing: only an APPROVED version may be charged, and the rental locks it.
-  const { data: pr } = await db.from("pricing_versions").select(PRICING_SELECT).eq("approved", true).order("effective_at", { ascending: false, nullsFirst: false }).limit(1).maybeSingle();
-  if (!pr) { log("error", "checkout_pricing_missing", { reason: "pricing_not_approved" }); return NextResponse.json({ error: "Pricing has not been approved yet, so rentals can't be started.", code: "pricing_not_approved" }, { status: 503 }); }
-  const pricing = pricingFromRow(pr as PricingRow);
-  log("info", "checkout_pricing_resolved", { pricingVersionId: pricing.id });
-
-  // Station must be online, venue published, and have enough ready banks.
+  // Station must exist; staff-flagged test stations (System Control) skip the
+  // live-state/published-venue, ready-bank, and pricing-approval gates so the
+  // full checkout flow can be exercised pre-launch. Payment (real Stripe),
+  // promos, maintenance blocks, and rental limits still apply.
   const unavailable = () => { log("warning", "checkout_station_unavailable", { stationId: station_id }); return NextResponse.json({ error: "This station isn't available right now.", code: "station_unavailable" }, { status: 409 }); };
   const { data: kiosk } = await db.from("kiosks").select("id,state,test_mode,venues(id,city,venue_type,published)").eq("station_id", station_id).maybeSingle();
   const kioskRow = kiosk as unknown as { id: string; state: string; test_mode?: boolean | null; venues: { id: string; city: string | null; venue_type: string | null; published: boolean } | null } | null;
   const venue = kioskRow?.venues;
-  // Staff-flagged test stations (System Control) skip the live-state/published-venue
-  // and ready-bank gates so the full checkout flow can be exercised pre-launch.
-  // Payment, pricing approval, promos, and maintenance blocks still apply.
   const testMode = kioskRow?.test_mode === true;
   if (!kiosk || !kioskRow || (!testMode && (kioskRow.state !== "online" || !venue?.published))) return unavailable();
   // Control-plane maintenance gate: a bound system_devices row in a
@@ -74,6 +68,16 @@ export async function POST(req: Request) {
     log("warning", "checkout_station_in_maintenance", { stationId: station_id, reason: maint.reason });
     return NextResponse.json({ error: "This station is under maintenance right now.", code: "station_in_maintenance" }, { status: 409 });
   }
+
+  // Pricing: live stations charge only an APPROVED version; test stations use
+  // the latest version (approved or draft) so checkout can be exercised.
+  const priceQuery = db.from("pricing_versions").select(PRICING_SELECT);
+  const { data: pr } = await (testMode ? priceQuery : priceQuery.eq("approved", true))
+    .order("effective_at", { ascending: false, nullsFirst: false }).limit(1).maybeSingle();
+  if (!pr) { log("error", "checkout_pricing_missing", { reason: testMode ? "no_pricing_version" : "pricing_not_approved" }); return NextResponse.json({ error: "Pricing has not been approved yet, so rentals can't be started.", code: "pricing_not_approved" }, { status: 503 }); }
+  const pricing = pricingFromRow(pr as PricingRow);
+  log("info", "checkout_pricing_resolved", { pricingVersionId: pricing.id, testMode });
+
   const { count } = await db.from("kiosk_slots").select("slot_number", { count: "exact", head: true }).eq("kiosk_id", kioskRow.id).eq("state", "ready");
   if (!testMode && (count ?? 0) < bank_count) return unavailable();
 

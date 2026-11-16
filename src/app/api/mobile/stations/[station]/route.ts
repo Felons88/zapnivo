@@ -23,9 +23,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ station
   const availability = decideAvailability(row, true);
   if (!availability.ok) return NextResponse.json({ error: "This station is not available for rentals." }, { status: 404 });
 
+  const testMode = row!.test_mode === true;
+  // Test stations act as live: full slot capacity and the latest pricing
+  // version (approved or draft) so the app can render a complete rental UI.
+  const slotsQuery = db.from("kiosk_slots").select("slot_number", { count: "exact", head: true }).eq("kiosk_id", row!.id);
+  const priceQuery = db.from("pricing_versions").select(PRICING_SELECT);
   const [slots, priceResult, maintenance] = await Promise.all([
-    db.from("kiosk_slots").select("slot_number", { count: "exact", head: true }).eq("kiosk_id", row!.id).eq("state", "ready"),
-    db.from("pricing_versions").select(PRICING_SELECT).eq("approved", true)
+    (testMode ? slotsQuery : slotsQuery.eq("state", "ready")),
+    (testMode ? priceQuery : priceQuery.eq("approved", true))
       .order("effective_at", { ascending: false, nullsFirst: false }).limit(1).maybeSingle(),
     stationMaintenanceBlock(db, station),
   ]);
@@ -38,8 +43,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ station
       city: venue?.city ?? "", state: venue?.state ?? "", hours: availability.hours,
       lat: venue?.lat ?? null, lng: venue?.lng ?? null,
       ready_banks: Math.max(0, slots.count ?? 0),
-      // Test-mode stations skip the ready-bank gate; checkout re-validates everything else.
-      rentals_available: !maintenance && Boolean(approved) && (row!.test_mode === true || (slots.count ?? 0) > 0),
+      // Test mode acts as a live station: rentable whenever not under
+      // maintenance. Checkout re-validates payment, promos, and rental limits.
+      rentals_available: !maintenance && (testMode || (Boolean(approved) && (slots.count ?? 0) > 0)),
     },
     pricing: approved ? {
       first_hour_cents: approved.firstHourCents,
