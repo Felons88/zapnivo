@@ -113,6 +113,35 @@ main section :is(.rounded-xl,.rounded-lg).bg-white:hover { box-shadow: 0 28px 65
 .prose-z p { margin: .75rem 0; }
 .prose-z ul { list-style: disc; padding-left: 1.25rem; margin: .75rem 0; }
 
+/* System console: shared treatment for every /system view. */
+.system-console {
+  --radius-xl: 14px;
+  background-image: radial-gradient(ellipse 55% 35% at 85% -8%, rgba(116,231,237,.075), transparent 70%),
+    linear-gradient(180deg, #0b1219 0%, #0a1118 100%);
+  color: #edf4f3;
+  font-feature-settings: "tnum";
+}
+.system-console main > div { min-width: 0; }
+.system-console h1 { line-height: 1.12; letter-spacing: -.045em; }
+.system-console .eyebrow { letter-spacing: .16em; }
+.system-console section[class*="bg-white/[0.05]"],
+.system-console div[class*="bg-white/[0.05]"][class*="border-white"] {
+  background: linear-gradient(145deg, rgba(30,44,55,.88), rgba(19,30,41,.9));
+  border-color: rgba(189,219,220,.10);
+  box-shadow: 0 18px 42px -34px rgba(0,0,0,.8);
+}
+.system-console table { border-collapse: separate; border-spacing: 0; }
+.system-console th { color: #9eb0bb; }
+.system-console tbody tr { transition: background-color .18s ease; }
+.system-console tbody tr:hover { background-color: rgba(217,255,115,.035); }
+.system-console input, .system-console select, .system-console textarea { color-scheme: dark; }
+.system-console a, .system-console button { -webkit-tap-highlight-color: transparent; }
+.system-console :is(a, button, input, select, textarea):focus-visible { outline: 2px solid #d9ff73; outline-offset: 3px; }
+@media (max-width: 640px) {
+  .system-console h1 { font-size: clamp(1.65rem, 7vw, 2.15rem); }
+  .system-console main > div > div:first-child { align-items: flex-start; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   .marquee-track, .float, .pulse-ring { animation: none !important; }

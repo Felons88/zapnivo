@@ -33,16 +33,18 @@ export default async function SystemOverviewPage() {
   return (
     <SystemGate perm="system.dashboard.view">
       <div className="space-y-6">
-        <div className="flex flex-wrap items-end justify-between gap-4">
+        <div className="flex flex-wrap items-end justify-between gap-6 rounded-3xl border border-white/10 bg-[radial-gradient(circle_at_85%_10%,rgba(217,255,115,0.13),transparent_38%),linear-gradient(135deg,#20313b,#15232d)] p-6 sm:p-8">
           <div>
-            <p className="eyebrow text-lime">Command Center</p>
-            <h1 className="mt-2 font-display text-3xl font-bold tracking-tight">System overview</h1>
-            <p className="mt-1 font-mono text-xs text-slate-400">env: {o.environment} · data: {o.configured ? "live" : "backend not configured"}</p>
+            <p className="eyebrow text-lime">Command Center · {o.environment}</p>
+            <h1 className="mt-3 font-display text-3xl font-bold tracking-tight sm:text-4xl">System overview</h1>
+            <p className="mt-3 max-w-xl text-sm leading-6 text-slate-300">Monitor the technical fleet, review change requests, and keep launch work moving from one place.</p>
+            <p className="mt-3 font-mono text-[11px] text-slate-400">Data source: {o.configured ? "connected" : "backend not configured"}</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            <Link href="/system/launch" className="rounded-full bg-lime px-4 py-2 text-xs font-bold text-ink hover:bg-[#e6ffa8]">Launch readiness →</Link>
+            <Link href="/system/kiosks" className="rounded-full bg-white/10 px-4 py-2 text-xs font-bold text-slate-200 ring-1 ring-white/15 hover:bg-white/15">Fleet registry</Link>
             <Link href="/system/security/audit" className="rounded-full bg-white/10 px-4 py-2 text-xs font-bold text-slate-200 ring-1 ring-white/15 hover:bg-white/15">Audit log</Link>
             <Link href="/system/changes" className="rounded-full bg-white/10 px-4 py-2 text-xs font-bold text-slate-200 ring-1 ring-white/15 hover:bg-white/15">Change requests</Link>
-            <Link href="/system/settings/flags" className="rounded-full bg-white/10 px-4 py-2 text-xs font-bold text-slate-200 ring-1 ring-white/15 hover:bg-white/15">Feature flags</Link>
           </div>
         </div>
 
@@ -58,7 +60,7 @@ export default async function SystemOverviewPage() {
           {/* Device status breakdown */}
           <Card title="Device status">
             {Object.keys(o.devices.byStatus).length === 0 ? (
-              <p className="text-sm text-slate-400">No devices registered yet. Fleet onboarding lands in a later stage.</p>
+              <p className="text-sm text-slate-400">No devices registered yet. <Link href="/system/kiosks/register" className="text-lime underline">Register a kiosk</Link> to begin.</p>
             ) : (
               <ul className="space-y-2">
                 {Object.entries(o.devices.byStatus).sort().map(([s, n]) => (

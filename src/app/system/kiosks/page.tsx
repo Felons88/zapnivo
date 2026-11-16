@@ -89,7 +89,7 @@ export default async function KiosksFleetPage({ searchParams }: {
 
         {/* Fleet stats — real DB counts; null sections render as "—" */}
         {s && (
-          <section className="grid gap-2 rounded-2xl border border-white/[0.08] bg-white/[0.05] p-4 sm:grid-cols-2 lg:grid-cols-6">
+          <section className="grid grid-cols-2 gap-2 rounded-2xl border border-white/[0.08] bg-white/[0.05] p-4 lg:grid-cols-3 xl:grid-cols-6">
             {([
               ["Devices", String(s.total)],
               ["Online / stale / no data", `${s.connectivity.online} / ${s.connectivity.stale} / ${s.connectivity.no_data}`],
@@ -111,7 +111,7 @@ export default async function KiosksFleetPage({ searchParams }: {
 
         {/* Phase 4.2 ops snapshot — same honesty rules: real counts or "—" */}
         {s && (
-          <section className="grid gap-2 rounded-2xl border border-white/[0.08] bg-white/[0.05] p-4 sm:grid-cols-2 lg:grid-cols-4">
+          <section className="grid grid-cols-2 gap-2 rounded-2xl border border-white/[0.08] bg-white/[0.05] p-4 lg:grid-cols-4">
             {([
               ["In maintenance", s.maintenance == null ? "—" : `${s.maintenance.devices} devices · ${s.maintenance.open_visits ?? "—"} open visits`],
               ["Provisioning pipeline", String(s.provisioning_pending)],
@@ -194,8 +194,25 @@ export default async function KiosksFleetPage({ searchParams }: {
                 </p>
               )}
             </div>
-          ) : (
-            <table className="w-full min-w-[1100px] text-left text-xs">
+          ) : (<>
+            <div className="grid gap-3 p-4 lg:hidden">
+              {devices.map((d) => {
+                const conn = deriveConnectivity(d);
+                return <Link key={d.id} href={`/system/kiosks/${d.id}`} className="block rounded-xl border border-white/10 bg-black/20 p-4 transition-colors hover:border-lime/40 hover:bg-lime/[0.04]">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0"><p className="truncate font-mono text-sm font-bold text-lime">{d.device_uid ?? d.id.slice(0, 8)}</p><p className="mt-1 truncate font-mono text-xs text-slate-400">{d.serial_number ?? "No serial"}</p></div>
+                    <span className={`shrink-0 rounded-full px-2 py-0.5 font-mono text-[10px] font-bold ring-1 ${STATUS_TONE[d.status] ?? ""}`}>{d.status}</span>
+                  </div>
+                  <div className="mt-4 grid grid-cols-2 gap-3 border-t border-white/10 pt-3 text-xs">
+                    <div><p className="text-slate-500">Model</p><p className="mt-1 font-semibold text-slate-200">{d.model ?? "—"}</p></div>
+                    <div><p className="text-slate-500">Connectivity</p><p className={`mt-1 font-semibold ${conn.kind === "online" ? "text-lime" : conn.kind === "no_data" ? "text-slate-400" : "text-amber-300"}`}>{conn.label}</p></div>
+                    <div><p className="text-slate-500">Venue</p><p className="mt-1 font-semibold text-slate-200">{d.venue?.name ?? "Unassigned"}</p></div>
+                    <div><p className="text-slate-500">Slots</p><p className="mt-1 font-semibold text-slate-200">{d.slot_count ?? "—"}</p></div>
+                  </div>
+                </Link>;
+              })}
+            </div>
+            <table className="hidden w-full min-w-[1100px] text-left text-xs lg:table">
               <thead className="border-b border-white/10 text-[10px] uppercase tracking-wider text-slate-500">
                 <tr>{["Device UID", "Serial", "Manufacturer / Model", "Venue", "Slots", "Firmware", "Status", "Connectivity", "Last heartbeat", "Last message", "Registered"].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr>
               </thead>
@@ -224,7 +241,7 @@ export default async function KiosksFleetPage({ searchParams }: {
                 })}
               </tbody>
             </table>
-          )}
+          </>)}
         </section>
       </div>
     </SystemGate>
