@@ -8,7 +8,8 @@ import { lookupPromo } from "@/lib/promos";
 import { nonReturnDeadlineIso } from "@/lib/payments/nonreturn-deadline";
 import { cancelPaymentIntent, capturePaymentIntent, createOffSessionPaymentIntent, PAYMENTS_UNCONFIGURED, retrievePaymentIntent, stripeConfigured, taxEnabled } from "@/lib/stripe";
 import { chargeNonReturnFee } from "@/lib/payments/nonreturn";
-import { notifyFeeCharged } from "@/lib/notifications";
+import { notifyFeeCharged, queueJob } from "@/lib/notifications";
+import { sendToCustomer } from "@/lib/email-triggers";
 import { appendLedger } from "@/lib/payments/ledger";
 import { sponsoredDiscountCents, recordSponsorSpend } from "@/lib/ads/sponsored";
 import { serviceClient } from "@/lib/supabase";
@@ -45,7 +46,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   }
 
   if (action === "return") {
-    const { data: moved, error } = await db.from("rentals").update({ state: "returned", returned_at: now.toISOString() }).eq("id", id).in("state", ["active", "unreturned"]).select("id");
+    // Fold an open pause window into paused_seconds so the clock math stays honest
+    // and the row doesn't sit "paused" after it's returned.
+    const rr = await loadCtx(db, id);
+    const pauseDelta = rr?.paused_at ? Math.max(0, Math.round((now.getTime() - new Date(rr.paused_at).getTime()) / 1000)) : 0;
+    const { data: moved, error } = await db.from("rentals").update({ state: "returned", returned_at: now.toISOString(), paused_at: null, ...(pauseDelta ? { paused_seconds: (rr?.paused_seconds ?? 0) + pauseDelta } : {}) }).eq("id", id).in("state", RETURNABLE_STATES).select("id");
     if (error) return NextResponse.json({ error: "Couldn't record the return." }, { status: 500 });
     let capture: CaptureOutcome = { status: "skipped", detail: "Rental was not active, so nothing was captured." };
     if (moved && moved.length > 0) capture = await captureOnReturn(db, id, now, user!.id);
@@ -63,20 +68,93 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     return done(out.status === "charged" ? "charged_off" : "unchanged", out);
   }
 
-  return NextResponse.json({ error: "action must be dispense, return or nonreturn" }, { status: 400 });
+  /* ── Support-side adjustments: pause the billing clock, resume it, extend the deadline.
+     Every one notifies the customer (email + transactional SMS) and writes an audit row. ── */
+
+  if (action === "pause") {
+    const { data: moved } = await db.from("rentals").update({ paused_at: now.toISOString() }).eq("id", id).in("state", RETURNABLE_STATES).is("paused_at", null).select("id,reference");
+    if (!moved?.length) return done("unchanged", { status: "error", detail: "Only a rental with the bank still out — and not already paused — can be paused." });
+    await auditLog(user!.id, "rental_paused", "rental", id);
+    const note = await notifyAdjustment(db, id, "paused");
+    return done("paused", { status: "info", detail: `Rental paused — the billing clock is stopped.${note}` });
+  }
+
+  if (action === "resume") {
+    const r = await loadCtx(db, id);
+    if (!r?.paused_at) return done("unchanged", { status: "error", detail: "This rental isn't paused." });
+    const deltaSec = Math.max(0, Math.round((now.getTime() - new Date(r.paused_at).getTime()) / 1000));
+    const newDeadline = r.non_return_deadline ? new Date(new Date(r.non_return_deadline).getTime() + deltaSec * 1000).toISOString() : null;
+    const { data: moved } = await db.from("rentals").update({ paused_at: null, paused_seconds: (r.paused_seconds ?? 0) + deltaSec, non_return_deadline: newDeadline }).eq("id", id).not("paused_at", "is", null).select("id");
+    if (!moved?.length) return done("unchanged", { status: "error", detail: "This rental isn't paused." });
+    await auditLog(user!.id, "rental_resumed", "rental", id, { paused_seconds_added: deltaSec });
+    const note = await notifyAdjustment(db, id, "resumed");
+    return done("active", { status: "info", detail: `Rental resumed — ${Math.round(deltaSec / 60)} min of paused time added to the deadline.${note}` });
+  }
+
+  if (action === "extend") {
+    const hours = Math.round(Number((form as { hours?: string }).hours));
+    if (!Number.isFinite(hours) || hours < 1 || hours > 168) return done("unchanged", { status: "error", detail: "Choose between 1 and 168 extra hours." });
+    const r = await loadCtx(db, id);
+    if (!r || !OPEN_STATES.includes(r.state)) return done("unchanged", { status: "error", detail: "Only an open rental can be extended." });
+    const base = r.non_return_deadline && new Date(r.non_return_deadline) > now ? new Date(r.non_return_deadline) : now;
+    const newDeadline = new Date(base.getTime() + hours * 3_600_000).toISOString();
+    const { error } = await db.from("rentals").update({ non_return_deadline: newDeadline }).eq("id", id);
+    if (error) return NextResponse.json({ error: "Couldn't extend the deadline." }, { status: 500 });
+    await auditLog(user!.id, "rental_extended", "rental", id, { hours, new_deadline: newDeadline });
+    const note = await notifyAdjustment(db, id, "extended");
+    return done("extended", { status: "info", detail: `Added ${hours}h — new return deadline ${new Date(newDeadline).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}.${note}` });
+  }
+
+  return NextResponse.json({ error: "action must be dispense, return, nonreturn, pause, resume or extend" }, { status: 400 });
 }
 
-type CaptureOutcome = { status: "captured" | "released" | "skipped" | "flagged" | "charged" | "error"; detail: string; cents?: number };
+type CaptureOutcome = { status: "captured" | "released" | "skipped" | "flagged" | "charged" | "info" | "error"; detail: string; cents?: number };
+
+/** Bank is physically out — the same set the kiosk return path accepts. */
+const RETURNABLE_STATES = ["active", "return_pending", "overdue", "unreturned"];
+/** Any non-terminal rental a staff member can still act on. */
+const OPEN_STATES = ["authorized", "payment_authorized", "dispense_pending", "active", "return_pending", "overdue", "unreturned", "non_return_fee_pending", "disputed"];
 
 type RentalCtx = {
   id: string; reference: string; state: string; customer_id: string | null; started_at: string | null; dispensed_at: string | null; returned_at: string | null;
+  paused_at: string | null; paused_seconds: number | null;
   pricing_version: string; bank_count: number; promo_code: string | null; non_return_deadline: string | null; non_return_fee_status: string | null;
-  payments: { id: string; state: string; stripe_payment_intent_id: string | null; amount_authorized_cents: number | null; tax_cents: number | null }[];
+  payments: { id: string; state: string; stripe_payment_intent_id: string | null; amount_authorized_cents: number | null; tax_cents: number | null; receipt_email: string | null }[];
 };
 
 async function loadCtx(db: NonNullable<ReturnType<typeof serviceClient>>, id: string) {
-  const { data } = await db.from("rentals").select("id,reference,state,customer_id,started_at,dispensed_at,returned_at,pricing_version,bank_count,promo_code,non_return_deadline,non_return_fee_status,payments(id,state,stripe_payment_intent_id,amount_authorized_cents,tax_cents)").eq("id", id).maybeSingle();
+  const { data } = await db.from("rentals").select("id,reference,state,customer_id,started_at,dispensed_at,returned_at,paused_at,paused_seconds,pricing_version,bank_count,promo_code,non_return_deadline,non_return_fee_status,payments(id,state,stripe_payment_intent_id,amount_authorized_cents,tax_cents,receipt_email)").eq("id", id).maybeSingle();
   return data as unknown as RentalCtx | null;
+}
+
+/** Total paused milliseconds for a rental as of `at`, including an open pause window. */
+const pausedMs = (r: Pick<RentalCtx, "paused_at" | "paused_seconds">, at: Date) =>
+  (r.paused_seconds ?? 0) * 1000 + (r.paused_at ? Math.max(0, at.getTime() - new Date(r.paused_at).getTime()) : 0);
+
+/**
+ * Customer notification for a staff adjustment — queues the transactional SMS job
+ * (rental_paused/resumed/extended/credit_granted) and emails the receipt address.
+ * Returns a short suffix for the staff-facing result message.
+ */
+async function notifyAdjustment(db: NonNullable<ReturnType<typeof serviceClient>>, id: string, kind: "paused" | "resumed" | "extended"): Promise<string> {
+  const r = await loadCtx(db, id);
+  if (!r) return "";
+  // notification_jobs dedupes forever on (rental_id, kind) — clear the previous
+  // job's row (unless mid-send) so a second pause/extend still texts the customer.
+  try {
+    await db.from("notification_jobs").delete().eq("rental_id", id).eq("kind", `rental_${kind}`).neq("status", "sending");
+    await queueJob(db, { kind: `rental_${kind}`, rentalId: id });
+  } catch { /* SMS queue is best-effort */ }
+  const email = r.payments?.[0]?.receipt_email;
+  if (!email) return " No receipt email on file — customer notified by SMS only.";
+  const stamp = (iso: string | null) => (iso ? new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "—");
+  const copy = {
+    paused: { subject: `Your Zapnivo rental ${r.reference} is paused`, body: `We've paused the hourly clock on rental ${r.reference}. No hourly charges accrue while it's paused. When you're done, return the power bank to any Zapnivo station — or reply to support and we'll resume it.` },
+    resumed: { subject: `Your Zapnivo rental ${r.reference} resumed`, body: `Rental ${r.reference} is running again — the hourly clock restarted and your return deadline moved to ${stamp(r.non_return_deadline)}. Return the power bank to any Zapnivo station.` },
+    extended: { subject: `Extra time on your Zapnivo rental ${r.reference}`, body: `We added time to rental ${r.reference}. Your new return deadline is ${stamp(r.non_return_deadline)}. Return the power bank to any Zapnivo station to end the rental.` },
+  }[kind];
+  try { await sendToCustomer(email, copy.subject, copy.body, null, null, { sender: "support" }); return " Customer notified by email + SMS."; }
+  catch { return " Customer notification could not be delivered — check the outbox."; }
 }
 
 /** Captures the real charge (hold remainder releases). Honest no-ops when Stripe/payment isn't ready; never past 24h. */
@@ -90,7 +168,9 @@ async function captureOnReturn(db: NonNullable<ReturnType<typeof serviceClient>>
   const start = r.started_at ?? r.dispensed_at;
   if (!pr || !start) return { status: "flagged", detail: "Missing pricing or start time; capture manually." };
   const pricing = pricingFromRow(pr as PricingRow);
-  const gross = rentalChargeCents(start, r.returned_at ?? now, pricing, r.bank_count);
+  // Paused time is never billed: the chargeable period ends earlier by the total pause.
+  const chargeEnd = new Date(new Date(r.returned_at ?? now).getTime() - pausedMs(r, new Date(r.returned_at ?? now)));
+  const gross = rentalChargeCents(start, chargeEnd, pricing, r.bank_count);
   if (gross === null) {
     await auditLog(actor, "capture_flagged_over_24h", "rental", id, { reason: "additional-day pricing not finalised" });
     return { status: "flagged", detail: "Rental ran past 24 hours and additional-day pricing is not finalised. Not captured; review manually." };
@@ -106,7 +186,7 @@ async function captureOnReturn(db: NonNullable<ReturnType<typeof serviceClient>>
       .select("id,campaign_id,minutes_covered,status").eq("rental_id", id).eq("status", "applied").maybeSingle();
     if (red) {
       const rr = red as { id: string; campaign_id: string; minutes_covered: number };
-      const elapsedMin = Math.max(0, (new Date(r.returned_at ?? now).getTime() - new Date(start).getTime()) / 60000);
+      const elapsedMin = Math.max(0, (chargeEnd.getTime() - new Date(start).getTime()) / 60000);
       sponsorDiscount = sponsoredDiscountCents({
         elapsedMinutes: elapsedMin, minutesCovered: rr.minutes_covered, bankCount: r.bank_count,
         pricing, capCents: afterPromo,
@@ -198,7 +278,7 @@ async function chargeNonReturn(db: NonNullable<ReturnType<typeof serviceClient>>
   const r = await loadCtx(db, id);
   const pay = r?.payments?.[0];
   if (!r || !pay) return { status: "error", detail: "Rental or payment not found." };
-  const overdue = r.state === "unreturned" || (r.state === "active" && !!r.non_return_deadline && new Date(r.non_return_deadline) <= now);
+  const overdue = ["unreturned", "overdue"].includes(r.state) || (["active", "return_pending"].includes(r.state) && !!r.non_return_deadline && new Date(r.non_return_deadline) <= now);
   if (!overdue) return { status: "error", detail: "Only unreturned rentals past their deadline can be charged off." };
   if (r.non_return_fee_status === "charged") return { status: "error", detail: "The non-return fee was already charged." };
   if (!pay.stripe_payment_intent_id) return { status: "error", detail: "There is no payment on file to charge." };

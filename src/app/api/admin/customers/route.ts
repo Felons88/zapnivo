@@ -2,8 +2,11 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { auditLog } from "@/lib/audit";
 import { getSessionUser, isStaff } from "@/lib/auth";
-import { createTicket, defaultCtx, internalNote } from "@/lib/helpdesk/service";
-import { HelpdeskError, type Actor } from "@/lib/helpdesk/types";
+import { searchCustomers } from "@/lib/crm";
+import { sendToCustomer } from "@/lib/email-triggers";
+import { createTicket, defaultCtx, internalNote, requestRefund } from "@/lib/helpdesk/service";
+import { HelpdeskError, REFUND_REASONS, type Actor } from "@/lib/helpdesk/types";
+import { fmt } from "@/lib/pricing";
 import { serviceClient } from "@/lib/supabase";
 import { TICKET_CATEGORIES } from "@/lib/validation";
 
@@ -17,7 +20,20 @@ function back(req: Request, email: string, result: string, detail: string) {
   return NextResponse.redirect(url, 303);
 }
 
-/** Staff actions on a customer record: internal notes + agent-created tickets. */
+const actor = (u: { id: string; email: string; role: string }): Actor => ({ kind: "staff", id: u.id, name: u.email, role: u.role as "admin" | "staff" });
+
+/** Live customer search — powers the type-ahead on /admin/customers. */
+export async function GET(req: Request) {
+  const user = await getSessionUser();
+  if (!isStaff(user)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const db = serviceClient();
+  if (!db) return NextResponse.json({ error: "Backend not configured" }, { status: 503 });
+  const q = new URL(req.url).searchParams.get("q") ?? "";
+  const results = await searchCustomers(db, q);
+  return NextResponse.json({ results });
+}
+
+/** Staff actions on a customer record: notes, agent-created tickets, refunds, credits. */
 export async function POST(req: Request) {
   const user = await getSessionUser();
   if (!isStaff(user)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -57,14 +73,71 @@ export async function POST(req: Request) {
         description: p.data.description,
         rentalRef: p.data.rentalRef || null,
       });
-      const actor: Actor = { kind: "staff", id: user!.id, name: user!.email, role: user!.role as "admin" | "staff" };
-      await internalNote(ctx, actor, ticket.number, `Ticket opened by ${user!.email} from the customer 360 (phone/walk-up contact).`);
+      const a = actor(user!);
+      await internalNote(ctx, a, ticket.number, `Ticket opened by ${user!.email} from the customer 360 (phone/walk-up contact).`);
       await auditLog(user!.id, "customer_ticket_created", "ticket", ticket.number, { customer: email });
       return back(req, email, "ok", `Ticket ${ticket.number} created — the customer was emailed a confirmation.`);
     } catch (e) {
       const msg = e instanceof HelpdeskError ? e.message : "Couldn't create the ticket.";
       return back(req, email, "error", msg);
     }
+  }
+
+  if (form.action === "request_refund") {
+    const p = z.object({
+      rentalRef: z.string().trim().min(4).max(20),
+      reason: z.enum(REFUND_REASONS),
+      amountCents: z.coerce.number().int().positive().max(100_000),
+      name: z.string().trim().min(1).max(120).optional(),
+    }).safeParse(form);
+    if (!p.success) return back(req, email, "error", "Check the refund fields — a rental, reason and amount are required.");
+    const ctx = await defaultCtx();
+    if (!ctx) return back(req, email, "error", "Helpdesk backend isn't configured.");
+    const a = actor(user!);
+    try {
+      // Refunds live on tickets — open one so the policy workflow, audit trail and
+      // customer notifications all work exactly as they do for inbound requests.
+      const { ticket } = await createTicket(ctx, {
+        requesterType: "customer",
+        name: p.data.name ?? email.split("@")[0],
+        email,
+        category: "Refund request",
+        description: `Refund requested by support for rental ${p.data.rentalRef} (${fmt(p.data.amountCents)}, ${p.data.reason.replace(/_/g, " ")}).`,
+        rentalRef: p.data.rentalRef,
+      });
+      await internalNote(ctx, a, ticket.number, `Refund request entered by ${user!.email} from the customer 360.`);
+      const r = await requestRefund(ctx, a, { number: ticket.number, rentalRef: p.data.rentalRef, reason: p.data.reason, amountCents: p.data.amountCents });
+      await auditLog(user!.id, "customer_refund_requested", "refund", r.id, { customer: email, rental: p.data.rentalRef, amount_cents: r.amountCents });
+      return back(req, email, "ok", `Refund of ${fmt(r.amountCents)} requested on ${r.rentalRef} via ${ticket.number}${r.requiresAdmin ? " — needs a second admin to approve." : " — ready to issue."}`);
+    } catch (e) {
+      const msg = e instanceof HelpdeskError ? e.message : "Couldn't create the refund request.";
+      return back(req, email, "error", msg);
+    }
+  }
+
+  if (form.action === "grant_credit") {
+    // Entitlement credits only exist on accounts — guests have no profile to grant to.
+    const p = z.object({
+      unit: z.enum(["cent", "minute", "rental"]),
+      amount: z.coerce.number().int().positive().max(1_000_000),
+      note: z.string().trim().max(200).optional(),
+    }).safeParse(form);
+    if (!p.success) return back(req, email, "error", "Check the credit fields.");
+    const { data: prof } = await db.from("profiles").select("id").eq("email", email).maybeSingle();
+    const pid = (prof as { id: string } | null)?.id;
+    if (!pid) return back(req, email, "error", "This customer has no account — credits can only be granted to registered profiles.");
+    const { data: grant, error } = await db.from("entitlement_grants").insert({
+      profile_id: pid, kind: "adjustment", unit: p.data.unit, granted: p.data.amount, remaining: p.data.amount,
+      source_type: "manual", source_id: user!.id,
+    }).select("id").single();
+    if (error) return back(req, email, "error", "Couldn't grant the credit.");
+    await db.from("entitlement_events").insert({ grant_id: (grant as { id: string } | null)?.id ?? null, profile_id: pid, event: "grant", delta: p.data.amount, balance_after: p.data.amount, ref_type: "manual", ref_id: user!.id, actor: `staff:${user!.id}`, note: p.data.note ?? "Granted from customer 360" }).then(() => undefined, () => undefined);
+    await auditLog(user!.id, "customer_credit_granted", "customer", email, { unit: p.data.unit, amount: p.data.amount, note: p.data.note ?? null });
+    const label = p.data.unit === "cent" ? fmt(p.data.amount) : `${p.data.amount} ${p.data.unit === "minute" ? "minutes" : "free rental"}`;
+    try {
+      await sendToCustomer(email, "A credit was added to your Zapnivo account", `We've added ${label} to your Zapnivo account as a service credit${p.data.note ? ` (${p.data.note})` : ""}. It applies automatically on your next rental.`, null, null, { sender: "support" });
+    } catch { /* notification is best-effort; the credit itself is recorded */ }
+    return back(req, email, "ok", `Granted ${label} of credit — customer notified by email.`);
   }
 
   return NextResponse.json({ error: "Unknown action" }, { status: 400 });

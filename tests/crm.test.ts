@@ -71,11 +71,14 @@ const TABLES: Record<string, Row[]> = {
     { id: "r-1", reference: "ZR-AAAA1111", state: "active", customer_id: A_ID, renter_profile: null, created_at: "2026-11-08T18:00:00Z", started_at: null, dispensed_at: null, returned_at: null, non_return_deadline: null, kiosks: { station_id: "ZP-001", venues: { name: "Riverside Tavern", city: "St. Cloud" } }, payments: [{ id: "p-1", state: "captured", amount_captured_cents: 1299, amount_authorized_cents: 500, amount_refunded_cents: 0, tax_cents: 0, receipt_email: "amy@example.com", customer_phone: "+13205550111", created_at: "2026-11-08T18:00:00Z" }] },
     { id: "r-2", reference: "ZR-BBBB2222", state: "returned", customer_id: null, renter_profile: null, created_at: "2026-11-07T20:00:00Z", started_at: null, dispensed_at: null, returned_at: "2026-11-07T22:00:00Z", non_return_deadline: null, kiosks: null, payments: [{ id: "p-2", state: "captured", amount_captured_cents: 999, amount_authorized_cents: 500, amount_refunded_cents: 0, tax_cents: 0, receipt_email: "ben@example.com", customer_phone: null, created_at: "2026-11-07T20:00:00Z" }] },
     { id: "r-3", reference: "ZR-CCCC3333", state: "unreturned", customer_id: null, renter_profile: null, created_at: "2026-11-05T10:00:00Z", started_at: null, dispensed_at: null, returned_at: null, non_return_deadline: null, kiosks: null, payments: [{ id: "p-3", state: "captured", amount_captured_cents: 700, amount_authorized_cents: 500, amount_refunded_cents: 0, tax_cents: 0, receipt_email: "amy@example.com", customer_phone: null, created_at: "2026-11-05T10:00:00Z" }] },
+    // Guest rental where the receipt email was typo'd — only links back via the checkout phone.
+    { id: "r-4", reference: "ZR-DDDD4444", state: "overdue", customer_id: null, renter_profile: null, created_at: "2026-11-10T09:00:00Z", started_at: null, dispensed_at: null, returned_at: null, non_return_deadline: null, kiosks: null, payments: [{ id: "p-4", state: "authorized", amount_captured_cents: null, amount_authorized_cents: 500, amount_refunded_cents: 0, tax_cents: 0, receipt_email: "amy-typo@example.com", customer_phone: "(320) 555-0111", created_at: "2026-11-10T09:00:00Z" }] },
   ],
   payments: [
     { id: "p-1", rental_id: "r-1", receipt_email: "amy@example.com", customer_phone: "+13205550111", created_at: "2026-11-08T18:00:00Z" },
     { id: "p-2", rental_id: "r-2", receipt_email: "ben@example.com", customer_phone: null, created_at: "2026-11-07T20:00:00Z" },
     { id: "p-3", rental_id: "r-3", receipt_email: "amy@example.com", customer_phone: null, created_at: "2026-11-05T10:00:00Z" },
+    { id: "p-4", rental_id: "r-4", receipt_email: "amy-typo@example.com", customer_phone: "(320) 555-0111", created_at: "2026-11-10T09:00:00Z" },
   ],
   support_tickets: [
     { id: "t-1", ticket_number: "Z-1001", email: "amy@example.com", name: "Amy Example", phone: "(320) 555-0111", category: "Other", state: "open", priority: "normal", rental_ref: "ZR-AAAA1111", created_at: "2026-11-09T00:00:00Z" },
@@ -97,7 +100,7 @@ describe("searchCustomers", () => {
     expect(res.map((r) => r.email)).toContain("amy@example.com");
     const amy = res.find((r) => r.email === "amy@example.com")!;
     expect(amy.hasAccount).toBe(true);
-    expect(amy.rentalCount).toBe(2); // r-1 via profile, r-3 via receipt email
+    expect(amy.rentalCount).toBe(2); // r-1 via profile, r-3 via receipt email (r-4's receipt email differs)
     expect(amy.openTickets).toBe(1);
   });
 
@@ -129,12 +132,13 @@ describe("searchCustomers", () => {
 });
 
 describe("loadCustomer360", () => {
-  it("merges profile-linked and receipt-linked rentals", async () => {
+  it("merges profile-linked, receipt-linked and phone-linked rentals", async () => {
     const c = await loadCustomer360(db, "amy@example.com");
     expect(c).not.toBeNull();
-    expect(c!.rentals.map((r) => r.reference).sort()).toEqual(["ZR-AAAA1111", "ZR-CCCC3333"]);
+    // r-4's receipt email was typo'd — it only links via the checkout phone matching the profile.
+    expect(c!.rentals.map((r) => r.reference).sort()).toEqual(["ZR-AAAA1111", "ZR-CCCC3333", "ZR-DDDD4444"]);
     expect(c!.totals.capturedCents).toBe(1299 + 700);
-    expect(c!.totals.activeRentals).toBe(2); // active + unreturned
+    expect(c!.totals.activeRentals).toBe(3); // active + unreturned + overdue
     expect(c!.totals.openTickets).toBe(1);
   });
 

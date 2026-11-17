@@ -6,14 +6,15 @@ import { AdminGate } from "@/components/AdminShell";
 import { EmptyCard, Metric } from "@/components/PortalShell";
 import { Pill } from "@/components/SupportNav";
 import { fmt } from "@/lib/pricing";
-import { loadCustomer360, type CrmRental } from "@/lib/crm";
+import { loadCustomer360, OPEN_RENTAL_STATES, type CrmRental } from "@/lib/crm";
 import { getSessionUser, isStaff } from "@/lib/auth";
 import { serviceClient } from "@/lib/supabase";
 import { TICKET_CATEGORIES } from "@/lib/validation";
+import { REFUND_REASONS } from "@/lib/helpdesk/types";
 
 export const metadata: Metadata = { title: "Customer 360", robots: { index: false, follow: false } };
 
-const STATE_TONE = { active: "lime", dispense_pending: "cyan", authorized: "cyan", returned: "mist", unreturned: "red", cancelled: "mist", charged_off: "gold" } as const;
+const STATE_TONE = { active: "lime", return_pending: "lime", dispense_pending: "cyan", authorized: "cyan", payment_authorized: "cyan", pending_payment: "mist", overdue: "red", unreturned: "red", non_return_fee_pending: "red", disputed: "gold", returned: "mist", cancelled: "mist", charged_off: "gold" } as const;
 const TICKET_TONE = { open: "gold", pending_customer: "cyan", pending_internal: "cyan", resolved: "lime", closed: "mist" } as const;
 const REFUND_TONE = { requested: "gold", approved: "cyan", denied: "red", issued: "lime", failed: "red" } as const;
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "—");
@@ -21,6 +22,9 @@ const input = "min-h-10 rounded-lg border border-silver/70 px-3 text-sm";
 const btn = "min-h-8 rounded-full px-3 text-xs font-bold";
 
 const overdue = (r: CrmRental) => !!r.non_return_deadline && !r.returned_at && new Date(r.non_return_deadline) < new Date();
+const isOpen = (r: CrmRental) => OPEN_RENTAL_STATES.includes(r.state as (typeof OPEN_RENTAL_STATES)[number]);
+/** States where the bank is still out — returnable + pausable. */
+const isOut = (r: CrmRental) => ["active", "return_pending", "overdue", "unreturned"].includes(r.state);
 const paySummary = (r: CrmRental) => {
   const p = r.payments?.[0];
   if (!p) return "—";
@@ -106,7 +110,7 @@ export default async function Customer360({ params, searchParams }: { params: Pr
           </section>
 
           {/* ── Actions ──────────────────────────────────────────── */}
-          <div id="customer-actions" className="scroll-mt-40 grid gap-6 lg:grid-cols-2">
+          <div id="customer-actions" className="scroll-mt-40 grid gap-6 lg:grid-cols-2 xl:grid-cols-3">
             <section className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
               <h2 className="font-display text-lg font-bold">Open a ticket for this customer</h2>
               <p className="mt-1 text-xs text-graphite">For phone/walk-up contacts. The customer gets the usual confirmation email and can reply to the thread.</p>
@@ -134,6 +138,34 @@ export default async function Customer360({ params, searchParams }: { params: Pr
                 </div>
                 <button className="min-h-10 rounded-full bg-ink px-5 text-sm font-bold text-white">Create ticket</button>
               </form>
+            </section>
+
+            <section className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+              <h2 className="font-display text-lg font-bold">Grant credit</h2>
+              <p className="mt-1 text-xs text-graphite">Entitlement credit on the customer&apos;s account — auto-applies on their next rental. The customer is emailed.</p>
+              {c.profile ? (
+                <form method="post" action="/api/admin/customers" className="mt-4 space-y-3">
+                  <input type="hidden" name="action" value="grant_credit" />
+                  <input type="hidden" name="email" value={c.email} />
+                  <div className="flex gap-3">
+                    <div className="flex-1">
+                      <label htmlFor="gc-amount" className="mb-1 block text-xs font-bold">Amount</label>
+                      <input id="gc-amount" name="amount" type="number" min="1" required className={`${input} w-full`} placeholder="500" />
+                    </div>
+                    <div>
+                      <label htmlFor="gc-unit" className="mb-1 block text-xs font-bold">Unit</label>
+                      <select id="gc-unit" name="unit" className={input}><option value="cent">cents</option><option value="minute">minutes</option><option value="rental">rental</option></select>
+                    </div>
+                  </div>
+                  <div>
+                    <label htmlFor="gc-note" className="mb-1 block text-xs font-bold">Reason (shown to customer)</label>
+                    <input id="gc-note" name="note" maxLength={200} className={`${input} w-full`} placeholder="e.g. Goodwill for the failed dispense" />
+                  </div>
+                  <button className="min-h-10 rounded-full bg-ink px-5 text-sm font-bold text-white">Grant credit</button>
+                </form>
+              ) : (
+                <p className="mt-4 text-sm text-graphite">Guest record — no account profile to attach credit to. Ask the customer to create an account, or issue a refund instead.</p>
+              )}
             </section>
 
             <section className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
@@ -180,7 +212,10 @@ export default async function Customer360({ params, searchParams }: { params: Pr
                           {incidents.map((i) => <p key={i.id} className="mt-1 text-xs font-bold text-red-800">⚑ {i.kind} reported</p>)}
                         </td>
                         <td className="px-4 py-3"><p className="font-semibold">{r.kiosks?.venues?.name ?? r.kiosks?.station_id ?? "—"}</p><p className="text-xs text-graphite">{r.kiosks?.venues?.city ?? ""}</p></td>
-                        <td className="px-4 py-3"><Pill tone={od ? "red" : STATE_TONE[r.state as keyof typeof STATE_TONE] ?? "mist"}>{od ? "overdue" : r.state.replace("_", " ")}</Pill></td>
+                        <td className="px-4 py-3">
+                          <Pill tone={r.paused_at ? "gold" : od ? "red" : STATE_TONE[r.state as keyof typeof STATE_TONE] ?? "mist"}>{r.paused_at ? "paused" : od ? "overdue" : r.state.replace("_", " ")}</Pill>
+                          {r.paused_at && <p className="mt-1 text-[10px] font-bold text-graphite">clock stopped · {Math.round(((r.paused_seconds ?? 0) + (Date.now() - new Date(r.paused_at).getTime()) / 1000) / 60)} min paused</p>}
+                        </td>
                         <td className="px-4 py-3 text-xs text-graphite">{when(r.started_at ?? r.created_at)}</td>
                         <td className="px-4 py-3 text-xs text-graphite">{when(r.returned_at)}</td>
                         <td className="px-4 py-3 text-xs text-graphite">{when(r.non_return_deadline)}</td>
@@ -190,8 +225,35 @@ export default async function Customer360({ params, searchParams }: { params: Pr
                             {(r.state === "authorized" || r.state === "dispense_pending") && (
                               <form method="post" action={`/api/rentals/${r.id}`}><input type="hidden" name="action" value="dispense" /><input type="hidden" name="back" value={back} /><button className={`${btn} bg-lime text-ink`}>Confirm dispense</button></form>
                             )}
-                            {(r.state === "active" || r.state === "unreturned") && (
+                            {isOut(r) && (
                               <form method="post" action={`/api/rentals/${r.id}`}><input type="hidden" name="action" value="return" /><input type="hidden" name="back" value={back} /><button className={`${btn} border border-silver/60 hover:border-ink`}>Record return</button></form>
+                            )}
+                            {isOut(r) && (
+                              r.paused_at ? (
+                                <form method="post" action={`/api/rentals/${r.id}`}><input type="hidden" name="action" value="resume" /><input type="hidden" name="back" value={back} /><button className={`${btn} bg-gold/70 text-ink`}>Resume clock</button></form>
+                              ) : (
+                                <form method="post" action={`/api/rentals/${r.id}`}><input type="hidden" name="action" value="pause" /><input type="hidden" name="back" value={back} /><button className={`${btn} border border-gold/70 hover:border-ink`}>Pause clock</button></form>
+                              )
+                            )}
+                            {isOpen(r) && (
+                              <form method="post" action={`/api/rentals/${r.id}`} className="flex items-center gap-1">
+                                <input type="hidden" name="action" value="extend" /><input type="hidden" name="back" value={back} />
+                                <select name="hours" defaultValue="24" aria-label="Extra hours" className="min-h-8 rounded-lg border border-silver/60 px-1.5 text-xs font-semibold">
+                                  {[4, 12, 24, 48, 72].map((h) => <option key={h} value={h}>+{h}h</option>)}
+                                </select>
+                                <button className={`${btn} border border-silver/60 hover:border-ink`}>Extend</button>
+                              </form>
+                            )}
+                            {r.payments?.length > 0 && (r.payments[0].amount_captured_cents ?? 0) > 0 && (
+                              <form method="post" action="/api/admin/customers" className="flex items-center gap-1">
+                                <input type="hidden" name="action" value="request_refund" /><input type="hidden" name="email" value={c.email} />
+                                <input type="hidden" name="name" value={c.names[0] ?? ""} /><input type="hidden" name="rentalRef" value={r.reference} />
+                                <input name="amountCents" type="number" min="1" max={(r.payments[0].amount_captured_cents ?? 0) - (r.payments[0].amount_refunded_cents ?? 0)} required placeholder="¢" aria-label="Refund amount in cents" className="min-h-8 w-20 rounded-lg border border-silver/60 px-1.5 text-xs" />
+                                <select name="reason" defaultValue="goodwill" aria-label="Refund reason" className="min-h-8 rounded-lg border border-silver/60 px-1.5 text-xs font-semibold">
+                                  {REFUND_REASONS.map((x) => <option key={x} value={x}>{x.replace(/_/g, " ")}</option>)}
+                                </select>
+                                <button className={`${btn} bg-mist hover:bg-lime`}>Refund</button>
+                              </form>
                             )}
                             {isAdmin && (od || r.state === "unreturned") && r.payments?.[0]?.state === "authorized" && (
                               <form method="post" action={`/api/rentals/${r.id}`} className="space-y-1 rounded-lg border border-red-200 p-2">

@@ -30,6 +30,8 @@ export type CrmRental = {
   id: string;
   reference: string;
   state: string;
+  paused_at: string | null;
+  paused_seconds: number | null;
   started_at: string | null;
   dispensed_at: string | null;
   returned_at: string | null;
@@ -101,9 +103,12 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const uniq = (xs: (string | null | undefined)[]) => [...new Set(xs.filter((x): x is string => !!x))];
 
 const RENTAL_SELECT =
-  "id,reference,state,started_at,dispensed_at,returned_at,non_return_deadline,created_at," +
+  "id,reference,state,paused_at,paused_seconds,started_at,dispensed_at,returned_at,non_return_deadline,created_at," +
   "kiosks!rentals_kiosk_id_fkey(station_id,venues(name,city))," +
   "payments(id,state,amount_authorized_cents,amount_captured_cents,amount_refunded_cents,tax_cents,receipt_email,customer_phone,created_at)";
+
+/** Rentals that still have the customer on the hook — used for "open rental" counts. */
+export const OPEN_RENTAL_STATES = ["authorized", "payment_authorized", "dispense_pending", "active", "return_pending", "overdue", "unreturned", "non_return_fee_pending", "disputed"] as const;
 
 /** Unified staff lookup: name, email, phone (any format), or rental reference. */
 export async function searchCustomers(db: Db, raw: string): Promise<CustomerIdentity[]> {
@@ -239,7 +244,24 @@ export async function loadCustomer360(db: Db, rawEmail: string): Promise<Custome
   const profile = (profileRes.data ?? null) as Customer360["profile"];
   const receiptRentalIds = ((receiptRes.data ?? []) as { rental_id: string }[]).map((r) => r.rental_id);
 
-  // Rentals: profile-linked (either FK) OR matched by receipt email.
+  // Phone-linked rentals: a guest who typed a different/typo'd receipt email at the
+  // kiosk is still findable when the checkout phone matches a number on file.
+  // payments.customer_phone can be stored unnormalized, so match on last-4 digits
+  // and verify the full suffix client-side (same trick as the ticket search).
+  const knownDigits = uniq([
+    profile?.phone,
+    ...((ticketRes.data ?? []) as { phone: string | null }[]).map((t) => t.phone),
+  ]).map((p) => digits(normalizePhone(p) ?? p)).filter((d) => d.length >= 7);
+  const phoneRentalIds: string[] = [];
+  for (const d of knownDigits) {
+    const { data } = await db.from("payments").select("rental_id,customer_phone").ilike("customer_phone", `%${d.slice(-4)}`).limit(200);
+    for (const p of (data ?? []) as { rental_id: string; customer_phone: string | null }[]) {
+      if (p.customer_phone && digits(p.customer_phone).endsWith(d.slice(-10))) phoneRentalIds.push(p.rental_id);
+    }
+  }
+  const linkedRentalIds = uniq([...receiptRentalIds, ...phoneRentalIds]);
+
+  // Rentals: profile-linked (either FK) OR matched by receipt email / checkout phone.
   const rentalRows = new Map<string, CrmRental>();
   const rentalJobs: Promise<void>[] = [];
   if (profile) {
@@ -248,9 +270,9 @@ export async function loadCustomer360(db: Db, rawEmail: string): Promise<Custome
       for (const r of (data ?? []) as unknown as CrmRental[]) rentalRows.set(r.id, r);
     })());
   }
-  if (receiptRentalIds.length) {
+  if (linkedRentalIds.length) {
     rentalJobs.push((async () => {
-      const { data } = await db.from("rentals").select(RENTAL_SELECT).in("id", receiptRentalIds).order("created_at", { ascending: false }).limit(200);
+      const { data } = await db.from("rentals").select(RENTAL_SELECT).in("id", linkedRentalIds).order("created_at", { ascending: false }).limit(200);
       for (const r of (data ?? []) as unknown as CrmRental[]) rentalRows.set(r.id, r);
     })());
   }
@@ -307,7 +329,7 @@ export async function loadCustomer360(db: Db, rawEmail: string): Promise<Custome
     totals: {
       capturedCents,
       refundedCents,
-      activeRentals: rentals.filter((r) => ["active", "dispense_pending", "unreturned"].includes(r.state)).length,
+      activeRentals: rentals.filter((r) => (OPEN_RENTAL_STATES as readonly string[]).includes(r.state)).length,
       openTickets: tickets.filter((t) => ["open", "pending_customer", "pending_internal"].includes(t.state)).length,
     },
   };

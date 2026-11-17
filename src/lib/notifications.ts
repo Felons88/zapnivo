@@ -35,6 +35,7 @@ export const SMS_JOB_KINDS = [
   "activation", "reminder_1h", "reminder_3h", "reminder_6h", "reminder_12h",
   "warning_20h", "warning_23h", "deadline_24h",
   "return_failed", "non_return_fee_charged", "payment_failed", "ticket_received",
+  "rental_paused", "rental_resumed", "rental_extended",
 ] as const;
 export type SmsJobKind = (typeof SMS_JOB_KINDS)[number];
 
@@ -51,6 +52,9 @@ export const DEFAULT_TEMPLATES: Record<string, string> = {
   non_return_fee_charged: "Zapnivo: the {fee} non-return fee for {ref} has been charged to your card on file.",
   payment_failed: "Zapnivo: we couldn't process payment for {ref}, so no charger was released and you haven't been charged. Resolve it here: {url}",
   ticket_received: "Zapnivo: we received your support request {ticket}. Track replies here: {url}",
+  rental_paused: "Zapnivo: rental {ref} is paused — the hourly clock is stopped. Return to any station when you're done.",
+  rental_resumed: "Zapnivo: rental {ref} resumed — the hourly clock is running again. Return by {deadline}.",
+  rental_extended: "Zapnivo: extra time was added to rental {ref} — new return deadline {deadline}.",
 };
 
 /** Sample values for the admin live preview — real formatting helpers, never sent. */
@@ -112,6 +116,12 @@ export function pushForJob(kind: string, vars: Record<string, string>): PushMess
       return b("Non-return fee charged", `The ${vars.fee} non-return fee for ${vars.ref} was charged to your card on file.`);
     case "payment_failed":
       return b("Payment didn't go through", `We couldn't process payment for ${vars.ref} — no charger was released and nothing was charged.`);
+    case "rental_paused":
+      return b("Rental paused", `Rental ${vars.ref} — the hourly clock is stopped. Return to any station when you're done.`);
+    case "rental_resumed":
+      return b("Rental resumed", `Rental ${vars.ref} — the clock is running again. Return by ${vars.deadline}.`);
+    case "rental_extended":
+      return b("Extra time added", `Rental ${vars.ref} — new return deadline ${vars.deadline}.`);
     default:
       return null;
   }
@@ -254,9 +264,9 @@ export async function runSmsSweep(db: SupabaseClient, now = new Date()) {
     }
 
     const { data: r } = await db.from("rentals")
-      .select("id,reference,state,started_at,dispensed_at,non_return_deadline,returned_at,sms_consent,payments(customer_phone,amount_captured_cents)")
+      .select("id,reference,state,started_at,dispensed_at,non_return_deadline,returned_at,sms_consent,paused_at,paused_seconds,payments(customer_phone,amount_captured_cents)")
       .eq("id", job.rental_id).maybeSingle();
-    const rental = r as { id: string; reference: string; state: string; started_at: string | null; dispensed_at: string | null; non_return_deadline: string | null; returned_at: string | null; sms_consent: boolean; payments: { customer_phone: string | null; amount_captured_cents: number | null }[] | { customer_phone: string | null; amount_captured_cents: number | null } | null } | null;
+    const rental = r as { id: string; reference: string; state: string; started_at: string | null; dispensed_at: string | null; non_return_deadline: string | null; returned_at: string | null; sms_consent: boolean; paused_at: string | null; paused_seconds: number | null; payments: { customer_phone: string | null; amount_captured_cents: number | null }[] | { customer_phone: string | null; amount_captured_cents: number | null } | null } | null;
     const pay = rental?.payments ? (Array.isArray(rental.payments) ? rental.payments[0] : rental.payments) : null;
     const phone = pay?.customer_phone ?? null;
     const terminal = !rental || rental.returned_at || ["returned", "closed", "cancelled", "disputed"].includes(rental.state);
@@ -270,11 +280,13 @@ export async function runSmsSweep(db: SupabaseClient, now = new Date()) {
     if (!rental) { await markCancelled(db, job, "rental_missing"); continue; }
 
     // Deadline/warning jobs re-verify the rental is actually still out past the mark.
-    const elapsedMin = (now.getTime() - new Date(rental.dispensed_at ?? rental.started_at ?? now.toISOString()).getTime()) / 60_000;
+    // Paused time doesn't count — the clock (and so the nudge schedule) stalls while paused.
+    const pausedMs = (rental.paused_seconds ?? 0) * 1000 + (rental.paused_at ? Math.max(0, now.getTime() - new Date(rental.paused_at).getTime()) : 0);
+    const elapsedMin = (now.getTime() - new Date(rental.dispensed_at ?? rental.started_at ?? now.toISOString()).getTime() - pausedMs) / 60_000;
     const needMin = SMS_SCHEDULE.find((s) => s.kind === job.kind)?.minutesAfterActivation ?? 0;
     if (elapsedMin < needMin - 5) { await db.from("notification_jobs").update({ status: "queued" }).eq("id", job.id); continue; }
 
-    const charges = rental.started_at ? (rentalChargeCents((now.getTime() - new Date(rental.started_at).getTime()) / 60_000) ?? null) : null;
+    const charges = rental.started_at ? (rentalChargeCents((now.getTime() - new Date(rental.started_at).getTime() - pausedMs) / 60_000) ?? null) : null;
     // Fee amount comes from the captured payment when known; otherwise the pricing constant.
     const feeCents = job.kind === "non_return_fee_charged" && pay?.amount_captured_cents && pay.amount_captured_cents > 0
       ? pay.amount_captured_cents : PRICING_V1.nonReturnMaxCents;

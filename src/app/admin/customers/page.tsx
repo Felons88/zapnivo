@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { AdminGate } from "@/components/AdminShell";
 import { EmptyCard } from "@/components/PortalShell";
 import { Pill } from "@/components/SupportNav";
+import { CustomerSearchBox } from "@/components/CustomerSearch";
 import { searchCustomers } from "@/lib/crm";
 import { serviceClient } from "@/lib/supabase";
 import { getSessionUser, isStaff } from "@/lib/auth";
@@ -34,14 +35,7 @@ export default async function Customers({ searchParams }: { searchParams: Promis
             <h2 className="font-display text-lg font-bold">Find a customer</h2>
             <p className="mt-1 text-sm text-graphite">Search by name, email, phone number, or rental reference (e.g. ZR-1A2B3C4D). Phone numbers match in any format.</p>
             <form method="get" action="/admin/customers" className="mt-4 flex gap-3">
-              <input
-                name="q"
-                defaultValue={q}
-                autoFocus
-                placeholder="Jane Smith · (555) 123-4567 · jane@email.com · ZR-…"
-                aria-label="Customer search"
-                className="min-h-11 flex-1 rounded-lg border border-silver/70 px-4 text-sm"
-              />
+              <CustomerSearchBox initial={q} autoFocus />
               <button className="min-h-11 rounded-full bg-ink px-6 text-sm font-bold text-white">Search</button>
             </form>
           </section>

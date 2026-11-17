@@ -34,6 +34,9 @@ export const TRANSACTIONAL_KINDS = new Set([
   "non_return_fee_charged",
   "payment_failed",
   "ticket_received",
+  "rental_paused",
+  "rental_resumed",
+  "rental_extended",
   "opt_out_confirmation",
   "resubscribe_confirmation",
 ]);
