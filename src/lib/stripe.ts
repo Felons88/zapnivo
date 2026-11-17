@@ -234,6 +234,11 @@ export function createHoldPaymentIntent(i: NativeCheckoutInput) {
   );
 }
 
+/** Reads a Checkout Session — reconcile uses it when the session.completed event was missed. */
+export const retrieveCheckoutSession = (id: string) =>
+  stripeCall<{ id: string; payment_status?: string; payment_intent?: string | null; total_details?: { amount_tax?: number } | null }>(
+    "GET", `/checkout/sessions/${encodeURIComponent(id)}`);
+
 export const retrieveTaxRate = (id: string) =>
   stripeCall<{ id: string; percentage: number; inclusive: boolean }>("GET", `/tax_rates/${encodeURIComponent(id)}`);
 

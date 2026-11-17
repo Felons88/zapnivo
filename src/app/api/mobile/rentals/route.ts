@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { isResponse, mobileCustomer } from "@/lib/mobile";
 import { advanceSimDispenses, dispenseStatusFor } from "@/lib/kiosk/dispatch";
+import { reconcileStuckPayments } from "@/lib/payments/reconcile";
 import { recordLog } from "@/lib/observability";
 
 export const dynamic = "force-dynamic";
@@ -24,6 +25,10 @@ export async function GET(req: Request) {
   // idle case). A sim failure must never break the rental read.
   await advanceSimDispenses(c.db).catch((e) =>
     recordLog("warning", "sim_dispense_advance_failed", { service: "mobile", route: "/api/mobile/rentals", attrs: { reason: e instanceof Error ? e.message : "unknown" } }));
+  // Self-heal paid-but-stranded rentals: the same poll that advances the kiosk
+  // sim asks Stripe directly when a webhook event didn't arrive.
+  await reconcileStuckPayments(c.db, { customerId: c.user.id }).catch((e) =>
+    recordLog("warning", "payment_reconcile_failed", { service: "mobile", route: "/api/mobile/rentals", attrs: { reason: e instanceof Error ? e.message : "unknown" } }));
   const { data, error } = await c.db.from("rentals")
     .select("id,reference,state,created_at,dispensed_at,returned_at,non_return_deadline,bank_count,promo_code,kiosk_id,kiosks!rentals_kiosk_id_fkey(station_id,venues(name,city)),payments(amount_captured_cents,amount_authorized_cents,tax_cents,discount_cents,state,receipt_email)")
     .or(`customer_id.eq.${c.user.id},renter_profile.eq.${c.user.id}`).order("created_at", { ascending: false }).limit(50);
