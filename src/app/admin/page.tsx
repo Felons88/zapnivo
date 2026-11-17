@@ -248,6 +248,20 @@ export default async function AdminDashboard() {
     ] as const) execItems.push(unavailable(label, href, "Database not configured"));
   }
 
+  const workItems = [
+    ...(m ? [
+      { label: "Unassigned tickets", count: m.unassigned, href: "/admin/support?view=unassigned", area: "Customer care" },
+      { label: "Overdue first responses", count: m.overdueFirstResponse, href: "/admin/support?view=person", area: "Customer care" },
+    ] : []),
+    ...(stats ? [
+      { label: "Offline stations", count: pick(stats.kioskStates, "offline"), href: "/admin/fleet", area: "Network" },
+      { label: "New partner applications", count: pick(stats.applicationStates, "new"), href: "/admin/partners", area: "Partners" },
+      { label: "Unhandled inquiries", count: stats.unhandledContacts ?? 0, href: "/admin/inquiries", area: "Customer care" },
+    ] : []),
+    ...execItems.filter((item) => item.live && ["Open exceptions", "Payout backlog"].includes(item.label) && Number(item.value) > 0)
+      .map((item) => ({ label: item.label, count: Number(item.value), href: item.href, area: item.label === "Payout backlog" ? "Finance" : "Network" })),
+  ].filter((item) => item.count > 0);
+
   return (
     <AdminGate title="Dashboard" nav="dashboard">
       <div className="space-y-7">
@@ -284,6 +298,20 @@ export default async function AdminDashboard() {
           <Metric icon={icons.inbox} label="Open tickets" value={m ? m.open : "—"} sub={m ? `${m.needsHuman} need a person · ${m.unassigned} unassigned` : "Helpdesk not connected"} />
         </section>
 
+        <section aria-labelledby="work-heading" className="overflow-hidden rounded-2xl border border-mist bg-white shadow-sm">
+          <div className="flex flex-wrap items-end justify-between gap-3 border-b border-mist px-5 py-4">
+            <div><p className="eyebrow text-silver">Daily brief</p><h3 id="work-heading" className="mt-1 font-display text-xl font-bold">Needs attention</h3></div>
+            <span className="text-xs font-semibold text-graphite">From connected systems</span>
+          </div>
+          {workItems.length === 0 ? <p className="px-5 py-6 text-sm text-graphite">No action items surfaced from connected systems.</p> :
+            <ul className="grid gap-px bg-mist md:grid-cols-2 xl:grid-cols-3">{workItems.map((item) => <li key={item.label} className="bg-white">
+              <Link href={item.href} className="flex items-center gap-4 px-5 py-4 hover:bg-lime/10">
+                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-gold/30 font-display text-xl font-bold">{item.count}</span>
+                <span className="min-w-0 flex-1"><span className="block text-sm font-bold">{item.label}</span><span className="block text-xs text-graphite">{item.area}</span></span><span aria-hidden className="text-forest">↗</span>
+              </Link>
+            </li>)}</ul>}
+        </section>
+
         <section aria-labelledby="programs-heading">
           <div className="mb-3 flex items-end justify-between gap-3">
             <div><p className="eyebrow text-silver">Explore</p><h3 id="programs-heading" className="font-display text-xl font-bold">Your programs</h3></div>
@@ -293,7 +321,9 @@ export default async function AdminDashboard() {
               { title: "Customer care", detail: m ? `${m.open} open tickets` : "Inbox, customers and requests", href: "/admin/support", links: ["Inbox", "Customers", "Refunds"] },
               { title: "Network operations", detail: kiosksTotal == null ? "Fleet, rentals and restocking" : `${kiosksOnline} of ${kiosksTotal} stations online`, href: "/admin/fleet", links: ["Fleet", "Rentals", "Restocking"] },
               { title: "Partners", detail: "Venues, onboarding and placements", href: "/admin/partners", links: ["Partners", "Placements", "Agreements"] },
-              { title: "Finance & growth", detail: "Revenue, payouts and opportunities", href: "/admin/finance", links: ["Revenue", "Payouts", "Analytics"] },
+              { title: "Commerce", detail: "Memberships, gifts and events", href: "/admin/memberships", links: ["Memberships", "Gifts", "Events"] },
+              { title: "Growth", detail: "Campaigns, opportunities and insights", href: "/admin/opportunities", links: ["Opportunities", "Advertising", "Analytics"] },
+              { title: "Finance", detail: "Revenue, payouts and investigations", href: "/admin/finance", links: ["Revenue", "Payouts", "Forecasting"] },
             ].map((program) => (
               <Link key={program.title} href={program.href} className="group flex min-h-36 flex-col justify-between rounded-2xl border border-mist bg-white p-5 shadow-sm transition-colors hover:border-forest/40 hover:bg-lime/15">
                 <span className="flex items-start justify-between gap-2 font-display text-lg font-bold">{program.title}<span aria-hidden className="text-forest transition-transform group-hover:translate-x-1">↗</span></span>

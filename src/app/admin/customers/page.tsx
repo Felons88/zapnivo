@@ -1,20 +1,28 @@
 export const dynamic = "force-dynamic";
 import type { Metadata } from "next";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { AdminGate } from "@/components/AdminShell";
 import { EmptyCard } from "@/components/PortalShell";
 import { Pill } from "@/components/SupportNav";
 import { searchCustomers } from "@/lib/crm";
 import { serviceClient } from "@/lib/supabase";
+import { getSessionUser, isStaff } from "@/lib/auth";
 
 export const metadata: Metadata = { title: "Customers", robots: { index: false, follow: false } };
 
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—");
 
 export default async function Customers({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
+  const user = await getSessionUser();
+  if (!user) redirect("/login");
+  if (!isStaff(user)) redirect("/partners");
   const { q = "" } = await searchParams;
   const db = serviceClient();
   const results = db && q.trim().length >= 2 ? await searchCustomers(db, q) : [];
+  const recentAccounts = db && q.trim().length < 2
+    ? (await db.from("profiles").select("id,email,full_name,phone,created_at").eq("role", "customer").order("created_at", { ascending: false }).limit(25)).data ?? []
+    : [];
 
   return (
     <AdminGate title="Customers" nav="customers">
@@ -37,6 +45,17 @@ export default async function Customers({ searchParams }: { searchParams: Promis
               <button className="min-h-11 rounded-full bg-ink px-6 text-sm font-bold text-white">Search</button>
             </form>
           </section>
+
+          {q.trim().length < 2 && <section className="overflow-hidden rounded-2xl border border-mist bg-white shadow-sm">
+            <div className="border-b border-mist px-6 py-4"><h2 className="font-display text-lg font-bold">Recent customer accounts</h2><p className="mt-1 text-xs text-graphite">Guest customers appear when you search their email, phone or rental reference.</p></div>
+            {recentAccounts.length === 0 ? <p className="px-6 py-8 text-sm text-graphite">No customer accounts yet. Use search to look up guests and support contacts.</p> :
+              <ul className="divide-y divide-mist">{recentAccounts.map((c) => <li key={c.id}>
+                <Link href={`/admin/customers/${encodeURIComponent(c.email)}`} className="flex flex-wrap items-center gap-3 px-6 py-3 hover:bg-lime/10">
+                  <span className="min-w-0 flex-1"><span className="block truncate text-sm font-bold">{c.full_name ?? c.email}</span><span className="block truncate text-xs text-graphite">{c.email}{c.phone ? ` · ${c.phone}` : ""}</span></span>
+                  <span className="text-xs text-graphite">Joined {when(c.created_at)}</span><span className="text-sm font-bold text-forest">Open record →</span>
+                </Link>
+              </li>)}</ul>}
+          </section>}
 
           {q.trim().length >= 2 && (
             <section aria-label="Results" className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">

@@ -32,38 +32,44 @@ const icons = {
   chat: <I><path d="M21 12a9 9 0 1 1-9-9" /><path d="M8.5 14a5 5 0 0 0 7 0" /></I>,
   tag: <I><path d="M3 12V4h8l10 10-8 8L3 12Z" /><circle cx="7.5" cy="8.5" r="1" /></I>,
   alert: <I><path d="M12 3 2 20h20L12 3Z" /><path d="M12 10v4M12 17h.01" /></I>,
+  search: <I><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 5 5" /></I>,
 } satisfies Record<string, ReactNode>;
 
 export type AdminNavKey = keyof typeof NAV_ITEMS;
 
 const NAV_ITEMS = {
   dashboard: { href: "/admin", label: "Dashboard", icon: icons.dashboard, group: "Overview" },
+  search: { href: "/admin/search", label: "Search all", icon: icons.search, group: "Overview" },
   analytics: { href: "/admin/analytics", label: "Analytics", icon: icons.chart, group: "Growth" },
   forecasting: { href: "/admin/forecasting", label: "Forecasting", icon: icons.chart, group: "Growth" },
   opportunities: { href: "/admin/opportunities", label: "Opportunities", icon: icons.chart, group: "Growth" },
-  inbox: { href: "/admin/support", label: "Inbox", icon: icons.inbox, group: "Support" },
-  customers: { href: "/admin/customers", label: "Customers", icon: icons.users, group: "Support" },
-  partner: { href: "/admin/support?queue=partner", label: "Partner relations", icon: icons.building, group: "Support" },
-  safety: { href: "/admin/support?queue=safety", label: "Safety", icon: icons.shield, group: "Support" },
-  refunds: { href: "/admin/support/refunds", label: "Refunds", icon: icons.coins, group: "Support" },
-  metrics: { href: "/admin/support/metrics", label: "Metrics", icon: icons.chart, group: "Support" },
-  inquiries: { href: "/admin/inquiries", label: "Inquiries", icon: icons.mail, group: "Support" },
-  receptionist: { href: "/admin/receptionist", label: "AI receptionist", icon: icons.chat, group: "Support" },
-  sms: { href: "/admin/sms", label: "SMS log", icon: icons.chat, group: "Support" },
-  emailStudio: { href: "/admin/email-studio", label: "Email studio", icon: icons.mail, group: "Support" },
-  fleet: { href: "/admin/fleet", label: "Fleet", icon: icons.battery, group: "Operations" },
-  profitability: { href: "/admin/profitability", label: "Profitability", icon: icons.coins, group: "Operations" },
-  vendingOps: { href: "/admin/vending-ops", label: "Vending ops", icon: icons.chart, group: "Operations" },
-  placements: { href: "/admin/placements", label: "Placements", icon: icons.steps, group: "Operations" },
-  equipment: { href: "/admin/equipment", label: "Equipment", icon: icons.battery, group: "Operations" },
-  inventory: { href: "/admin/inventory", label: "Inventory", icon: icons.battery, group: "Operations" },
-  restock: { href: "/admin/restock", label: "Restocking", icon: icons.swap, group: "Operations" },
-  agreements: { href: "/admin/agreements", label: "Agreements", icon: icons.scroll, group: "Operations" },
-  rentals: { href: "/admin/rentals", label: "Rentals", icon: icons.swap, group: "Operations" },
-  partners: { href: "/admin/partners", label: "Partners", icon: icons.store, group: "Operations" },
-  onboarding: { href: "/admin/onboarding", label: "Onboarding", icon: icons.steps, group: "Operations" },
-  sla: { href: "/admin/sla", label: "Partner SLA", icon: icons.clock, group: "Operations" },
-  advertising: { href: "/admin/advertising", label: "Advertising", icon: icons.megaphone, group: "Operations" },
+  inbox: { href: "/admin/support", label: "Inbox", icon: icons.inbox, group: "Customer care" },
+  customers: { href: "/admin/customers", label: "Customers", icon: icons.users, group: "Customer care" },
+  partner: { href: "/admin/support?queue=partner", label: "Partner relations", icon: icons.building, group: "Partners" },
+  safety: { href: "/admin/support?queue=safety", label: "Safety", icon: icons.shield, group: "Customer care" },
+  refunds: { href: "/admin/support/refunds", label: "Refunds", icon: icons.coins, group: "Customer care" },
+  metrics: { href: "/admin/support/metrics", label: "Support metrics", icon: icons.chart, group: "Customer care" },
+  inquiries: { href: "/admin/inquiries", label: "Inquiries", icon: icons.mail, group: "Customer care" },
+  receptionist: { href: "/admin/receptionist", label: "AI receptionist", icon: icons.chat, group: "Customer care" },
+  sms: { href: "/admin/sms", label: "SMS log", icon: icons.chat, group: "Customer care" },
+  emailStudio: { href: "/admin/email-studio", label: "Email studio", icon: icons.mail, group: "Customer care" },
+  fleet: { href: "/admin/fleet", label: "Fleet", icon: icons.battery, group: "Network" },
+  profitability: { href: "/admin/profitability", label: "Profitability", icon: icons.coins, group: "Network" },
+  vendingOps: { href: "/admin/vending-ops", label: "Vending ops", icon: icons.chart, group: "Network" },
+  placements: { href: "/admin/placements", label: "Placements", icon: icons.steps, group: "Partners" },
+  equipment: { href: "/admin/equipment", label: "Equipment", icon: icons.battery, group: "Network" },
+  inventory: { href: "/admin/inventory", label: "Inventory", icon: icons.battery, group: "Network" },
+  restock: { href: "/admin/restock", label: "Restocking", icon: icons.swap, group: "Network" },
+  agreements: { href: "/admin/agreements", label: "Agreements", icon: icons.scroll, group: "Partners" },
+  rentals: { href: "/admin/rentals", label: "Rentals", icon: icons.swap, group: "Network" },
+  memberships: { href: "/admin/memberships", label: "Memberships", icon: icons.users, group: "Commerce" },
+  gifts: { href: "/admin/gifts", label: "Gifts", icon: icons.tag, group: "Commerce" },
+  events: { href: "/admin/events", label: "Events", icon: icons.steps, group: "Commerce" },
+  partners: { href: "/admin/partners", label: "Partners", icon: icons.store, group: "Partners" },
+  onboarding: { href: "/admin/onboarding", label: "Onboarding", icon: icons.steps, group: "Partners" },
+  sla: { href: "/admin/sla", label: "Partner SLA", icon: icons.clock, group: "Partners" },
+  advertising: { href: "/admin/advertising", label: "Advertising", icon: icons.megaphone, group: "Growth" },
+  demo: { href: "/admin/demo", label: "Demo preview", icon: icons.dashboard, group: "Commerce" },
   payouts: { href: "/admin/payouts", label: "Ledgers & payouts", icon: icons.coins, group: "Finance" },
   finance: { href: "/admin/finance", label: "Revenue", icon: icons.chart, group: "Finance" },
   revenueAssurance: { href: "/admin/revenue", label: "Revenue assurance", icon: icons.alert, group: "Finance" },
@@ -79,8 +85,10 @@ const NAV_ITEMS = {
   experiments: { href: "/admin/experiments", label: "Experiments", icon: icons.steps, group: "Intelligence" },
 } as const;
 
-const GROUPS = ["Support", "Operations", "Growth", "Finance", "Intelligence", "System"] as const;
-const PINNED: AdminNavKey[] = ["dashboard", "inbox", "customers", "fleet", "partners", "finance"];
+export const ADMIN_TOOL_INDEX = Object.values(NAV_ITEMS).map(({ group, label, href }) => ({ group, label, href }));
+
+const GROUPS = ["Customer care", "Network", "Partners", "Commerce", "Growth", "Finance", "Intelligence", "System"] as const;
+const PINNED: AdminNavKey[] = ["dashboard", "search", "inbox", "customers", "fleet", "partners", "finance"];
 
 function NavLink({ item, active }: { item: (typeof NAV_ITEMS)[AdminNavKey]; active: boolean }) {
   return (
@@ -172,6 +180,7 @@ export async function AdminGate({ title, nav, children }: { title: string; nav: 
             </div>
           </div>
           <Link href={SITE.url} className="mt-2 flex items-center justify-center gap-1.5 py-1 text-xs font-bold text-graphite hover:text-ink">View public site ↗</Link>
+          {user.role === "admin" && <Link href="/system" className="mt-1 flex items-center justify-center gap-1.5 py-1 text-xs font-bold text-graphite hover:text-ink">System console ↗</Link>}
         </div>
       </aside>
 
@@ -187,6 +196,11 @@ export async function AdminGate({ title, nav, children }: { title: string; nav: 
           <div className="flex h-16 items-center justify-between gap-4 px-5 md:px-8">
             <h1 className="truncate font-display text-xl font-bold tracking-tight">{title}</h1>
             <div className="flex items-center gap-3">
+              <form action="/admin/search" className="hidden items-center gap-2 rounded-lg border border-mist bg-white px-3 shadow-sm sm:flex">
+                <span className="text-silver">{icons.search}</span>
+                <input name="q" aria-label="Search internal records and tools" placeholder="Search records and tools" className="h-10 w-44 bg-transparent text-sm outline-none placeholder:text-graphite/70 xl:w-64" />
+                <button type="submit" className="text-xs font-bold text-forest">Search</button>
+              </form>
               <span className="hidden items-center gap-2 rounded-full bg-white px-4 py-2 text-xs font-bold text-graphite ring-1 ring-mist sm:flex">
                 <span className="h-2 w-2 rounded-full bg-green-500" aria-hidden />{user.email}
               </span>
@@ -211,6 +225,10 @@ export async function AdminGate({ title, nav, children }: { title: string; nav: 
               </div>
             </details>
           </nav>
+          <form action="/admin/search" className="flex border-t border-mist/70 px-5 py-2 sm:hidden">
+            <input name="q" aria-label="Search internal records and tools" placeholder="Search records and tools" className="min-h-10 min-w-0 flex-1 rounded-l-lg border border-mist bg-white px-3 text-sm" />
+            <button className="rounded-r-lg bg-forest px-3 text-xs font-bold text-white">Search</button>
+          </form>
         </header>
 
         <main className="mx-auto max-w-[1440px] px-5 py-8 md:px-8">{children}</main>

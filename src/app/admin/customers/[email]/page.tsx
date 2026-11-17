@@ -1,12 +1,13 @@
 export const dynamic = "force-dynamic";
 import type { Metadata } from "next";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { AdminGate } from "@/components/AdminShell";
 import { EmptyCard, Metric } from "@/components/PortalShell";
 import { Pill } from "@/components/SupportNav";
 import { fmt } from "@/lib/pricing";
 import { loadCustomer360, type CrmRental } from "@/lib/crm";
-import { getSessionUser } from "@/lib/auth";
+import { getSessionUser, isStaff } from "@/lib/auth";
 import { serviceClient } from "@/lib/supabase";
 import { TICKET_CATEGORIES } from "@/lib/validation";
 
@@ -29,13 +30,22 @@ const paySummary = (r: CrmRental) => {
 };
 
 export default async function Customer360({ params, searchParams }: { params: Promise<{ email: string }>; searchParams: Promise<{ result?: string; detail?: string }> }) {
+  const user = await getSessionUser();
+  if (!user) redirect("/login");
+  if (!isStaff(user)) redirect("/partners");
   const { email: raw } = await params;
   const feedback = await searchParams;
   const email = decodeURIComponent(raw).toLowerCase();
   const back = `/admin/customers/${encodeURIComponent(email)}`;
-  const isAdmin = (await getSessionUser())?.role === "admin";
+  const isAdmin = user.role === "admin";
   const db = serviceClient();
   const c = db ? await loadCustomer360(db, email) : null;
+  const activity = c ? [
+    ...c.tickets.map((t) => ({ id: `ticket-${t.id}`, at: t.created_at, title: `Ticket ${t.ticket_number} opened`, detail: `${t.category} · ${t.state.replace(/_/g, " ")}`, href: `/admin/support/${t.ticket_number}` })),
+    ...c.rentals.map((r) => ({ id: `rental-${r.id}`, at: r.created_at, title: `Rental ${r.reference}`, detail: `${r.state.replace(/_/g, " ")} · ${r.kiosks?.venues?.name ?? r.kiosks?.station_id ?? "Station unknown"}`, href: "#customer-rentals" })),
+    ...c.notes.map((n) => ({ id: `note-${n.id}`, at: n.created_at, title: "Staff note added", detail: n.author_email ?? "Staff", href: "#customer-actions" })),
+    ...c.refundRequests.map((r) => ({ id: `refund-${r.id}`, at: r.created_at, title: `Refund request for ${r.rental_ref}`, detail: `${fmt(r.amount_cents)} · ${r.status}`, href: "#customer-support" })),
+  ].sort((a, b) => b.at.localeCompare(a.at)).slice(0, 12) : [];
 
   return (
     <AdminGate title={c?.names[0] ?? email} nav="customers">
@@ -52,9 +62,13 @@ export default async function Customer360({ params, searchParams }: { params: Pr
           )}
 
           <p><Link href="/admin/customers" className="text-sm font-bold text-graphite hover:text-ink">← New search</Link></p>
+          <nav aria-label="Customer record sections" className="flex gap-2 overflow-x-auto pb-1">
+            {[["Overview", "customer-overview"], ["Activity", "customer-activity"], ["Actions", "customer-actions"], ["Rentals", "customer-rentals"], ["Support", "customer-support"], ["Communications", "customer-comms"]].map(([label, target]) =>
+              <a key={target} href={`#${target}`} className="shrink-0 rounded-lg border border-mist bg-white px-4 py-2 text-xs font-bold text-forest hover:bg-lime/20">{label}</a>)}
+          </nav>
 
           {/* ── Identity ─────────────────────────────────────────── */}
-          <section className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+          <section id="customer-overview" className="scroll-mt-40 rounded-2xl border border-mist bg-white p-6 shadow-sm">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <p className="eyebrow text-forest">Customer 360</p>
@@ -84,8 +98,15 @@ export default async function Customer360({ params, searchParams }: { params: Pr
             <Metric label="Staff notes" value={c.notes.length} sub={c.incidents.length ? `${c.incidents.length} incident report${c.incidents.length === 1 ? "" : "s"}` : undefined} />
           </section>
 
+          <section id="customer-activity" aria-label="Customer activity" className="scroll-mt-40 rounded-2xl border border-mist bg-white p-6 shadow-sm">
+            <div className="flex flex-wrap items-end justify-between gap-2"><div><p className="eyebrow text-silver">Record history</p><h2 className="mt-1 font-display text-lg font-bold">Recent activity</h2></div><span className="text-xs text-graphite">Rentals, support and staff notes</span></div>
+            {activity.length === 0 ? <p className="mt-4 text-sm text-graphite">No activity on this record yet.</p> : <ol className="mt-4 divide-y divide-mist">
+              {activity.map((item) => <li key={item.id}><Link href={item.href} className="flex gap-4 py-3 hover:text-forest"><span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-forest" aria-hidden /><span className="min-w-0 flex-1"><span className="block text-sm font-bold">{item.title}</span><span className="block truncate text-xs text-graphite">{item.detail}</span></span><span className="shrink-0 text-xs text-graphite">{when(item.at)}</span></Link></li>)}
+            </ol>}
+          </section>
+
           {/* ── Actions ──────────────────────────────────────────── */}
-          <div className="grid gap-6 lg:grid-cols-2">
+          <div id="customer-actions" className="scroll-mt-40 grid gap-6 lg:grid-cols-2">
             <section className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
               <h2 className="font-display text-lg font-bold">Open a ticket for this customer</h2>
               <p className="mt-1 text-xs text-graphite">For phone/walk-up contacts. The customer gets the usual confirmation email and can reply to the thread.</p>
@@ -139,7 +160,7 @@ export default async function Customer360({ params, searchParams }: { params: Pr
           </div>
 
           {/* ── Rentals ──────────────────────────────────────────── */}
-          <section aria-label="Rentals" className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
+          <section id="customer-rentals" aria-label="Rentals" className="scroll-mt-40 overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
             <div className="border-b border-mist px-6 py-4"><h2 className="font-display text-lg font-bold">Rentals ({c.rentals.length})</h2></div>
             {c.rentals.length === 0 ? (
               <p className="px-6 py-10 text-sm text-graphite">No rentals on record for this customer.</p>
@@ -190,7 +211,7 @@ export default async function Customer360({ params, searchParams }: { params: Pr
           </section>
 
           {/* ── Tickets + refunds ────────────────────────────────── */}
-          <div className="grid gap-6 xl:grid-cols-2">
+          <div id="customer-support" className="scroll-mt-40 grid gap-6 xl:grid-cols-2">
             <section aria-label="Support tickets" className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
               <div className="border-b border-mist px-6 py-4"><h2 className="font-display text-lg font-bold">Support tickets ({c.tickets.length})</h2></div>
               {c.tickets.length === 0 ? (
@@ -251,7 +272,7 @@ export default async function Customer360({ params, searchParams }: { params: Pr
           </div>
 
           {/* ── Comms + privacy ──────────────────────────────────── */}
-          <div className="grid gap-6 xl:grid-cols-2">
+          <div id="customer-comms" className="scroll-mt-40 grid gap-6 xl:grid-cols-2">
             <section aria-label="Recent SMS" className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
               <h2 className="font-display text-lg font-bold">Recent texts ({c.sms.length})</h2>
               {c.sms.length === 0 ? (

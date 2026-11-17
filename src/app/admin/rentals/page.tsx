@@ -4,20 +4,27 @@ import { AdminGate } from "@/components/AdminShell";
 import { EmptyCard, Metric } from "@/components/PortalShell";
 import { Pill } from "@/components/SupportNav";
 import { fmt } from "@/lib/pricing";
-import { getSessionUser } from "@/lib/auth";
+import { getSessionUser, isStaff } from "@/lib/auth";
+import { redirect } from "next/navigation";
 import { serviceClient } from "@/lib/supabase";
+import { likeEscape } from "@/lib/customer";
 
 export const metadata: Metadata = { title: "Rentals", robots: { index: false, follow: false } };
 
 const STATE_TONE = { active: "lime", dispense_pending: "cyan", authorized: "cyan", returned: "mist", unreturned: "red", cancelled: "mist", charged_off: "gold" } as const;
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "—");
 
-export default async function Rentals({ searchParams }: { searchParams: Promise<{ result?: string; detail?: string }> }) {
+export default async function Rentals({ searchParams }: { searchParams: Promise<{ result?: string; detail?: string; q?: string }> }) {
+  const user = await getSessionUser();
+  if (!user) redirect("/login");
+  if (!isStaff(user)) redirect("/partners");
   const feedback = await searchParams;
-  const isAdmin = (await getSessionUser())?.role === "admin";
+  const q = (feedback.q ?? "").trim().slice(0, 40);
+  const isAdmin = user.role === "admin";
   const db = serviceClient();
+  const rentalQuery = db?.from("rentals").select("id,reference,state,started_at,dispensed_at,returned_at,non_return_deadline,created_at,kiosks!rentals_kiosk_id_fkey(station_id,venues(name,city))").order("created_at", { ascending: false }).limit(200);
   const [rentals, payments] = db ? await Promise.all([
-    db.from("rentals").select("id,reference,state,started_at,dispensed_at,returned_at,non_return_deadline,created_at,kiosks!rentals_kiosk_id_fkey(station_id,venues(name,city))").order("created_at", { ascending: false }).limit(200),
+    q ? rentalQuery!.ilike("reference", `%${likeEscape(q)}%`) : rentalQuery!,
     db.from("payments").select("rental_id,state,amount_captured_cents,amount_authorized_cents").limit(5000),
   ]) : [null, null];
 
@@ -41,15 +48,20 @@ export default async function Rentals({ searchParams }: { searchParams: Promise<
               {feedback.detail ?? "Done."}
             </div>
           )}
-          <section aria-label="Rental summary" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <form action="/admin/rentals" className="flex flex-wrap gap-2 rounded-2xl border border-mist bg-white p-4 shadow-sm">
+            <input name="q" defaultValue={q} aria-label="Find rental reference" placeholder="Find rental reference (ZR-…)" className="min-h-10 min-w-0 flex-1 rounded-lg border border-silver/70 px-3 text-sm" />
+            <button className="rounded-lg bg-ink px-4 text-sm font-bold text-white">Search</button>
+            {q && <a href="/admin/rentals" className="self-center px-2 text-sm font-bold text-graphite underline">Clear</a>}
+          </form>
+          {!q && <section aria-label="Rental summary" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <Metric label="Total rentals" value={rows.length} />
             <Metric label="Active now" value={active} />
             <Metric label="Unreturned / overdue" value={unreturned} sub="72h window tracked per rental" />
             <Metric label="Captured" value={fmt(captured)} sub="Sum of captured payments" />
-          </section>
+          </section>}
 
           <section aria-label="Rental records" className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
-            <div className="border-b border-mist px-6 py-4"><h2 className="font-display text-lg font-bold">Rental records</h2></div>
+            <div className="border-b border-mist px-6 py-4"><h2 className="font-display text-lg font-bold">{q ? `Rentals matching “${q}”` : "Recent rental records"}</h2></div>
             {rows.length === 0 ? (
               <p className="px-6 py-10 text-sm text-graphite">No rentals yet. The first rental appears here the moment a customer dispenses.</p>
             ) : (

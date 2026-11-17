@@ -19,6 +19,8 @@ import { HelpdeskError, type Actor, type Message, type Priority, type RefundReas
 import { notifyTicketReceived } from "../notifications";
 import { recordLog } from "../observability";
 import { pushToEmail } from "../push";
+import { auditLog } from "../audit";
+import type { TicketFilter } from "./types";
 
 export type Ctx = { repo: HelpdeskRepo; chat: ChatFn | null; mailer: Mailer | null; rentals: RentalDirectory; refunds: RefundProvider; now: () => Date; siteUrl: string; agentGate?: AgentGateFn };
 
@@ -343,6 +345,17 @@ export async function getStaffThread(c: Ctx, actor: Actor, number: string) {
     if (row) { rental = describeRental(row); remainingCents = snapshot(row).remainingCents; }
   }
   return { ticket: t, messages, events, refunds, rental, remainingCents };
+}
+
+/** Staff search entry point. Keep ticket lookups behind the service boundary. */
+export async function searchStaffTickets(c: Ctx, actor: Actor, query: string, limit = 10): Promise<Ticket[]> {
+  const staff = staffOnly(actor);
+  const q = query.trim().slice(0, 100);
+  if (q.length < 2) return [];
+  const filter: TicketFilter = { q, limit: Math.min(Math.max(limit, 1), 25) };
+  const tickets = await c.repo.listTickets(filter);
+  await auditLog(staff.id, "support_ticket_search", "support_tickets", null, { count: tickets.length });
+  return tickets;
 }
 
 /* ───────────────────────── Bulk ticket actions ───────────────────────── */
