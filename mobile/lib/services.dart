@@ -205,7 +205,7 @@ class Updater extends ChangeNotifier {
     status = 'Downloading update…';
     notifyListeners();
     try {
-      await for (final e in OtaUpdate().execute(info.apkUrl, destinationFilename: 'zapnivo-${info.build}.apk')) {
+      await for (final e in OtaUpdate().execute(info.apkUrl, destinationFilename: 'zapnivo-${info.build}.apk', usePackageInstaller: true)) {
         switch (e.status) {
           case OtaStatus.DOWNLOADING:
             progress = (double.tryParse(e.value ?? '0') ?? 0) / 100;
