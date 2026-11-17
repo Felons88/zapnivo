@@ -10,7 +10,7 @@ export default function RentalTerms() {
       <h2>Rental period and charges</h2>
       <ul>
         <li>A rental begins when a power bank is released from the station (verified activation) and ends when it is accepted back by an eligible station.</li>
-        <li>Rental charges are <strong>$6.99 per started hour</strong> — any part of an hour counts as a full hour — calculated using the pricing shown before checkout.</li>
+        <li>Rental charges are <strong>$6.99 for the first hour</strong> and <strong>$2.99 per additional started hour</strong> — any part of an hour counts as a full hour — calculated using the pricing shown before checkout.</li>
         <li>Applicable taxes are added at checkout.</li>
       </ul>
       <PendingReview>Charges for rental periods beyond 24 hours have not been finalized. This page will be updated with the confirmed post-24-hour pricing before launch; do not rely on any figure until then.</PendingReview>

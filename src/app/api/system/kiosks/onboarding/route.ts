@@ -79,12 +79,25 @@ export async function POST(req: Request) {
     .single();
   if (error || !data) return NextResponse.json({ error: error?.message ?? "update failed" }, { status: 500 });
 
+  // Keep the rental-facing kiosks row in sync — it drives the public locator
+  // (venues → kiosks join). Binding is device_uid ↔ station_id (canonical),
+  // with serial_number as the legacy fallback.
+  const bindIds = [device.device_uid, device.serial_number].filter((v): v is string => typeof v === "string" && v.length > 0);
+  let kiosksSynced = 0;
+  if (bindIds.length) {
+    const { data: bound } = await g.db.from("kiosks")
+      .update({ venue_id: venueId })
+      .in("station_id", bindIds)
+      .select("id");
+    kiosksSynced = bound?.length ?? 0;
+  }
+
   await systemAudit(g.db, {
     actor: { id: g.user.id, role: g.role },
     action: "kiosk.venue_assigned",
     resource: deviceAuditResource(device.id),
-    detail: { device_uid: device.device_uid, venue_id: venueId, previous_venue_id: device.venue_id },
+    detail: { device_uid: device.device_uid, venue_id: venueId, previous_venue_id: device.venue_id, kiosks_synced: kiosksSynced },
   });
 
-  return NextResponse.json({ device: data });
+  return NextResponse.json({ device: data, kiosks_synced: kiosksSynced });
 }

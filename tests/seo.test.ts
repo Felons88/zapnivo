@@ -179,7 +179,7 @@ describe("llms.txt routes", () => {
     // Regression: the old copy mislabeled the 24h hourly total as a "cap".
     expect(body).not.toContain("(cap)");
     expect(body).not.toContain("First 24 hours cap");
-    expect(body).toContain("3 hours ≈ $20.97");
-    expect(body).toContain("7 hours ≈ $48.93");
+    expect(body).toContain("3 hours ≈ $12.97");
+    expect(body).toContain("7 hours ≈ $24.93");
   });
 });

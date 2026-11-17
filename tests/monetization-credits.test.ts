@@ -82,12 +82,13 @@ describe("applyCreditsAtSettlement", () => {
     const applied = await applyCreditsAtSettlement(db, "r1", "p1", 1000, pricing, "staff:test");
     expect(applied).toBe(1000);
     const commits = rpcCalls.filter((c) => c.fn.startsWith("commit_entitlement"));
-    // cent partial commit 400; minute partial commit covers remaining 600 → 52 min; rental untouched
+    // cent partial commit 400; minute reservation fully consumed — 600¢ remaining at $2.99/hr
+    // needs ~120 min but only 100 are reserved (~498¢) → rental unit covers the rest
     expect(commits.find((c) => c.args.p_reservation_id === "rc")?.args.p_amount).toBe(400);
     const mc = commits.find((c) => c.args.p_reservation_id === "rm");
     expect(mc?.fn).toBe("commit_entitlement_partial");
-    expect(mc?.args.p_amount).toBe(52); // minutes, not cents
-    expect(commits.find((c) => c.args.p_reservation_id === "rr")).toBeUndefined();
+    expect(mc?.args.p_amount).toBe(100); // minutes, not cents
+    expect(commits.find((c) => c.args.p_reservation_id === "rr")?.fn).toBe("commit_entitlement");
     expect(rpcCalls.some((c) => c.fn === "release_rental_reservations")).toBe(true);
   });
 

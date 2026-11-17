@@ -187,7 +187,7 @@ export default async function KioskDevicePage({ params }: { params: Promise<{ id
             )}
           </div>}
           {appStation && canManage && (
-            <TestModeButton deviceId={device.id} enabled={appStation.test_mode === true} />
+            <TestModeButton deviceId={device.id} enabled={appStation.test_mode === true} scenario={appStation.test_scenario} />
           )}
           {appStation && !canManage && appStation.test_mode === true && (
             <p className="mt-3 text-[11px] font-bold text-amber-200">TEST MODE is enabled for this station — rentals bypass live-availability checks (payment still applies).</p>

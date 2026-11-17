@@ -21,8 +21,8 @@ type RentalRow = {
 
 export const stamp = (iso: string | null) => iso ? new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }) : "—";
 export const year = () => String(new Date().getFullYear());
-// Confirmed pricing: flat $6.99 per started hour, uncapped; $45 non-return fee after 24h.
-const pricingSummary = () => `${fmt(PRICING_V1.firstHourCents)} first hour · ${fmt(PRICING_V1.additionalHourCents)} per started hour · ${fmt(PRICING_V1.nonReturnMaxCents)} non-return fee after ${PRICING_V1.nonReturnAfterHours}h`;
+// Confirmed pricing: $6.99 first hour, $2.99 per additional started hour, uncapped; $45 non-return fee after 24h.
+const pricingSummary = () => `${fmt(PRICING_V1.firstHourCents)} first hour · ${fmt(PRICING_V1.additionalHourCents)} per additional started hour · ${fmt(PRICING_V1.nonReturnMaxCents)} non-return fee after ${PRICING_V1.nonReturnAfterHours}h`;
 
 export type { RentalRow };
 
@@ -177,9 +177,16 @@ export async function triggerNonreturnNotice(rental: RentalRow) {
 export async function triggerPaymentReceipt(stripePaymentIntentId: string) {
   const r = await loadRental({ stripeId: stripePaymentIntentId });
   const to = r && emailFor(r);
-  if (!r || !to) return false;
+  if (!r) return false;
   const p = r.payments[0];
   const paid = fmt(p.amount_captured_cents ?? 0);
+  // Push receipt — fires even when no receipt email exists (phone-only renters).
+  void pushToRentalCustomer(r.id, {
+    title: "Payment captured",
+    body: `${paid} was charged for rental ${r.reference}. Your receipt is in the app.`,
+    data: { type: "rental", reference: r.reference },
+  });
+  if (!to) return false;
   return sendToCustomer(to, "Your Zapnivo payment receipt",
     `Receipt for rental ${r.reference}: ${paid} captured on ${stamp(null)}.`,
     renderEmail("payment_receipt", {

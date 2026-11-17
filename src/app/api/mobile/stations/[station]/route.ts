@@ -16,10 +16,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ station
   if (!db) return NextResponse.json({ error: "Station service is unavailable." }, { status: 503 });
 
   const { data, error } = await db.from("kiosks")
-    .select("id,station_id,state,installed_at,test_mode,venues(name,street,city,state,zip,hours,published,lat,lng)")
+    .select("id,station_id,state,installed_at,test_mode,venues(name,venue_type,street,city,state,zip,hours,published,lat,lng,phone,website,description,accessibility)")
     .eq("station_id", station).maybeSingle();
   if (error) return NextResponse.json({ error: "Station service is unavailable." }, { status: 503 });
-  const row = data as unknown as (KioskVenueRow & { id: string; venues: NonNullable<KioskVenueRow>['venues'] & { lat: number | null; lng: number | null } }) | null;
+  type VenueExtra = NonNullable<KioskVenueRow>['venues'] & {
+    lat: number | null; lng: number | null; venue_type: string | null;
+    phone: string | null; website: string | null; description: string | null; accessibility: string | null;
+  };
+  const row = data as unknown as (KioskVenueRow & { id: string; venues: VenueExtra }) | null;
   const availability = decideAvailability(row, true);
   if (!availability.ok) return NextResponse.json({ error: "This station is not available for rentals." }, { status: 404 });
 
@@ -42,7 +46,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ station
       id: station, name: availability.venueName, address: availability.address,
       city: venue?.city ?? "", state: venue?.state ?? "", hours: availability.hours,
       lat: venue?.lat ?? null, lng: venue?.lng ?? null,
+      venue_type: venue?.venue_type ?? null,
+      phone: venue?.phone ?? null, website: venue?.website ?? null,
+      description: venue?.description ?? null, accessibility: venue?.accessibility ?? null,
       ready_banks: Math.max(0, slots.count ?? 0),
+      // Test stations are flagged so the app can label them honestly — they
+      // must never be presented as public venues.
+      test_mode: testMode,
       // Test mode acts as a live station: rentable whenever not under
       // maintenance. Checkout re-validates payment, promos, and rental limits.
       rentals_available: !maintenance && (testMode || (Boolean(approved) && (slots.count ?? 0) > 0)),
@@ -52,6 +62,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ station
       additional_hour_cents: approved.additionalHourCents,
       non_return_max_cents: approved.nonReturnMaxCents,
       non_return_after_hours: approved.nonReturnAfterHours,
+      hold_cents: approved.holdCentsPerBank,
     } : null,
   }, { headers: { "Cache-Control": "no-store" } });
 }

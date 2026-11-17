@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { fmt, rentalChargeCents, PRICING_V1 } from "./pricing";
+import { pushToEmail, pushToRentalCustomer, type PushMessage } from "./push";
 import { isOptedOut, isTransactionalKind, normalizePhone, sendSms, type SmsSendResult } from "./sms";
 import { serviceClient } from "./supabase";
 import { SITE, subUrl } from "./site";
@@ -38,7 +39,7 @@ export const SMS_JOB_KINDS = [
 export type SmsJobKind = (typeof SMS_JOB_KINDS)[number];
 
 export const DEFAULT_TEMPLATES: Record<string, string> = {
-  activation: "Zapnivo: rental {ref} is active — {rate}/hr, return by {deadline}. Unreturned chargers incur a separate {fee} fee.",
+  activation: "Zapnivo: rental {ref} is active — {rate} first hour, then {rate2}/hr. Return by {deadline}. Unreturned chargers incur a separate {fee} fee.",
   reminder_1h: "Zapnivo: {ref} still active, {charges} accrued. Return by {deadline}.",
   reminder_3h: "Zapnivo: {ref} still active, {charges} accrued. Return by {deadline}.",
   reminder_6h: "Zapnivo: {ref} still active, {charges} accrued. Return by {deadline}.",
@@ -54,7 +55,7 @@ export const DEFAULT_TEMPLATES: Record<string, string> = {
 
 /** Sample values for the admin live preview — real formatting helpers, never sent. */
 export const SMS_SAMPLE_VARS: Record<string, string> = {
-  ref: "ZR-ABC123", rate: fmt(PRICING_V1.firstHourCents), fee: fmt(PRICING_V1.nonReturnMaxCents),
+  ref: "ZR-ABC123", rate: fmt(PRICING_V1.firstHourCents), rate2: fmt(PRICING_V1.additionalHourCents), fee: fmt(PRICING_V1.nonReturnMaxCents),
   deadline: "Nov 12, 3:00 PM UTC", charges: fmt(PRICING_V1.firstHourCents * 3),
   url: `${SITE.url.replace(/\/$/, "")}/account`, ticket: "Z-1042", name: "there",
 };
@@ -77,6 +78,43 @@ export function previewTemplate(template: string, vars: Record<string, string> =
 export async function flag(db: SupabaseClient, key: string): Promise<boolean> {
   const { data } = await db.from("system_config").select("value").eq("key", key).maybeSingle();
   return (data?.value ?? "true") !== "false";
+}
+
+/* ── Push channel ──────────────────────────────────────────────────────────
+ * Every notification_jobs kind doubles as a smart push notification: the
+ * durable schedule (reminders, deadline warnings) and the event jobs
+ * (payment failed, fee charged, return failed) all ping the customer's
+ * registered devices through FCM. Push fires on a job's FIRST attempt only —
+ * retries exist for SMS delivery, not re-pinging the lock screen.
+ * Consent: app-level notification permission is the push opt-in, so these
+ * nudges are not gated on the SMS text-message consent — a separate
+ * `push_enabled` kill switch (default on) controls them.
+ * `activation` returns null — triggerRentalStarted already pushes directly. */
+export function pushForJob(kind: string, vars: Record<string, string>): PushMessage | null {
+  const b = (title: string, body: string): PushMessage => ({ title, body, data: { type: "rental", reference: vars.ref ?? "" } });
+  switch (kind) {
+    case "activation": return null;
+    case "reminder_1h":
+    case "reminder_3h":
+    case "reminder_6h":
+      return b("Your rental is running", `Rental ${vars.ref} — ${vars.charges} so far. Return by ${vars.deadline} to any live station.`);
+    case "reminder_12h":
+      return b("12 hours left", `Rental ${vars.ref} — return by ${vars.deadline}. Charges so far: ${vars.charges}.`);
+    case "warning_20h":
+      return b("4 hours left to return", `Rental ${vars.ref} — after ${vars.deadline} the ${vars.fee} non-return fee applies.`);
+    case "warning_23h":
+      return b("Final reminder: 1 hour left", `Rental ${vars.ref} — return to any Zapnivo station by ${vars.deadline} to avoid the ${vars.fee} fee.`);
+    case "deadline_24h":
+      return b("Return deadline passed", `Rental ${vars.ref} — return now to avoid the ${vars.fee} non-return fee.`);
+    case "return_failed":
+      return b("Return not confirmed", `We couldn't confirm the return of ${vars.ref}. Please drop it at any Zapnivo station.`);
+    case "non_return_fee_charged":
+      return b("Non-return fee charged", `The ${vars.fee} non-return fee for ${vars.ref} was charged to your card on file.`);
+    case "payment_failed":
+      return b("Payment didn't go through", `We couldn't process payment for ${vars.ref} — no charger was released and nothing was charged.`);
+    default:
+      return null;
+  }
 }
 
 /** Queues the confirmed schedule for a rental (idempotent — unique key per kind). */
@@ -152,14 +190,26 @@ async function markCancelled(db: SupabaseClient, job: JobRow, error: string) {
 }
 
 /** Support-ticket confirmation job: phone comes from the ticket, link is the signed thread URL. */
-async function sweepTicketJob(db: SupabaseClient, job: JobRow, now: Date): Promise<"sent" | "failed" | "cancelled" | "retried"> {
+async function sweepTicketJob(db: SupabaseClient, job: JobRow, now: Date, channels: { smsEnabled: boolean; pushEnabled: boolean }): Promise<"sent" | "failed" | "cancelled" | "retried"> {
   const { data: t } = await db.from("support_tickets")
     .select("id,ticket_number,name,email,phone,state")
     .eq("id", job.ticket_id).maybeSingle();
   const ticket = t as { id: string; ticket_number: string; name: string | null; email: string; phone: string | null; state: string } | null;
   if (!ticket) { await markCancelled(db, job, "ticket_missing"); return "cancelled"; }
   if (["resolved", "closed"].includes(ticket.state)) { await markCancelled(db, job, "ticket_closed"); return "cancelled"; }
+  let pushed = 0;
+  if (channels.pushEnabled && job.attempts === 0) {
+    pushed = await pushToEmail(ticket.email, {
+      title: "We received your request",
+      body: `Support request ${ticket.ticket_number} is open — we'll reply here and by email.`,
+      data: { type: "ticket", number: ticket.ticket_number },
+    }).catch(() => 0);
+  }
   const phone = normalizePhone(ticket.phone);
+  if (!channels.smsEnabled) {
+    if (pushed > 0) { await markSent(db, job, now); return "sent"; }
+    return markRetry(db, job, now, "sms_disabled_no_push");
+  }
   if (!phone) { await markRetry(db, job, now, "no_phone"); return "failed"; }
 
   const tok = signAccess(ticket.ticket_number, ticket.email);
@@ -181,7 +231,11 @@ async function sweepTicketJob(db: SupabaseClient, job: JobRow, now: Date): Promi
  * skip the consent/opt-out gates but still dedupe and retry.
  */
 export async function runSmsSweep(db: SupabaseClient, now = new Date()) {
-  if (!(await flag(db, "sms_enabled"))) return { sent: 0, skipped: "sms_disabled" };
+  // Two independent channels: sms_enabled gates Twilio, push_enabled gates FCM.
+  // Both off → the whole sweep is a no-op.
+  const smsEnabled = await flag(db, "sms_enabled");
+  const pushEnabled = await flag(db, "push_enabled");
+  if (!smsEnabled && !pushEnabled) return { sent: 0, skipped: "notifications_disabled" };
   const { data: due } = await db.from("notification_jobs")
     .select("id,rental_id,ticket_id,kind,attempts")
     .eq("status", "queued").lte("due_at", now.toISOString()).limit(50);
@@ -194,7 +248,7 @@ export async function runSmsSweep(db: SupabaseClient, now = new Date()) {
 
     // Ticket-scoped jobs (ticket_received) have no rental.
     if (!job.rental_id) {
-      const r = await sweepTicketJob(db, job, now);
+      const r = await sweepTicketJob(db, job, now, { smsEnabled, pushEnabled });
       if (r === "sent") sent++; else if (r === "failed") failed++;
       continue;
     }
@@ -213,10 +267,6 @@ export async function runSmsSweep(db: SupabaseClient, now = new Date()) {
     if (terminal && !transactional) { await markCancelled(db, job, "rental_closed"); continue; }
     // A return_failed notice is only truthful while the return is actually unconfirmed.
     if (job.kind === "return_failed" && (!rental || rental.returned_at || rental.state === "returned" || rental.state === "closed")) { await markCancelled(db, job, "return_confirmed"); continue; }
-    // Consent gate: scheduled nudges need checkout sms_consent; transactional confirmations don't.
-    if (!transactional && rental && !rental.sms_consent) { await markCancelled(db, job, "no_sms_consent"); continue; }
-    // STOP opt-out suppresses nudges; transactional confirmations still send per consent wording.
-    if (!transactional && (await isOptedOut(db, phone))) { await markCancelled(db, job, "opted_out"); continue; }
     if (!rental) { await markCancelled(db, job, "rental_missing"); continue; }
 
     // Deadline/warning jobs re-verify the rental is actually still out past the mark.
@@ -229,20 +279,47 @@ export async function runSmsSweep(db: SupabaseClient, now = new Date()) {
     const feeCents = job.kind === "non_return_fee_charged" && pay?.amount_captured_cents && pay.amount_captured_cents > 0
       ? pay.amount_captured_cents : PRICING_V1.nonReturnMaxCents;
     const vars = {
-      ref: rental.reference, rate: fmt(PRICING_V1.firstHourCents), fee: fmt(feeCents),
+      ref: rental.reference, rate: fmt(PRICING_V1.firstHourCents), rate2: fmt(PRICING_V1.additionalHourCents), fee: fmt(feeCents),
       deadline: stamp(rental.non_return_deadline),
       charges: charges != null ? fmt(charges) : "—",
       url: `${SITE.url.replace(/\/$/, "")}/account`, ticket: "", name: "",
     };
-    const tpl = await templateFor(db, job.kind);
-    const body = tpl ? interpolate(tpl, vars) : null;
-    const res: SmsSendResult = phone && body ? await sendSms(db, { to: phone, body, rentalId: job.rental_id, kind: job.kind }) : { sent: false };
-    if (res.sent) {
+
+    // PUSH — first attempt only, and NOT gated on sms_consent/opt-out: the app's
+    // OS notification permission is the push opt-in (SMS consent wording covers
+    // texts only). A delivered push satisfies the job on its own.
+    let pushed = 0;
+    if (pushEnabled && job.attempts === 0) {
+      const msg = pushForJob(job.kind, vars);
+      if (msg) pushed = await pushToRentalCustomer(rental.id, msg).catch(() => 0);
+    }
+
+    // SMS channel — consent gates apply here only.
+    let smsSent = false;
+    let smsErr = "no_phone";
+    if (smsEnabled) {
+      // Consent gate: scheduled nudges need checkout sms_consent; transactional confirmations don't.
+      if (!transactional && rental && !rental.sms_consent) {
+        if (pushed > 0) { await markSent(db, job, now); sent++; } else await markCancelled(db, job, "no_sms_consent");
+        continue;
+      }
+      // STOP opt-out suppresses nudges; transactional confirmations still send per consent wording.
+      if (!transactional && (await isOptedOut(db, phone))) {
+        if (pushed > 0) { await markSent(db, job, now); sent++; } else await markCancelled(db, job, "opted_out");
+        continue;
+      }
+      const tpl = await templateFor(db, job.kind);
+      const body = tpl ? interpolate(tpl, vars) : null;
+      const res: SmsSendResult = phone && body ? await sendSms(db, { to: phone, body, rentalId: job.rental_id, kind: job.kind }) : { sent: false };
+      smsSent = res.sent;
+      smsErr = !phone ? "no_phone" : res.errorCode ? `send_failed:${res.errorCode}` : "send_failed";
+    }
+
+    if (pushed > 0 || smsSent) {
       await markSent(db, job, now);
       sent++;
     } else {
-      const err = !phone ? "no_phone" : res.errorCode ? `send_failed:${res.errorCode}` : "send_failed";
-      const outcome = await markRetry(db, job, now, err);
+      const outcome = await markRetry(db, job, now, smsEnabled ? smsErr : "no_channel_delivered");
       if (outcome === "failed") failed++;
     }
   }

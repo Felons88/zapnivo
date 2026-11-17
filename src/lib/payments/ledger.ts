@@ -8,7 +8,7 @@ import { recordLog } from "../observability";
  * `idempotency_key` is UNIQUE, so a retried write fails with code "duplicate" instead of double-posting.
  */
 
-export type LedgerKind = "rental_charge" | "non_return_fee" | "refund" | "adjustment";
+export type LedgerKind = "rental_charge" | "rental_overage" | "non_return_fee" | "refund" | "adjustment";
 export type LedgerStatus = "pending" | "succeeded" | "failed" | "refunded" | "cancelled";
 
 export type LedgerEntry = {

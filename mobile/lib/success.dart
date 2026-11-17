@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'animations.dart';
 import 'api.dart';
 import 'app_state.dart';
+import 'rental_flow.dart';
 import 'support.dart';
 import 'theme.dart';
 import 'widgets.dart';
@@ -111,17 +112,19 @@ class PaymentSuccessScreen extends StatelessWidget {
   final Rental rental;
   @override
   Widget build(BuildContext context) => _SuccessPage(
-    title: 'Payment successful',
-    message: rental.state == 'active' ? 'Your rental has started. Take your charger from the station.' : 'Your payment went through. The station is dispensing your power bank now.',
+    title: rental.state == 'active' ? 'You\'re All Charged Up!' : 'Payment successful',
+    message: rental.state == 'active' ? 'Your Zapnivo rental is now active. Please remove your power bank from the station.' : 'Your payment went through. The station is dispensing your power bank now.',
     rental: rental,
     actions: [
       PrimaryButton(
-        label: 'Go to Active Rental',
+        label: 'View Active Rental',
         onPressed: () {
           AppScope.of(context).setTab(2);
           Navigator.of(context).popUntil((r) => r.isFirst);
         },
       ),
+      const SizedBox(height: 10),
+      GlassButton(label: 'Find Return Station', icon: Icons.keyboard_return_rounded, onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const ReturnLocationsScreen()))),
       const SizedBox(height: 10),
       GlassButton(label: 'View Receipt', icon: Icons.receipt_long_outlined, onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => ReceiptScreen(rental: rental)))),
     ],
@@ -133,8 +136,8 @@ class ReturnSuccessScreen extends StatelessWidget {
   final Rental rental;
   @override
   Widget build(BuildContext context) => _SuccessPage(
-    title: 'Return successful',
-    message: 'Your charger is back. Thanks for using Zapnivo!',
+    title: 'Power Bank Returned!',
+    message: 'Thanks for charging with Zapnivo! Your final charge is shown below.',
     rental: rental,
     actions: [
       PrimaryButton(label: 'Done', onPressed: () {

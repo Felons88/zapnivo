@@ -6,6 +6,10 @@ import 'package:flutter/services.dart';
 
 import 'theme.dart';
 
+/// True when the OS asks apps to minimize motion (Android "Remove animations" /
+/// accessibility). Screens should shorten or skip decorative animation.
+bool reducedMotion(BuildContext context) => MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+
 /// Every route fades and rises slightly; feels like a native sheet without a heavy slide.
 class ZapPageTransitions extends PageTransitionsBuilder {
   const ZapPageTransitions();
@@ -45,6 +49,15 @@ class _FadeSlideInState extends State<FadeSlideIn> with SingleTickerProviderStat
       timer = Timer(widget.delay, () {
         if (mounted) c.forward();
       });
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (reducedMotion(context)) {
+      timer?.cancel();
+      c.value = 1;
     }
   }
 
@@ -119,6 +132,9 @@ class _SkeletonState extends State<Skeleton> with SingleTickerProviderStateMixin
     if (ModalRoute.of(context)?.isCurrent == false) {
       return Container(height: widget.height, decoration: BoxDecoration(borderRadius: BorderRadius.circular(widget.radius), color: Colors.white.withValues(alpha: 0.08)));
     }
+    if (reducedMotion(context)) {
+      return Container(height: widget.height, decoration: BoxDecoration(borderRadius: BorderRadius.circular(widget.radius), color: Colors.white.withValues(alpha: 0.08)));
+    }
     return AnimatedBuilder(
       animation: c,
       builder: (_, _) => Container(
@@ -157,14 +173,23 @@ class AnimatedCheckmark extends StatefulWidget {
 
 class _AnimatedCheckmarkState extends State<AnimatedCheckmark> with SingleTickerProviderStateMixin {
   late final c = AnimationController(vsync: this, duration: const Duration(milliseconds: 1500));
+  bool _settled = false;
 
   @override
   void initState() {
     super.initState();
     c.forward().whenComplete(() {
+      if (_settled) return;
+      _settled = true;
       HapticFeedback.mediumImpact();
       widget.onDone?.call();
     });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (reducedMotion(context)) c.value = 1;
   }
 
   @override
@@ -252,7 +277,7 @@ class CountUpMoney extends StatelessWidget {
   final Duration delay;
   @override
   Widget build(BuildContext context) {
-    if (ModalRoute.of(context)?.isCurrent == false) return Text(money(cents), style: style);
+    if (ModalRoute.of(context)?.isCurrent == false || reducedMotion(context)) return Text(money(cents), style: style);
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0, end: cents.toDouble()),
       duration: const Duration(milliseconds: 900),
@@ -280,7 +305,7 @@ class _PulseState extends State<Pulse> with SingleTickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
-    if (ModalRoute.of(context)?.isCurrent == false) return widget.child;
+    if (ModalRoute.of(context)?.isCurrent == false || reducedMotion(context)) return widget.child;
     return FadeTransition(opacity: Tween(begin: 0.45, end: 1.0).animate(CurvedAnimation(parent: c, curve: Curves.easeInOut)), child: widget.child);
   }
 }

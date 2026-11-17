@@ -22,9 +22,10 @@ The production API is `https://api.zapnivo.com`. For a local backend, pass `--da
 ## Backend contract
 
 - `GET /api/mobile/stations`: live, verified stations and the current **approved** pricing version. No published stations means an empty list; no approved pricing means `pricing: null` and the payment form stays hidden.
-- `GET /api/mobile/stations/:id`: direct QR/manual lookup, even when a station has no map coordinates.
+- `GET /api/mobile/stations/:id`: direct QR/manual lookup, even when a station has no map coordinates. `test_mode` marks staff test stations — the app labels them and never presents them as public venues.
+- `POST /api/mobile/checkout/quote`: read-only, bearer-authenticated quote. Re-runs the checkout gates (station, maintenance, inventory, pricing) and validates a promo WITHOUT reserving it; returns authoritative `hold_cents`, `first_hour_estimate_cents`, and a promo discount preview. The app re-quotes right before creating the Stripe session.
 - `GET /api/mobile/config` and `POST /api/mobile/auth/phone`: mobile auth settings and SMS code flow.
-- `GET /api/mobile/me` and `GET /api/mobile/rentals`: signed-in account and rental timeline.
+- `GET /api/mobile/me` and `GET /api/mobile/rentals`: signed-in account and rental timeline. In-progress rentals carry a `dispense` block — `{stage, slot, errorCode, simulated, commandStatus, updatedAt}` — the normalized stage the backend derives from `device_commands` + `device_events` (`connecting` → `verifying` → `preparing` → `releasing` → `dispensing` → `almost_ready` → `ready`, or `failed`/`checking`). The dispensing screen mirrors this state; it never decides success itself. This endpoint also advances due test-kiosk simulated dispense stages through the real ingest pipeline.
 - `POST /api/rentals/checkout`: the existing server-owned rental and Stripe Checkout flow. The app sends station ID, receipt email, bank count, optional promo, and terms consent; it never sends or calculates a charge.
 - Station QRs already encode `https://www.zapnivo.com/r/<station_id>`. The app accepts that format and manual station IDs; it rejects foreign QR URLs.
 - The website handles Stripe success/cancel in the browser. Only the station's physical return confirmation ends a rental.

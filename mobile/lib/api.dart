@@ -21,6 +21,15 @@ class Station {
     this.hours,
     this.readyBanks,
     this.rentalsAvailable,
+    this.testMode = false,
+    this.stationState,
+    this.slotCount,
+    this.venueType,
+    this.zip,
+    this.phone,
+    this.website,
+    this.description,
+    this.accessibility,
   });
 
   final String id;
@@ -33,6 +42,18 @@ class Station {
   final String? hours;
   final int? readyBanks;
   final bool? rentalsAvailable;
+  /// Staff-flagged development station — the app must label it, never present it as a public venue.
+  final bool testMode;
+  /// Backend-derived operational status: available | offline | maintenance | stale.
+  /// Older servers don't send it — availability helpers fall back to readyBanks.
+  final String? stationState;
+  final int? slotCount;
+  final String? venueType;
+  final String? zip;
+  final String? phone;
+  final String? website;
+  final String? description;
+  final String? accessibility;
 
   factory Station.fromJson(Map<String, dynamic> json) => Station(
     id: json['id'] as String,
@@ -45,6 +66,15 @@ class Station {
     hours: json['hours'] as String?,
     readyBanks: json['ready_banks'] as int?,
     rentalsAvailable: json['rentals_available'] as bool?,
+    testMode: json['test_mode'] == true,
+    stationState: json['station_state'] as String?,
+    slotCount: json['slot_count'] as int?,
+    venueType: json['venue_type'] as String?,
+    zip: json['zip'] as String?,
+    phone: json['phone'] as String?,
+    website: json['website'] as String?,
+    description: json['description'] as String?,
+    accessibility: json['accessibility'] as String?,
   );
 }
 
@@ -54,18 +84,23 @@ class RentalPricing {
     required this.additionalHourCents,
     required this.nonReturnMaxCents,
     required this.nonReturnAfterHours,
+    required this.holdCentsPerBank,
   });
 
   final int firstHourCents;
   final int additionalHourCents;
   final int nonReturnMaxCents;
   final int nonReturnAfterHours;
+  /// Card authorization per bank — decoupled from the non-return fee, which
+  /// bills separately off-session.
+  final int holdCentsPerBank;
 
   factory RentalPricing.fromJson(Map<String, dynamic> json) => RentalPricing(
     firstHourCents: json['first_hour_cents'] as int,
     additionalHourCents: json['additional_hour_cents'] as int,
     nonReturnMaxCents: json['non_return_max_cents'] as int,
     nonReturnAfterHours: json['non_return_after_hours'] as int,
+    holdCentsPerBank: (json['hold_cents'] as num?)?.toInt() ?? (json['non_return_max_cents'] as int),
   );
 }
 
@@ -88,6 +123,7 @@ class Rental {
     this.paymentState,
     this.receiptEmail,
     this.promoCode,
+    this.dispense,
   });
 
   final String state;
@@ -107,6 +143,7 @@ class Rental {
   final String? paymentState;
   final String? receiptEmail;
   final String? promoCode;
+  final DispenseInfo? dispense;
 
   static const finished = ['returned', 'closed', 'cancelled', 'charged_off', 'non_return_fee_paid', 'non_return_fee_pending', 'disputed'];
   static const inProgress = ['payment_authorized', 'dispense_pending', 'active', 'return_pending', 'unreturned', 'overdue'];
@@ -161,8 +198,60 @@ class Rental {
       paymentState: json['payment_state'] as String?,
       receiptEmail: json['receipt_email'] as String?,
       promoCode: json['promo_code'] as String?,
+      dispense: json['dispense'] is Map<String, dynamic>
+          ? DispenseInfo.fromJson(json['dispense'] as Map<String, dynamic>)
+          : null,
     );
   }
+}
+
+/// Backend-derived dispense progress — the normalized stage computed from
+/// durable `device_commands` + `device_events` rows (server-side
+/// `dispenseStatusFor`). The UI mirrors this state only; nothing in the app
+/// decides when a dispense succeeded.
+class DispenseInfo {
+  const DispenseInfo({
+    required this.stage,
+    this.slot,
+    this.errorCode,
+    this.simulated = false,
+    this.commandStatus,
+    this.updatedAt,
+  });
+
+  /// connecting | verifying | preparing | releasing | dispensing |
+  /// almost_ready | ready | failed | checking
+  final String stage;
+  final int? slot;
+  final String? errorCode;
+  final bool simulated;
+  final String? commandStatus;
+  final DateTime? updatedAt;
+
+  /// Monotonic progress index (terminal failure kinds share -1) — lets the UI
+  /// refuse to regress from a later stage to a stale earlier one.
+  int get progress => switch (stage) {
+        'connecting' => 0,
+        'verifying' => 1,
+        'preparing' => 2,
+        'releasing' => 3,
+        'dispensing' => 4,
+        'almost_ready' => 5,
+        'ready' => 6,
+        _ => -1,
+      };
+
+  bool get isTerminal => stage == 'ready' || stage == 'failed';
+  bool get isUncertain => stage == 'checking';
+
+  factory DispenseInfo.fromJson(Map<String, dynamic> j) => DispenseInfo(
+        stage: j['stage'] as String? ?? 'connecting',
+        slot: (j['slot'] as num?)?.toInt(),
+        errorCode: j['errorCode'] as String?,
+        simulated: j['simulated'] == true,
+        commandStatus: j['commandStatus'] as String?,
+        updatedAt: j['updatedAt'] is String ? DateTime.tryParse(j['updatedAt'] as String)?.toLocal() : null,
+      );
 }
 
 class TicketSummary {
@@ -230,6 +319,63 @@ class StationSnapshot {
   const StationSnapshot(this.stations, this.pricing);
   final List<Station> stations;
   final RentalPricing? pricing;
+}
+
+/// Server-issued checkout quote. All amounts are authoritative cents computed
+/// on the server — the app renders them verbatim and never derives prices.
+class RentalQuote {
+  const RentalQuote({
+    required this.stationId,
+    required this.bankCount,
+    required this.readyBanks,
+    required this.holdCents,
+    required this.firstHourEstimateCents,
+    required this.additionalHourCents,
+    required this.nonReturnMaxCents,
+    required this.nonReturnAfterHours,
+    this.promo,
+  });
+
+  final String stationId;
+  final int bankCount;
+  final int readyBanks;
+  final int holdCents;
+  final int firstHourEstimateCents;
+  final int additionalHourCents;
+  final int nonReturnMaxCents;
+  final int nonReturnAfterHours;
+  final QuotePromo? promo;
+
+  factory RentalQuote.fromJson(Map<String, dynamic> json) => RentalQuote(
+    stationId: json['station_id'] as String? ?? '',
+    bankCount: (json['bank_count'] as num?)?.toInt() ?? 1,
+    readyBanks: (json['ready_banks'] as num?)?.toInt() ?? 0,
+    holdCents: (json['hold_cents'] as num?)?.toInt() ?? 0,
+    firstHourEstimateCents: (json['first_hour_estimate_cents'] as num?)?.toInt() ?? 0,
+    additionalHourCents: (json['additional_hour_cents'] as num?)?.toInt() ?? 0,
+    nonReturnMaxCents: (json['non_return_max_cents'] as num?)?.toInt() ?? 0,
+    nonReturnAfterHours: (json['non_return_after_hours'] as num?)?.toInt() ?? 0,
+    promo: json['promo'] is Map<String, dynamic> ? QuotePromo.fromJson(json['promo'] as Map<String, dynamic>) : null,
+  );
+}
+
+class QuotePromo {
+  const QuotePromo({required this.code, required this.valid, this.percentOff, this.amountOffCents, this.discountPreviewCents});
+  final String code;
+  final bool valid;
+  final double? percentOff;
+  final int? amountOffCents;
+  /// Estimated discount on the first-hour charge. The real discount is
+  /// recomputed at settlement from actual usage.
+  final int? discountPreviewCents;
+
+  factory QuotePromo.fromJson(Map<String, dynamic> json) => QuotePromo(
+    code: json['code'] as String? ?? '',
+    valid: json['valid'] == true,
+    percentOff: (json['percent_off'] as num?)?.toDouble(),
+    amountOffCents: (json['amount_off_cents'] as num?)?.toInt(),
+    discountPreviewCents: (json['discount_preview_cents'] as num?)?.toInt(),
+  );
 }
 
 class ApiException implements Exception {
@@ -393,6 +539,18 @@ class ZapnivoApi {
         'Station details could not be read. Please try again.',
       );
     }
+  }
+
+  /// Read-only quote: re-validates the station, refreshes pricing and inventory,
+  /// and validates a promo code without reserving it. Amounts returned are
+  /// authoritative — render them verbatim.
+  Future<RentalQuote> checkoutQuote({required String stationId, required int bankCount, String? promoCode}) async {
+    final body = await _protected('POST', '/api/mobile/checkout/quote', body: {
+      'station_id': stationId,
+      'bank_count': bankCount,
+      if (promoCode != null && promoCode.trim().isNotEmpty) 'promo_code': promoCode.trim(),
+    });
+    return RentalQuote.fromJson(body['quote'] as Map<String, dynamic>? ?? const {});
   }
 
   Future<Uri> createCheckout({

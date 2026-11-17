@@ -72,8 +72,8 @@ describe("describeRental", () => {
     expect(out).not.toMatch(/@|receipt_email|station_id|ZP-001/);
   });
   it("2.5h rental charged the matching published amount is fine (no refund nudge)", () => {
-    const r = describeRental(row()); // 150 min → 3 started hours → 699+400 = 1099, capped 1299
-    expect(r.expectedCents).toBe(2097);
+    const r = describeRental(row()); // 150 min → 3 started hours → 699 + 2×299 = 1297
+    expect(r.expectedCents).toBe(1297);
     expect(r.suggestRefund).toBe(false);
   });
   it("flags a charge above the published rate and routes to refund review", () => {

@@ -47,8 +47,8 @@ export const NAV: NavGroup[] = [
   {
     name: "Kiosk Infrastructure",
     items: [
-      { href: "/system/kiosks", label: "Fleet registry" },
       { href: "/system/venues", label: "Venues" },
+      { href: "/system/kiosks", label: "Fleet registry" },
       { href: "/system/kiosks/register", label: "Register kiosk" },
       { href: "/system/kiosks/maintenance", label: "Maintenance" },
       { href: "/system/kiosks/provision-qr", label: "Provisioning QR" },

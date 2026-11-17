@@ -1,55 +1,57 @@
 export const dynamic = "force-dynamic";
 import type { Metadata } from "next";
 import { SystemGate } from "@/components/SystemGate";
+import { getSessionUser } from "@/lib/auth";
+import { roleCan, systemRole } from "@/lib/system/rbac";
 import { serviceClient } from "@/lib/supabase";
-import { VenuesManager } from "./VenuesManager";
+import { VENUE_ADMIN_SELECT } from "@/lib/venues";
+import { VenuesManager, type OrgItem, type VenueItem } from "./VenuesManager";
 
-export const metadata: Metadata = { title: "Kiosk Infrastructure — Venues" };
-
-type VenueRow = {
-  id: string; name: string; venue_type: string; street: string; city: string; state: string;
-  zip: string | null; hours: string | null; lat: number | null; lng: number | null;
-  published: boolean; organization_id: string | null; equipment_category: string | null;
-  created_at: string;
-  organizations: { name: string } | { name: string }[] | null;
-  kiosks: { id: string; station_id: string | null; state: string; test_mode: boolean | null }[] | null;
-};
+export const metadata: Metadata = { title: "Venues" };
 
 export default async function SystemVenuesPage() {
   const db = serviceClient();
-  const [venuesRes, orgsRes] = db
-    ? await Promise.all([
-        db.from("venues")
-          .select("id,name,venue_type,street,city,state,zip,hours,lat,lng,published,organization_id,equipment_category,created_at,organizations(name),kiosks(id,station_id,state,test_mode)")
-          .order("name").limit(500),
-        db.from("organizations").select("id,name").order("name").limit(500),
-      ])
-    : [{ data: [] }, { data: [] }];
+  const user = await getSessionUser();
+  const role = user ? await systemRole(user) : null;
+  const canManage = roleCan(role, "system.kiosks.manage");
 
-  const venues = ((venuesRes as { data?: VenueRow[] }).data ?? []).map((v) => ({
-    ...v,
-    organization: Array.isArray(v.organizations) ? v.organizations[0]?.name ?? null : v.organizations?.name ?? null,
-    kiosks: v.kiosks ?? [],
-  }));
-  const orgs = (((orgsRes as { data?: { id: string; name: string }[] }).data) ?? []).map((o) => ({ id: o.id, name: o.name }));
+  let venues: VenueItem[] = [];
+  let organizations: OrgItem[] = [];
+  if (db) {
+    const [{ data }, { data: orgs }] = await Promise.all([
+      db.from("venues").select(VENUE_ADMIN_SELECT).order("name").limit(500),
+      db.from("organizations").select("id,name").order("name").limit(200),
+    ]);
+    const rows = (data ?? []) as Omit<VenueItem, "kiosk_count" | "device_count">[];
+    organizations = (orgs ?? []) as OrgItem[];
+    const ids = rows.map((v) => v.id);
+    const [kiosks, devices] = ids.length ? await Promise.all([
+      db.from("kiosks").select("venue_id").in("venue_id", ids),
+      db.from("system_devices").select("venue_id").in("venue_id", ids),
+    ]) : [{ data: [] as { venue_id: string | null }[] }, { data: [] as { venue_id: string | null }[] }];
+    const count = (list: { venue_id: string | null }[] | null) => {
+      const m = new Map<string, number>();
+      for (const r of list ?? []) if (r.venue_id) m.set(r.venue_id, (m.get(r.venue_id) ?? 0) + 1);
+      return m;
+    };
+    const kc = count(kiosks.data as { venue_id: string | null }[] | null);
+    const dc = count(devices.data as { venue_id: string | null }[] | null);
+    venues = rows.map((v) => ({ ...v, kiosk_count: kc.get(v.id) ?? 0, device_count: dc.get(v.id) ?? 0 }));
+  }
 
   return (
     <SystemGate perm="system.kiosks.view">
       <div className="space-y-6">
         <header>
           <p className="eyebrow text-lime">Kiosk Infrastructure</p>
-          <h1 className="display-md mt-1 text-slate-100">Venues</h1>
+          <h1 className="display-md mt-1 text-slate-100">Venues &amp; locations</h1>
           <p className="mt-2 max-w-3xl text-sm text-slate-400">
-            Physical locations that host Zapnivo stations. New venues start <strong>unpublished</strong> — they only appear
-            on the public map and accept live rentals once published <em>and</em> a bound kiosk is online with ready banks.
-            Test-mode kiosks can rent against an unpublished venue for pre-launch testing.
+            Search Mapbox to prefill a venue, verify the details, and publish when it&apos;s verified live.
+            Published venues with an installed, online station appear on the website and in the app.
+            Internal contact info and notes never leave this console.
           </p>
         </header>
-        {!db ? (
-          <p className="rounded-xl border border-white/10 bg-white/[0.04] p-4 text-sm text-slate-400">Backend not configured — venue management unavailable.</p>
-        ) : (
-          <VenuesManager venues={venues} orgs={orgs} />
-        )}
+        <VenuesManager venues={venues} organizations={organizations} canManage={canManage} />
       </div>
     </SystemGate>
   );

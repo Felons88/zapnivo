@@ -6,7 +6,7 @@ import { auditLog } from "@/lib/audit";
 import { applyPromo, holdCents, PRICING_SELECT, pricingFromRow, proportionalTaxCents, rentalChargeCents, type PricingRow } from "@/lib/billing";
 import { lookupPromo } from "@/lib/promos";
 import { nonReturnDeadlineIso } from "@/lib/payments/nonreturn-deadline";
-import { cancelPaymentIntent, capturePaymentIntent, PAYMENTS_UNCONFIGURED, stripeConfigured, taxEnabled } from "@/lib/stripe";
+import { cancelPaymentIntent, capturePaymentIntent, createOffSessionPaymentIntent, PAYMENTS_UNCONFIGURED, retrievePaymentIntent, stripeConfigured, taxEnabled } from "@/lib/stripe";
 import { chargeNonReturnFee } from "@/lib/payments/nonreturn";
 import { notifyFeeCharged } from "@/lib/notifications";
 import { appendLedger } from "@/lib/payments/ledger";
@@ -138,13 +138,53 @@ async function captureOnReturn(db: NonNullable<ReturnType<typeof serviceClient>>
     await auditLog(actor, "release_hold", "payment", pay.id, { discountCents, creditApplied });
     return { status: "released", detail: creditApplied > 0 ? "Fully covered by credits; the hold was released." : "Fully discounted; the hold was released.", cents: 0 };
   }
-  const cap = await capturePaymentIntent(pay.stripe_payment_intent_id, chargeTotal, `capture_${pay.id}`);
+  // The $12 hold caps what Stripe can capture. Anything above the authorized
+  // amount bills off-session on the saved card — the same pattern as the
+  // non-return fee — so rentals longer than the hold covers still settle
+  // instead of failing capture.
+  const authorized = holdCents(pricing, r.bank_count);
+  const captureNow = Math.min(chargeTotal, authorized);
+  const remainder = chargeTotal - captureNow;
+  const cap = await capturePaymentIntent(pay.stripe_payment_intent_id, captureNow, `capture_${pay.id}`);
   if (!cap.ok) return { status: "error", detail: `Capture failed (${cap.code}). The payment stays authorized.` };
-  await db.from("payments").update({ state: "captured", amount_captured_cents: chargeTotal, discount_cents: discountCents, tax_cents: tax, credit_cents: creditApplied, captured_at: now.toISOString() }).eq("id", pay.id);
-  await appendLedger(db, { rentalId: id, kind: "rental_charge", amountCents: chargeTotal, stripePaymentIntentId: pay.stripe_payment_intent_id, status: "succeeded", idempotencyKey: `capture:${pay.id}`, metadata: { discount_cents: discountCents, sponsor_discount_cents: sponsorDiscount, credit_cents: creditApplied, tax_cents: tax, bank_count: r.bank_count } });
+  await appendLedger(db, { rentalId: id, kind: "rental_charge", amountCents: captureNow, stripePaymentIntentId: pay.stripe_payment_intent_id, status: "succeeded", idempotencyKey: `capture:${pay.id}`, metadata: { discount_cents: discountCents, sponsor_discount_cents: sponsorDiscount, credit_cents: creditApplied, tax_cents: tax, bank_count: r.bank_count } });
+
+  let overageCents = 0;
+  if (remainder > 0) {
+    const hold = await retrievePaymentIntent(pay.stripe_payment_intent_id);
+    const holdData = hold.ok ? hold.data : null;
+    const pm = holdData?.payment_method ?? null;
+    let overagePi: string | null = null;
+    if (pm) {
+      const oc = await createOffSessionPaymentIntent({
+        amountCents: remainder, paymentMethodId: pm, customerId: holdData?.customer ?? null,
+        rentalId: id, kind: "rental_overage",
+        description: `Zapnivo rental overage${r.reference ? ` — rental ${r.reference}` : ""}`,
+        idempotencyKey: `overage:${pay.id}`,
+      });
+      if (oc.ok) {
+        overagePi = oc.data.id;
+        if (oc.data.status === "succeeded") overageCents = remainder;
+      }
+    }
+    await appendLedger(db, {
+      rentalId: id, kind: "rental_overage", amountCents: remainder, stripePaymentIntentId: overagePi,
+      status: overageCents === remainder ? "succeeded" : "failed", idempotencyKey: `overage:${pay.id}`,
+      metadata: { reason: !pm ? "no_saved_payment_method" : overageCents === remainder ? "captured_off_session" : "off_session_failed" },
+    });
+    if (overageCents !== remainder) {
+      await auditLog(actor, "rental_overage_failed", "rental", id, { remainder, reason: !pm ? "no_saved_payment_method" : "off_session_failed" });
+    }
+  }
+
+  const billedCents = captureNow + overageCents;
+  await db.from("payments").update({ state: "captured", amount_captured_cents: billedCents, discount_cents: discountCents, tax_cents: tax, credit_cents: creditApplied, captured_at: now.toISOString() }).eq("id", pay.id);
   if (sponsorCampaignId && sponsorDiscount > 0) await recordSponsorSpend(db, sponsorCampaignId, sponsorDiscount).catch(() => undefined);
-  await auditLog(actor, "capture_on_return", "payment", pay.id, { total, chargeTotal, discountCents, sponsorDiscount, creditApplied, tax, banks: r.bank_count });
-  return { status: "captured", detail: creditApplied > 0 ? `Charge captured (${creditApplied}¢ covered by credits).` : "Charge captured.", cents: chargeTotal };
+  await auditLog(actor, "capture_on_return", "payment", pay.id, { total, chargeTotal, captureNow, overageCents, discountCents, sponsorDiscount, creditApplied, tax, banks: r.bank_count });
+  const detail = remainder > 0
+    ? (overageCents === remainder ? `Charge captured — ${remainder}¢ above the hold billed to the saved card.` : `Hold captured; ${remainder}¢ overage could not be billed off-session — needs review.`)
+    : (creditApplied > 0 ? `Charge captured (${creditApplied}¢ covered by credits).` : "Charge captured.");
+  return { status: "captured", detail, cents: billedCents };
 }
 
 /**

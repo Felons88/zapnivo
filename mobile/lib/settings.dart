@@ -468,10 +468,84 @@ class _AboutScreenState extends State<AboutScreen> {
     title: 'About Zapnivo',
     footer: const Padding(padding: EdgeInsets.symmetric(horizontal: 24), child: _Version()),
     children: [
-      SettingsRow(icon: Icons.system_update_alt_rounded, label: checking ? 'Checking…' : 'Check for updates', subtitle: note ?? 'The app also checks automatically every 5 minutes', onTap: checking ? null : check),
+      _UpdateBox(checking: checking, note: note, onCheck: check),
       SettingsRow(icon: Icons.menu_book_outlined, label: 'How Zapnivo works', onTap: () => _push(context, const HowItWorksScreen())),
       SettingsRow(icon: Icons.description_outlined, label: 'Rental terms', onTap: () => _push(context, const InAppPage(title: 'Rental terms', url: '$siteBase/legal/rental-terms'))),
       SettingsRow(icon: Icons.privacy_tip_outlined, label: 'Privacy policy', divider: false, onTap: () => _push(context, const InAppPage(title: 'Privacy policy', url: '$siteBase/legal/privacy'))),
     ],
   );
+}
+
+/// The update card in About: celebrates a freshly installed OTA build, offers
+/// a one-tap install when a newer build exists, and checks on tap otherwise.
+/// Listens to the shared Updater so download progress streams in live.
+class _UpdateBox extends StatelessWidget {
+  const _UpdateBox({required this.checking, required this.note, required this.onCheck});
+  final bool checking;
+  final String? note;
+  final VoidCallback onCheck;
+
+  @override
+  Widget build(BuildContext context) {
+    final updater = AppScope.of(context).updater;
+    return AnimatedBuilder(
+      animation: updater,
+      builder: (context, _) {
+        // 1) Just-updated celebration — persists until dismissed.
+        if (updater.justUpdated != null) {
+          return Glass(
+            tint: lime,
+            radius: 20,
+            child: Column(
+              children: [
+                FadeSlideIn(child: const AnimatedCheckmark(size: 40)),
+                const SizedBox(height: 8),
+                const Text('App updated', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                const SizedBox(height: 4),
+                Text("You're now on version ${updater.justUpdated}", style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                const SizedBox(height: 10),
+                GlassButton(label: 'Nice', onPressed: updater.clearJustUpdated),
+              ],
+            ),
+          );
+        }
+        // 2) Update available — tappable install + live download progress.
+        final u = updater.available;
+        if (u != null) {
+          final downloading = updater.progress != null;
+          return Glass(
+            tint: lime,
+            radius: 20,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  Icon(downloading ? Icons.downloading_rounded : Icons.system_update_alt_rounded, color: lime),
+                  const SizedBox(width: 12),
+                  Expanded(child: Text(downloading ? (updater.status ?? 'Updating…') : 'Version ${u.version} is ready to install', style: const TextStyle(fontWeight: FontWeight.w800))),
+                ]),
+                if (downloading)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 10),
+                    child: LinearProgressIndicator(value: updater.progress, color: lime, backgroundColor: Colors.white24, minHeight: 4),
+                  )
+                else ...[
+                  if (u.notes.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 8), child: Text(u.notes, style: const TextStyle(color: Colors.white70, fontSize: 13))),
+                  const SizedBox(height: 10),
+                  GlassButton(label: 'Update now', icon: Icons.system_update_alt_rounded, onPressed: updater.install),
+                ],
+              ],
+            ),
+          );
+        }
+        // 3) Idle — manual check.
+        return SettingsRow(
+          icon: Icons.system_update_alt_rounded,
+          label: checking ? 'Checking…' : 'Check for updates',
+          subtitle: updater.status ?? note ?? 'The app also checks automatically every 5 minutes',
+          onTap: checking ? null : onCheck,
+        );
+      },
+    );
+  }
 }

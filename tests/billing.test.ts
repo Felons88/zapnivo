@@ -6,7 +6,7 @@ import { promoUsable } from "../src/lib/promos";
 import { resetRateLimits } from "../src/lib/rate-limit";
 
 // Test-local pricing so the tests never depend on (unapproved) real prices.
-const P: PricingVersion = { id: "t", approved: true, firstHourCents: 700, additionalHourCents: 200, first24hCapCents: 1300, nonReturnMaxCents: 4500, nonReturnAfterHours: 72, additionalDayCents: null };
+const P: PricingVersion = { id: "t", approved: true, firstHourCents: 700, additionalHourCents: 200, first24hCapCents: 1300, nonReturnMaxCents: 4500, nonReturnAfterHours: 72, additionalDayCents: null, holdCentsPerBank: 1200 };
 const T0 = new Date("2026-01-01T10:00:00Z");
 const after = (min: number) => new Date(T0.getTime() + min * 60000);
 
@@ -33,7 +33,7 @@ describe("rental charge", () => {
     expect(() => rentalChargeCents(T0, after(30), P, 0)).toThrow();
   });
   it("hold equals non-return maximum per bank", () => {
-    expect(holdCents(P, 2)).toBe(9000);
+    expect(holdCents(P, 2)).toBe(2400); // $12 hold per bank, decoupled from the $45 fee
   });
 });
 
@@ -109,7 +109,10 @@ describe("checkout 503 paths", () => {
     const chain: Record<string, unknown> = {};
     for (const k of ["select", "eq", "order", "limit"]) chain[k] = () => chain;
     chain.maybeSingle = async () => ({ data: null });
-    vi.doMock("../src/lib/supabase", () => ({ serviceClient: () => ({ from: () => chain }), anonClient: () => null }));
+    const kioskChain: Record<string, unknown> = {};
+    for (const k of ["select", "eq", "order", "limit"]) kioskChain[k] = () => kioskChain;
+    kioskChain.maybeSingle = async () => ({ data: { id: "k1", state: "online", test_mode: false, venues: { published: true } } });
+    vi.doMock("../src/lib/supabase", () => ({ serviceClient: () => ({ from: (t: string) => t === "kiosks" ? kioskChain : chain }), anonClient: () => null }));
     const { POST } = await import("../src/app/api/rentals/checkout/route");
     const res = await POST(post(ok));
     expect(res.status).toBe(503);

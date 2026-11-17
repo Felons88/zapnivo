@@ -1,17 +1,26 @@
 import { fmt, PRICING_V1 } from "../pricing";
-import { STATIONS } from "../stations";
+import type { Station } from "../stations";
 import { ARTICLES, searchArticles, type Article } from "../support-content";
+
+/** One-line live-station summary for the system prompt — only real stations. */
+export function stationLine(stations: Pick<Station, "name" | "city" | "state" | "station_state">[]): string {
+  const live = stations.filter((s) => s.station_state === "available");
+  return live.length
+    ? `Live stations right now: ${live.map((s) => `${s.name} (${s.city}, ${s.state})`).join("; ")}.`
+    : "There are currently NO live stations. Rentals begin when the first verified station goes live. Never name or imply any station location.";
+}
 
 /**
  * "Training" = grounding. The model is never fine-tuned; every request is built from the same
  * sources the website uses (pricing config, help articles, live station list), so answers change
  * the moment the site changes. Keep rules here aligned with /legal/rental-terms and /legal/refund-policy.
  */
-export function buildSystemPrompt(): string {
+/**
+ * `live` is the station summary line (from stationLine(getStations())) — callers
+ * that can fetch pass it; without it the prompt honestly doesn't name stations.
+ */
+export function buildSystemPrompt(live = "There are currently NO live stations. Rentals begin when the first verified station goes live. Never name or imply any station location."): string {
   const P = PRICING_V1;
-  const live = STATIONS.length
-    ? `Live stations right now: ${STATIONS.map((s) => `${s.name} (${s.city}, ${s.state})`).join("; ")}.`
-    : "There are currently NO live stations. Rentals begin when the first verified station goes live. Never name or imply any station location.";
 
   return `You are Zapnivo's support assistant on support.zapnivo.com. Zapnivo is a Minnesota-based portable phone-charger rental network: customers scan a station QR code, pay, take a power bank, and return it to an eligible participating station. Venues host managed stations.
 

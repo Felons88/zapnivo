@@ -84,7 +84,7 @@ export function createCheckoutSession(i: CheckoutInput) {
       quantity: 1,
       price_data: {
         currency: "usd", unit_amount: i.holdCents,
-        product_data: { name: `Zapnivo power bank rental hold (${i.bankCount} bank${i.bankCount > 1 ? "s" : ""})`, description: "Authorization hold only. You are charged for the time used after you return the power bank; the remainder is released." },
+        product_data: { name: `Zapnivo power bank rental hold (${i.bankCount} bank${i.bankCount > 1 ? "s" : ""})`, description: "Authorization hold only. You are charged for the time used after you return the power bank; any charge above the hold and any non-return fee are billed separately to this card." },
         ...(taxEnabled() ? { tax_behavior: "exclusive" } : {}),
       },
     }],

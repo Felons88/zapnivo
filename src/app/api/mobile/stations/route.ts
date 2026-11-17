@@ -27,6 +27,7 @@ export async function GET() {
       additional_hour_cents: approved.additionalHourCents,
       non_return_max_cents: approved.nonReturnMaxCents,
       non_return_after_hours: approved.nonReturnAfterHours,
+      hold_cents: approved.holdCentsPerBank,
     } : null,
   }, { headers: { "Cache-Control": "no-store" } });
 }

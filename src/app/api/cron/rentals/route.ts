@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getSessionUser, isStaff } from "@/lib/auth";
 import { runRentalSweep } from "@/lib/email-triggers";
 import { recordCron, runFleetSweep } from "@/lib/fleet-sweep";
+import { runDispenseSweep } from "@/lib/kiosk/dispatch";
 import { runSmsSweep } from "@/lib/notifications";
 import { generateLedgers, previousPeriod } from "@/lib/ledgers";
 import { expireSweep } from "@/lib/monetization/entitlements";
@@ -33,6 +34,9 @@ export async function GET(req: Request) {
   const rentals = await maybeCron("rentals", async () => ({ ...(await runRentalSweep()) }));
   const sms = await maybeCron("sms", async () => ({ ...(await runSmsSweep(db)) }));
   const fleet = await maybeCron("fleet", async () => ({ ...(await runFleetSweep(db)) }));
+  // Dispense backstop: re-issue missing dispense commands for dispense_pending
+  // rentals + advance due test-kiosk sim stages. Both are idempotent.
+  const dispense = await maybeCron("dispense", async () => ({ ...(await runDispenseSweep(db)) }));
   const first = new Date().getUTCDate() === 1;
   const entitlements = await maybeCron("entitlements", async () => {
     const { expireSweep } = await import("@/lib/monetization/entitlements");
@@ -41,6 +45,6 @@ export async function GET(req: Request) {
     return { expired: await expireSweep(db), released: await releaseOrphanedReservations(db), stale };
   });
   const ledgers = first ? await maybeCron("ledgers", async () => { const r = await generateLedgers(db, previousPeriod()); return { created: r.created.length, noRate: r.skippedNoRate.length, locked: r.skippedLocked.length }; }) : null;
-  const ok = rentals.ok && fleet.ok && sms.ok && entitlements.ok && (ledgers?.ok ?? true);
-  return NextResponse.json({ ok, rentals: rentals.detail, sms: sms.detail, fleet: fleet.detail, entitlements: entitlements.detail, ledgers: ledgers?.detail ?? "not first of month" }, { status: ok ? 200 : 500 });
+  const ok = rentals.ok && fleet.ok && sms.ok && entitlements.ok && dispense.ok && (ledgers?.ok ?? true);
+  return NextResponse.json({ ok, rentals: rentals.detail, sms: sms.detail, fleet: fleet.detail, entitlements: entitlements.detail, ledgers: ledgers?.detail ?? "not first of month", dispense: dispense.detail }, { status: ok ? 200 : 500 });
 }

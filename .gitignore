@@ -10,3 +10,4 @@ next-env.d.ts
 playwright-report
 test-results
 *.apk
+supabase/.temp/

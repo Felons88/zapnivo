@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -8,10 +10,41 @@ import 'app_state.dart';
 import 'rental_flow.dart';
 import 'theme.dart';
 
-bool stationAvailable(Station s) => s.rentalsAvailable != false && (s.readyBanks ?? 1) > 0;
+/// Public Mapbox token for raster tiles — supplied at build time:
+/// flutter build apk --dart-define=MAPBOX_PUBLIC_TOKEN=pk.… (public, app-restricted).
+const mapboxToken = String.fromEnvironment('MAPBOX_PUBLIC_TOKEN');
+
+/// A rental can start only when the backend reports the station usable AND a
+/// bank is ready. `stationState` (available/offline/maintenance/stale) comes
+/// from live telemetry; on older payloads we fall back to rentalsAvailable.
+bool stationAvailable(Station s) {
+  if (s.stationState != null) return s.stationState == 'available' && (s.readyBanks ?? 1) > 0;
+  return s.rentalsAvailable != false && (s.readyBanks ?? 1) > 0;
+}
+
+Color stationDot(Station s) {
+  switch (s.stationState) {
+    case 'offline':
+      return danger;
+    case 'maintenance':
+      return const Color(0xFFF59E0B);
+    case 'stale':
+      return muted;
+    default:
+      return stationAvailable(s) ? lime : danger;
+  }
+}
 
 String availabilityLabel(Station s) {
-  if (s.readyBanks != null) return '${s.readyBanks} charger${s.readyBanks == 1 ? '' : 's'} available';
+  switch (s.stationState) {
+    case 'offline':
+      return 'Station offline';
+    case 'maintenance':
+      return 'Under maintenance';
+    case 'stale':
+      return 'Status unconfirmed';
+  }
+  if ((s.readyBanks ?? 0) > 0) return '${s.readyBanks} charger${s.readyBanks == 1 ? '' : 's'} available';
   return s.rentalsAvailable == false ? 'No chargers ready' : 'Chargers available';
 }
 
@@ -33,7 +66,6 @@ class StationTile extends StatelessWidget {
   final double? miles;
   @override
   Widget build(BuildContext context) {
-    final ok = stationAvailable(station);
     return Glass(
       radius: 20,
       onTap: onTap,
@@ -61,9 +93,9 @@ class StationTile extends StatelessWidget {
                 const SizedBox(height: 4),
                 Row(
                   children: [
-                    Dot(color: ok ? lime : danger),
+                    Dot(color: stationDot(station)),
                     const SizedBox(width: 6),
-                    Text(availabilityLabel(station), style: TextStyle(color: ok ? lime : danger, fontSize: 12, fontWeight: FontWeight.w700)),
+                    Text(availabilityLabel(station), style: TextStyle(color: stationDot(station), fontSize: 12, fontWeight: FontWeight.w700)),
                   ],
                 ),
               ],
@@ -158,7 +190,12 @@ class _MapTabState extends State<MapTab> {
               ),
               children: [
                 TileLayer(
-                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  // Mapbox raster tiles when the build provides a public token
+                  // (flutter build --dart-define=MAPBOX_PUBLIC_TOKEN=pk.…);
+                  // otherwise honest OSM fallback — pins/data are identical.
+                  urlTemplate: mapboxToken.isNotEmpty
+                      ? 'https://api.mapbox.com/styles/v1/mapbox/dark-v11/tiles/512/{z}/{x}/{y}@2x?access_token=$mapboxToken'
+                      : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                   userAgentPackageName: 'com.zapnivo.charging',
                 ),
                 MarkerLayer(
@@ -195,7 +232,9 @@ class _MapTabState extends State<MapTab> {
                       ),
                   ],
                 ),
-                const SimpleAttributionWidget(source: Text('OpenStreetMap contributors')),
+                SimpleAttributionWidget(
+                  source: Text(mapboxToken.isNotEmpty ? '© Mapbox © OpenStreetMap' : 'OpenStreetMap contributors'),
+                ),
               ],
             ),
           ),
@@ -260,7 +299,7 @@ class StationListView extends StatefulWidget {
 class _StationListViewState extends State<StationListView> {
   final search = TextEditingController();
   int filter = 0;
-  static const filters = ['Nearby', 'Available', 'Distance'];
+  static const filters = ['Nearby', 'Available', 'Favorites', 'Distance'];
 
   @override
   void dispose() {
@@ -280,7 +319,9 @@ class _StationListViewState extends State<StationListView> {
       });
     }
     if (filter == 1) list = list.where(stationAvailable);
+    if (filter == 2) list = list.where(app.isFavorite);
     final sorted = app.sortedByDistance(list);
+    final recents = app.recentStations;
     return RefreshIndicator(
       onRefresh: app.refreshStations,
       child: ListView(
@@ -311,6 +352,31 @@ class _StationListViewState extends State<StationListView> {
             ],
           ),
           const SizedBox(height: 14),
+          if (recents.isNotEmpty && q.isEmpty && filter == 0) ...[
+            const Text('Recently viewed', style: TextStyle(color: muted, fontSize: 12, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 40,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: recents.length,
+                separatorBuilder: (_, _) => const SizedBox(width: 8),
+                itemBuilder: (_, i) => Glass(
+                  radius: 20,
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  onTap: () => openStationDetail(context, recents[i]),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.history, size: 15, color: muted),
+                      const SizedBox(width: 6),
+                      Text(recents[i].name, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+          ],
           if (app.stationsLoading && app.snapshot == null)
             const Padding(padding: EdgeInsets.all(32), child: Center(child: CircularProgressIndicator(color: lime)))
           else if (app.stationsError != null && app.snapshot == null)
@@ -360,6 +426,7 @@ class _StationDetailScreenState extends State<StationDetailScreen> {
   Future<void> load() async {
     final app = AppScope.of(context);
     pricing = app.pricing;
+    unawaited(app.recordViewed(station));
     try {
       final d = await app.api.getStation(station.id);
       station = d.station;
@@ -375,9 +442,20 @@ class _StationDetailScreenState extends State<StationDetailScreen> {
     final app = AppScope.of(context);
     final miles = app.distanceMiles(station);
     final ok = stationAvailable(station);
+    final dot = stationDot(station);
     final price = pricing;
+    final fav = app.isFavorite(station);
     return Scaffold(
-      appBar: AppBar(title: const Text('Station Detail')),
+      appBar: AppBar(
+        title: const Text('Station Detail'),
+        actions: [
+          IconButton(
+            tooltip: fav ? 'Remove from favorites' : 'Save to favorites',
+            icon: Icon(fav ? Icons.star_rounded : Icons.star_outline_rounded, color: fav ? lime : Colors.white),
+            onPressed: () => app.toggleFavorite(station),
+          ),
+        ],
+      ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 36),
         children: [
@@ -389,16 +467,23 @@ class _StationDetailScreenState extends State<StationDetailScreen> {
                 const Eyebrow('Verified station'),
                 const SizedBox(height: 8),
                 Text(station.name, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w900, letterSpacing: -0.8)),
+                if (station.venueType != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Text(station.venueType!.replaceAll('_', ' '), style: const TextStyle(color: lime, fontSize: 12, fontWeight: FontWeight.w700)),
+                  ),
                 const SizedBox(height: 8),
                 Text(station.address, style: const TextStyle(color: muted, fontSize: 15)),
                 if (miles != null) Text('${distanceLabel(miles)} away', style: const TextStyle(color: muted)),
                 if (station.hours != null) Padding(padding: const EdgeInsets.only(top: 4), child: Text('Hours: ${station.hours}', style: const TextStyle(color: muted))),
+                if (station.description != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(station.description!, style: const TextStyle(color: muted, fontSize: 13, height: 1.4))),
+                if (station.accessibility != null) Padding(padding: const EdgeInsets.only(top: 6), child: Text('Accessibility: ${station.accessibility}', style: const TextStyle(color: muted, fontSize: 12))),
                 const SizedBox(height: 14),
                 Row(
                   children: [
-                    Dot(color: ok ? lime : danger),
+                    Dot(color: dot),
                     const SizedBox(width: 8),
-                    Text(availabilityLabel(station), style: TextStyle(color: ok ? lime : danger, fontWeight: FontWeight.w800)),
+                    Text(availabilityLabel(station), style: TextStyle(color: dot, fontWeight: FontWeight.w800)),
                   ],
                 ),
               ],
@@ -429,6 +514,14 @@ class _StationDetailScreenState extends State<StationDetailScreen> {
           const SizedBox(height: 18),
           if (station.lat != null && station.lng != null) ...[
             GlassButton(label: 'Directions', icon: Icons.directions_outlined, onPressed: () => openDirections(station)),
+            const SizedBox(height: 12),
+          ],
+          if (station.phone != null) ...[
+            GlassButton(label: 'Call venue', icon: Icons.phone_outlined, onPressed: () => launchUrl(Uri.parse('tel:${station.phone}'))),
+            const SizedBox(height: 12),
+          ],
+          if (station.website != null) ...[
+            GlassButton(label: 'Venue website', icon: Icons.open_in_new, onPressed: () => launchUrl(Uri.parse(station.website!), mode: LaunchMode.externalApplication)),
             const SizedBox(height: 12),
           ],
           if (price == null)

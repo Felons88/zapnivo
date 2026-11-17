@@ -6,15 +6,17 @@ import { rentalChargeCents as chargeForMinutes, type PricingVersion } from "./pr
 export type PricingRow = {
   id: string; approved: boolean; first_hour_cents: number; additional_hour_cents: number;
   first_24h_cap_cents: number; additional_day_cents: number | null; non_return_max_cents: number; non_return_after_hours: number;
+  hold_cents: number | null;     // null on pre-0079 rows → falls back to the non-return max
 };
 
 export const pricingFromRow = (r: PricingRow): PricingVersion => ({
   id: r.id, approved: r.approved, firstHourCents: r.first_hour_cents, additionalHourCents: r.additional_hour_cents,
   first24hCapCents: r.first_24h_cap_cents, nonReturnMaxCents: r.non_return_max_cents, nonReturnAfterHours: r.non_return_after_hours,
   additionalDayCents: r.additional_day_cents,
+  holdCentsPerBank: r.hold_cents ?? r.non_return_max_cents,
 });
 
-export const PRICING_SELECT = "id,approved,first_hour_cents,additional_hour_cents,first_24h_cap_cents,additional_day_cents,non_return_max_cents,non_return_after_hours";
+export const PRICING_SELECT = "id,approved,first_hour_cents,additional_hour_cents,first_24h_cap_cents,additional_day_cents,non_return_max_cents,non_return_after_hours,hold_cents";
 
 /**
  * Charge (before promo/tax) for a returned rental across `bankCount` banks.
@@ -30,8 +32,10 @@ export function rentalChargeCents(startedAt: Date | string, returnedAt: Date | s
   return per === null ? null : per * bankCount;
 }
 
-/** Authorization hold = non-return maximum per bank. */
-export const holdCents = (pricing: PricingVersion, bankCount: number) => pricing.nonReturnMaxCents * bankCount;
+/** Authorization hold — a flat per-bank card auth, deliberately decoupled from the
+ * $45 non-return fee (which bills separately off-session). Charges above the hold
+ * settle as an off-session remainder at return. */
+export const holdCents = (pricing: PricingVersion, bankCount: number) => pricing.holdCentsPerBank * bankCount;
 
 export type Promo = { percent_off: number | string | null; amount_off_cents: number | null };
 

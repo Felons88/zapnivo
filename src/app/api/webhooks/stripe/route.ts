@@ -8,6 +8,7 @@ import { verifyStripeSignature } from "@/lib/stripe";
 import { handleAdChargeRefunded, handleAdCheckoutCompleted, handleAdPaymentIntent } from "@/lib/ads/billing";
 import { handleMonetizationDispute, handleMonetizationEvent, handleMonetizationRefund } from "@/lib/monetization/webhook";
 import { serviceClient } from "@/lib/supabase";
+import { issueDispenseCommand } from "@/lib/kiosk/dispatch";
 import { trackServer } from "@/lib/analytics";
 import { newTraceId, recordLog, recordSpan, reportError } from "@/lib/observability";
 
@@ -90,6 +91,11 @@ async function handleEvent(db: Db, event: StripeEvent): Promise<boolean> {
         ...(email ? { receipt_email: email } : {}), ...(phone ? { customer_phone: phone } : {}), ...(revived ? { state: "authorized", failure_code: null } : {}),
       }).eq("id", target.id));
       await requireWrite(db.from("rentals").update({ state: "dispense_pending" }).eq("id", target.rental_id).in("state", revived ? ["authorized", "cancelled"] : ["authorized"]));
+      // Payment verified → queue the ONE durable dispense command for this
+      // rental (idempotent on `dispense:{rental_id}` — replays are no-ops).
+      // Failures are logged, not thrown: runDispenseSweep is the backstop.
+      await issueDispenseCommand(db, target.rental_id).catch((e) =>
+        recordLog("error", "dispense_command_issue_failed", { service: "payments", route: "webhooks/stripe", attrs: { rentalId: target.rental_id, reason: e instanceof Error ? e.message : "unknown" } }));
       trackServer({ name: "rental_started", entityType: "rental", entityId: target.rental_id });
       // NOTE: checkout phone/email are customer-typed and unverified — never bind them to a profile here.
       return true;

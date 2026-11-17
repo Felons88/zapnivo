@@ -19,6 +19,12 @@ const SECTIONS = [
     desc: "Whitelisted nonsecret application settings. Writes are audited; high-risk keys require step-up elevation + an approved change request.",
   },
   {
+    href: "/system/settings/pricing",
+    title: "Rental pricing",
+    perm: "system.flags.view",
+    desc: "Hourly rates, card hold, and return deadline. Saves create a new audited pricing version — in-flight rentals keep the rates they agreed to.",
+  },
+  {
     href: "/system/settings/retention",
     title: "Data retention",
     perm: "system.security.audit.view",

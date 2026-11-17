@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'api.dart';
@@ -32,6 +33,10 @@ class AppState extends ChangeNotifier {
   bool locationDenied = false;
   PermissionStatus? notificationStatus;
 
+  /// Locally saved favorite station ids and recently-viewed order (newest first).
+  Set<String> favorites = {};
+  List<String> recentIds = [];
+
   Timer? _poll;
   RealtimeChannel? _channel;
   int tab = 0;
@@ -49,6 +54,7 @@ class AppState extends ChangeNotifier {
     refreshRentals();
     refreshTickets();
     refreshProfile();
+    _loadSavedStations();
     locate();
     refreshNotificationStatus();
     updater.start();
@@ -108,6 +114,42 @@ class AppState extends ChangeNotifier {
     updater.dispose();
     super.dispose();
   }
+
+  static const _favKey = 'zapnivo.station_favorites';
+  static const _recentKey = 'zapnivo.station_recent';
+
+  Future<void> _loadSavedStations() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      favorites = (prefs.getStringList(_favKey) ?? []).toSet();
+      recentIds = prefs.getStringList(_recentKey) ?? [];
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  bool isFavorite(Station s) => favorites.contains(s.id);
+
+  Future<void> toggleFavorite(Station s) async {
+    favorites.contains(s.id) ? favorites.remove(s.id) : favorites.add(s.id);
+    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(_favKey, favorites.toList());
+    } catch (_) {}
+  }
+
+  /// Records a station detail view — newest first, capped at 5, deduped.
+  Future<void> recordViewed(Station s) async {
+    recentIds = [s.id, ...recentIds.where((id) => id != s.id)].take(5).toList();
+    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(_recentKey, recentIds);
+    } catch (_) {}
+  }
+
+  List<Station> get recentStations =>
+      [for (final id in recentIds) ...stations.where((s) => s.id == id)];
 
   List<Station> get stations => snapshot?.stations ?? const [];
   RentalPricing? get pricing => snapshot?.pricing;

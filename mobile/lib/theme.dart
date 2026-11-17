@@ -11,6 +11,12 @@ const paper = Color(0xFFF6F7F4);
 const muted = Color(0xFFA9ACC4);
 const danger = Color(0xFFFF8A8A);
 
+// Checkout surface system (spec palette) — solid elevated cards over the app gradient.
+const surface = Color(0xFF121A2B);
+const elevated = Color(0xFF1A2335);
+const limeAccent = Color(0xFFB9F449);
+const hairline = Color(0x1FFFFFFF);
+
 ThemeData buildTheme() {
   final base = ThemeData(
     useMaterial3: true,

@@ -13,17 +13,19 @@ export type PricingVersion = {
   nonReturnMaxCents: number;
   nonReturnAfterHours: number;
   additionalDayCents: number | null;
+  holdCentsPerBank: number;
 };
 
 export const PRICING_V1: PricingVersion = {
-  id: "pilot-2026-v1",
+  id: "pilot-2026-v2",
   approved: false,
   firstHourCents: 699,
-  additionalHourCents: 699,       // CONFIRMED: $6.99 per STARTED hour, flat
-  first24hCapCents: 24 * 699,     // no artificial cap — full 24h of hourly rates
-  nonReturnMaxCents: 4500,        // CONFIRMED: $45 non-return fee (separate from rental charges)
+  additionalHourCents: 299,       // CONFIRMED: $2.99 per additional STARTED hour
+  first24hCapCents: 699 + 23 * 299, // no artificial cap — full 24h of hourly rates
+  nonReturnMaxCents: 4500,        // CONFIRMED: $45 non-return fee — billed off-session, separate from the hold
   nonReturnAfterHours: 24,        // CONFIRMED: 24-hour return deadline
   additionalDayCents: null,
+  holdCentsPerBank: 1200,         // CONFIRMED: $12 card authorization per bank; usage + fee bill on top
 };
 
 export const fmt = (cents: number) =>

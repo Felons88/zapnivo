@@ -3,7 +3,8 @@ import type { RentalResult } from "../rental-lookup";
 import type { SessionUser } from "../auth";
 import { serviceClient } from "../supabase";
 import { rentalLookupSchema, looksLikeCardNumber } from "../validation";
-import { contextFor, retrieve, buildSystemPrompt } from "./knowledge";
+import { contextFor, retrieve, buildSystemPrompt, stationLine } from "./knowledge";
+import { getStations } from "../stations";
 import { ACCOUNT_SYSTEM_NOTE, ACCOUNT_TOOLS, ACCOUNT_TOOL_NAMES, runAccountTool } from "./account-tools";
 import { openrouterChat, type ChatFn, type ChatMessage, type ToolDef } from "./openrouter";
 import { newTraceId, recordLog, traced } from "../observability";
@@ -66,8 +67,9 @@ export async function runAssistant({ messages, ip, chat = openrouterChat, lookup
   const sources = new Map<string, string>();
 
   const ctx = contextFor(lastUser);
+  const stations = await getStations().catch(() => []);
   const convo: ChatMessage[] = [
-    { role: "system", content: buildSystemPrompt() },
+    { role: "system", content: buildSystemPrompt(stationLine(stations)) },
     ...(actor ? [{ role: "system" as const, content: ACCOUNT_SYSTEM_NOTE(actor.role) }] : []),
     ...(ctx ? [{ role: "system" as const, content: ctx }] : []),
     ...messages,
