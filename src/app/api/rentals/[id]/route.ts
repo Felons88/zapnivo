@@ -24,9 +24,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     ? await req.json().catch(() => ({}))
     : Object.fromEntries(await req.formData());
   const action = String((form as { action?: string }).action ?? "");
+  // Optional same-origin path to return to after the action (e.g. a customer 360 page).
+  const backTo = (() => { const b = (form as { back?: string }).back; return b && /^\/[A-Za-z0-9/_%@-]+$/.test(b) && !b.startsWith("//") ? b : "/admin/rentals"; })();
   const done = (state: string, outcome?: CaptureOutcome) => {
     if (req.headers.get("content-type")?.includes("json")) return NextResponse.json({ ok: true, state, ...(outcome ? { payment: outcome } : {}) });
-    const url = new URL("/admin/rentals", req.url);
+    const url = new URL(backTo, req.url);
     if (outcome) { url.searchParams.set("result", outcome.status === "error" ? "error" : outcome.status); url.searchParams.set("detail", outcome.detail); }
     return NextResponse.redirect(url, 303);
   };

@@ -15,7 +15,9 @@ import { snapshot, suggestRefund, type Suggestion } from "@/lib/helpdesk/refund-
 import { defaultCtx, getStaffThread } from "@/lib/helpdesk/service";
 import { humanDue, slaStatus } from "@/lib/helpdesk/sla";
 import { HelpdeskError, REFUND_REASONS, type RefundReason } from "@/lib/helpdesk/types";
+import { loadCustomer360 } from "@/lib/crm";
 import { fmt } from "@/lib/pricing";
+import { serviceClient } from "@/lib/supabase";
 
 export const metadata: Metadata = { title: "Ticket", robots: { index: false, follow: false } };
 const when = (iso: string) => new Date(iso).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" });
@@ -36,6 +38,9 @@ export default async function TicketPage({ params }: { params: Promise<{ number:
   }
   const now = new Date();
   const accessToken = (await cookies()).get(SESSION_COOKIE)?.value ?? null;
+  // Customer 360 side-panel: rentals, account status and history for the requester's email.
+  const db = serviceClient();
+  const customer = db && data ? await loadCustomer360(db, data.ticket.email) : null;
 
   return (
     <AdminGate title={data ? `${data.ticket.number} · ${data.ticket.category}` : "Ticket"} nav={data?.ticket.queue === "partner" ? "partner" : data?.ticket.queue === "safety" ? "safety" : "inbox"}>
@@ -72,11 +77,44 @@ export default async function TicketPage({ params }: { params: Promise<{ number:
 
             <aside className="space-y-4 text-sm" aria-label="Ticket details">
               <div className="rounded-xl bg-white p-4 shadow-sm">
-                <h2 className="font-display text-lg font-bold">Requester</h2>
+                <div className="flex items-center justify-between gap-2">
+                  <h2 className="font-display text-lg font-bold">Requester</h2>
+                  {customer && <Link href={`/admin/customers/${encodeURIComponent(customer.email)}`} className="text-xs font-bold underline underline-offset-2">360° →</Link>}
+                </div>
                 <p className="mt-2 font-semibold">{t.name}</p><p className="text-graphite">{t.email}{t.phone ? ` · ${t.phone}` : ""}</p>
                 <p className="mt-1 text-xs text-graphite">{t.requesterType === "partner" ? `Partner${t.venueLabel ? ` · ${t.venueLabel}` : ""}` : "Customer"}{t.stationLabel ? ` · ${t.stationLabel}` : ""}</p>
                 <div className="mt-3 flex flex-wrap gap-1.5"><Pill tone="mist">{t.queue}</Pill><Pill tone={t.priority === "urgent" ? "red" : t.priority === "high" ? "gold" : "mist"}>{t.priority}</Pill><Pill tone={t.aiState === "ai_active" ? "lime" : t.aiState === "needs_human" ? "gold" : "ink"}>{t.aiState.replace("_", " ")}</Pill></div>
+                {customer && (
+                  <dl className="mt-3 space-y-1 border-t border-mist pt-3 text-xs text-graphite">
+                    <div className="flex justify-between"><dt>Record</dt><dd className="font-bold text-ink">{customer.profile ? `account · ${customer.profile.role}` : "guest"}</dd></div>
+                    <div className="flex justify-between"><dt>Lifetime captured</dt><dd className="font-bold text-ink">{fmt(customer.totals.capturedCents)}{customer.totals.refundedCents > 0 ? ` (${fmt(customer.totals.refundedCents)} refunded)` : ""}</dd></div>
+                    <div className="flex justify-between"><dt>Rentals</dt><dd className="font-bold text-ink">{customer.rentals.length}{customer.totals.activeRentals ? ` · ${customer.totals.activeRentals} out` : ""}</dd></div>
+                    <div className="flex justify-between"><dt>Tickets</dt><dd className="font-bold text-ink">{customer.tickets.length}{customer.totals.openTickets ? ` · ${customer.totals.openTickets} open` : ""}</dd></div>
+                    {customer.notes.length > 0 && <div className="flex justify-between"><dt>Staff notes</dt><dd className="font-bold text-ink">{customer.notes.length}</dd></div>}
+                  </dl>
+                )}
               </div>
+              {customer && customer.rentals.length > 0 && (
+                <div className="rounded-xl bg-white p-4 shadow-sm">
+                  <h2 className="font-display text-lg font-bold">Their rentals ({customer.rentals.length})</h2>
+                  <ul className="mt-3 space-y-2">
+                    {customer.rentals.slice(0, 6).map((r) => {
+                      const isThisTicket = !!t.rentalRef && r.reference === t.rentalRef;
+                      const od = !!r.non_return_deadline && !r.returned_at && new Date(r.non_return_deadline) < new Date();
+                      return (
+                        <li key={r.id} className={`rounded-lg p-2.5 text-xs ${isThisTicket ? "border-2 border-lime bg-lime/10" : "bg-mist/50"}`}>
+                          <p className="flex items-center justify-between gap-2">
+                            <b>{r.reference}{isThisTicket && <span className="ml-1 font-bold text-forest">· this ticket</span>}</b>
+                            <Pill tone={od ? "red" : r.state === "active" ? "lime" : r.state === "unreturned" ? "red" : r.state === "returned" ? "mist" : "cyan"}>{od ? "overdue" : r.state.replace("_", " ")}</Pill>
+                          </p>
+                          <p className="mt-1 text-graphite">{r.kiosks?.venues?.name ?? r.kiosks?.station_id ?? "—"} · {when(r.dispensed_at ?? r.started_at ?? r.created_at)}</p>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  {customer.rentals.length > 6 && <p className="mt-2 text-xs"><Link href={`/admin/customers/${encodeURIComponent(customer.email)}`} className="font-bold underline">All {customer.rentals.length} rentals →</Link></p>}
+                </div>
+              )}
               <div className="rounded-xl bg-white p-4 shadow-sm">
                 <h2 className="font-display text-lg font-bold">SLA (internal)</h2>
                 <p className="mt-2">First response: <Pill tone={sla.firstResponse === "breached" ? "red" : sla.firstResponse === "due_soon" ? "gold" : sla.firstResponse === "met" ? "lime" : "mist"}>{t.firstResponseAt ? "met" : humanDue(t.firstResponseDueAt, now)}</Pill></p>

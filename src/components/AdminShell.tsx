@@ -42,6 +42,7 @@ const NAV_ITEMS = {
   forecasting: { href: "/admin/forecasting", label: "Forecasting", icon: icons.chart, group: "Growth" },
   opportunities: { href: "/admin/opportunities", label: "Opportunities", icon: icons.chart, group: "Growth" },
   inbox: { href: "/admin/support", label: "Inbox", icon: icons.inbox, group: "Support" },
+  customers: { href: "/admin/customers", label: "Customers", icon: icons.users, group: "Support" },
   partner: { href: "/admin/support?queue=partner", label: "Partner relations", icon: icons.building, group: "Support" },
   safety: { href: "/admin/support?queue=safety", label: "Safety", icon: icons.shield, group: "Support" },
   refunds: { href: "/admin/support/refunds", label: "Refunds", icon: icons.coins, group: "Support" },
@@ -78,14 +79,15 @@ const NAV_ITEMS = {
   experiments: { href: "/admin/experiments", label: "Experiments", icon: icons.steps, group: "Intelligence" },
 } as const;
 
-const GROUPS = ["Overview", "Growth", "Support", "Operations", "Finance", "System", "Intelligence"] as const;
+const GROUPS = ["Support", "Operations", "Growth", "Finance", "Intelligence", "System"] as const;
+const PINNED: AdminNavKey[] = ["dashboard", "inbox", "customers", "fleet", "partners", "finance"];
 
 function NavLink({ item, active }: { item: (typeof NAV_ITEMS)[AdminNavKey]; active: boolean }) {
   return (
     <Link
       href={item.href}
       aria-current={active ? "page" : undefined}
-      className={`flex items-center gap-3 rounded-lg px-3.5 py-2 text-sm font-bold transition-colors ${
+      className={`flex min-h-10 items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-semibold transition-colors ${
         active ? "bg-lime text-ink" : "text-graphite hover:bg-mist hover:text-ink"
       }`}
     >
@@ -135,24 +137,31 @@ export async function AdminGate({ title, nav, children }: { title: string; nav: 
       )}
 
       {/* Sidebar (desktop) */}
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-72 flex-col border-r border-mist bg-white lg:flex">
+      <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 flex-col border-r border-mist bg-white lg:flex">
         <div className="flex items-center justify-between border-b border-mist px-6 py-4">
           <Link href="/admin" aria-label="Zapnivo internal"><Logo className="text-[1.25rem]!" /></Link>
           <span className="rounded-full bg-forest px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-widest text-lime">Internal</span>
         </div>
-        <nav aria-label="Console" className="flex-1 space-y-2 px-4 py-4">
-          {GROUPS.map((g) => {
-            const items = all.filter(([, i]) => i.group === g);
-            if (g === "Overview") return <div key={g} className="space-y-0.5">{items.map(([key, item]) => <NavLink key={key} item={item} active={nav === key} />)}</div>;
-            return (
-              <details key={g} open={items.some(([key]) => key === nav)} className="group">
-                <summary className="eyebrow flex cursor-pointer list-none items-center justify-between rounded-lg px-3.5 py-1.5 text-[10px] text-silver hover:text-ink [&::-webkit-details-marker]:hidden">
-                  {g}<span aria-hidden className="transition-transform group-open:rotate-90">›</span>
-                </summary>
-                <div className="mt-0.5 space-y-0.5">{items.map(([key, item]) => <NavLink key={key} item={item} active={nav === key} />)}</div>
-              </details>
-            );
-          })}
+        <nav aria-label="Console" className="min-h-0 flex-1 overflow-y-auto px-3 py-4">
+          <p className="eyebrow px-3 pb-2 text-[10px] text-silver">Workspace</p>
+          <div className="space-y-0.5">
+            {PINNED.map((key) => <NavLink key={key} item={NAV_ITEMS[key]} active={nav === key} />)}
+          </div>
+          <div className="my-5 border-t border-mist" />
+          <p className="eyebrow px-3 pb-2 text-[10px] text-silver">Programs & tools</p>
+          <div className="space-y-1">
+            {GROUPS.map((g) => {
+              const items = all.filter(([key, item]) => item.group === g && !PINNED.includes(key));
+              return (
+                <details key={g} open={items.some(([key]) => key === nav)} className="group rounded-lg open:bg-paper">
+                  <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between rounded-lg px-3 text-sm font-bold text-forest hover:bg-mist/60 [&::-webkit-details-marker]:hidden">
+                    {g}<span aria-hidden className="text-lg leading-none text-silver transition-transform group-open:rotate-90">›</span>
+                  </summary>
+                  <div className="space-y-0.5 px-1 pb-2">{items.map(([key, item]) => <NavLink key={key} item={item} active={nav === key} />)}</div>
+                </details>
+              );
+            })}
+          </div>
         </nav>
         <div className="border-t border-mist p-3">
           <div className="rounded-xl bg-mist/60 p-3">
@@ -166,7 +175,7 @@ export async function AdminGate({ title, nav, children }: { title: string; nav: 
         </div>
       </aside>
 
-      <div className="lg:pl-72">
+      <div className="lg:pl-64">
         {announcement?.text ? (
           <div className="border-b border-lime/40 bg-lime px-5 py-2.5 text-center text-xs font-bold text-ink md:px-8">
             {announcement.text}
@@ -185,14 +194,22 @@ export async function AdminGate({ title, nav, children }: { title: string; nav: 
               <div className="lg:hidden"><LogoutButton light /></div>
             </div>
           </div>
-          {/* Mobile nav */}
-          <nav aria-label="Console" className="flex gap-1 overflow-x-auto px-4 pb-3 lg:hidden">
-            {all.map(([key, item]) => (
-              <Link key={key} href={item.href} aria-current={nav === key ? "page" : undefined}
-                className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold ${nav === key ? "bg-ink text-white" : "bg-white text-graphite"}`}>
-                {item.icon}{item.label}
-              </Link>
-            ))}
+          <nav aria-label="Console" className="border-t border-mist/70 px-5 py-2 lg:hidden">
+            <details className="group">
+              <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between text-sm font-bold [&::-webkit-details-marker]:hidden">
+                Browse programs <span aria-hidden className="text-xl transition-transform group-open:rotate-90">›</span>
+              </summary>
+              <div className="max-h-[65vh] space-y-3 overflow-y-auto pb-4">
+                <div className="grid grid-cols-2 gap-1">{PINNED.map((key) => <NavLink key={key} item={NAV_ITEMS[key]} active={nav === key} />)}</div>
+                {GROUPS.map((g) => {
+                  const items = all.filter(([key, item]) => item.group === g && !PINNED.includes(key));
+                  return <details key={g} open={items.some(([key]) => key === nav)} className="rounded-lg bg-white p-2">
+                    <summary className="cursor-pointer px-2 py-1 text-xs font-extrabold uppercase tracking-wider text-graphite">{g}</summary>
+                    <div className="grid grid-cols-2 gap-1 pt-1">{items.map(([key, item]) => <NavLink key={key} item={item} active={nav === key} />)}</div>
+                  </details>;
+                })}
+              </div>
+            </details>
           </nav>
         </header>
 

@@ -75,6 +75,7 @@ function Donut({ parts }: { parts: { label: string; value: number; color: string
 }
 
 const QUICK_ACTIONS = [
+  { href: "/admin/customers", label: "Find a customer" },
   { href: "/admin/fleet#register-kiosk", label: "Register kiosk" },
   { href: "/admin/partners#invite-partner", label: "Invite a partner" },
   { href: "/admin/partners#statements", label: "Queue statements" },
@@ -249,7 +250,23 @@ export default async function AdminDashboard() {
 
   return (
     <AdminGate title="Dashboard" nav="dashboard">
-      <div className="space-y-6">
+      <div className="space-y-7">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <p className="eyebrow text-forest">Internal workspace</p>
+            <h2 className="mt-2 font-display text-3xl font-bold tracking-tight md:text-4xl">Your day at a glance</h2>
+            <p className="mt-2 text-sm text-graphite">Start with what needs a person, then jump into a Zapnivo program.</p>
+          </div>
+          <Link href="/admin/support" className="rounded-lg bg-ink px-4 py-2.5 text-sm font-bold text-white hover:bg-forest">Open inbox →</Link>
+        </div>
+
+        <section aria-label="Customer lookup" className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
+          <form method="get" action="/admin/customers" className="flex flex-col gap-3 sm:flex-row">
+            <label htmlFor="dash-crm" className="sr-only">Customer lookup</label>
+            <input id="dash-crm" name="q" required minLength={2} placeholder="Find a customer by name, phone, email or rental ref" className="min-h-11 flex-1 rounded-lg border border-silver/70 px-4 text-sm" />
+            <button className="min-h-11 rounded-lg bg-forest px-6 text-sm font-bold text-white hover:bg-ink">Search</button>
+          </form>
+        </section>
         {attention > 0 && (
           <Link href="/admin/support" className="flex items-center gap-3 rounded-2xl border border-gold/60 bg-gold/25 px-5 py-3 text-sm font-bold text-ink hover:bg-gold/40">
             <span className="grid h-6 w-6 place-items-center rounded-full bg-ink text-xs font-extrabold text-lime">!</span>
@@ -267,6 +284,44 @@ export default async function AdminDashboard() {
           <Metric icon={icons.inbox} label="Open tickets" value={m ? m.open : "—"} sub={m ? `${m.needsHuman} need a person · ${m.unassigned} unassigned` : "Helpdesk not connected"} />
         </section>
 
+        <section aria-labelledby="programs-heading">
+          <div className="mb-3 flex items-end justify-between gap-3">
+            <div><p className="eyebrow text-silver">Explore</p><h3 id="programs-heading" className="font-display text-xl font-bold">Your programs</h3></div>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {[
+              { title: "Customer care", detail: m ? `${m.open} open tickets` : "Inbox, customers and requests", href: "/admin/support", links: ["Inbox", "Customers", "Refunds"] },
+              { title: "Network operations", detail: kiosksTotal == null ? "Fleet, rentals and restocking" : `${kiosksOnline} of ${kiosksTotal} stations online`, href: "/admin/fleet", links: ["Fleet", "Rentals", "Restocking"] },
+              { title: "Partners", detail: "Venues, onboarding and placements", href: "/admin/partners", links: ["Partners", "Placements", "Agreements"] },
+              { title: "Finance & growth", detail: "Revenue, payouts and opportunities", href: "/admin/finance", links: ["Revenue", "Payouts", "Analytics"] },
+            ].map((program) => (
+              <Link key={program.title} href={program.href} className="group flex min-h-36 flex-col justify-between rounded-2xl border border-mist bg-white p-5 shadow-sm transition-colors hover:border-forest/40 hover:bg-lime/15">
+                <span className="flex items-start justify-between gap-2 font-display text-lg font-bold">{program.title}<span aria-hidden className="text-forest transition-transform group-hover:translate-x-1">↗</span></span>
+                <span><span className="block text-sm text-graphite">{program.detail}</span><span className="mt-3 block text-[11px] font-bold text-forest">{program.links.join(" · ")}</span></span>
+              </Link>
+            ))}
+          </div>
+        </section>
+
+        <Card title="Recent requests" href="/admin/support">
+          {recent.length === 0 ? <p className="text-sm text-graphite">No support requests yet.</p> : (
+            <ul className="divide-y divide-mist">
+              {recent.slice(0, 4).map((t) => <li key={t.id}>
+                <Link href={`/admin/support/${t.number}`} className="flex items-center gap-3 py-3 text-sm hover:text-forest">
+                  <span className="w-20 shrink-0 font-bold">{t.number}</span><span className="min-w-0 flex-1 truncate">{t.subject}</span>
+                  <span className="hidden text-xs text-graphite sm:block">{t.queue}</span><span aria-hidden>↗</span>
+                </Link>
+              </li>)}
+            </ul>
+          )}
+        </Card>
+
+        <details className="group rounded-2xl border border-mist bg-white p-5 shadow-sm">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-4 [&::-webkit-details-marker]:hidden">
+            <span><span className="block font-display text-lg font-bold">Reports and tools</span><span className="mt-1 block text-sm text-graphite">Trends, finance checks, exports and deeper operations data</span></span>
+            <span aria-hidden className="text-2xl text-forest transition-transform group-open:rotate-90">›</span>
+          </summary>
+          <div className="mt-6 space-y-6 border-t border-mist pt-6">
         <Card title="Executive snapshot" href="/admin/finance">
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {execItems.map((item) => (
@@ -408,6 +463,8 @@ export default async function AdminDashboard() {
             </Card>
           </div>
         </div>
+          </div>
+        </details>
       </div>
     </AdminGate>
   );
