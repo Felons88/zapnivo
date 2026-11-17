@@ -411,6 +411,11 @@ class ZapnivoApi {
   }
 
   Future<Map<String, dynamic>> account() => _protected('GET', '/api/mobile/me');
+  Future<Map<String, dynamic>> wallet() => _protected('GET', '/api/mobile/wallet');
+  Future<Map<String, dynamic>> linkedCards() => _protected('GET', '/api/mobile/wallet/cards');
+  Future<Map<String, dynamic>> startWalletTopup(int amountCents) =>
+      _protected('POST', '/api/mobile/wallet/topups', body: {'amount_cents': amountCents});
+  Future<Map<String, dynamic>> googleWalletPass() => _protected('GET', '/api/mobile/wallet/google-pass');
   Future<List<dynamic>> rentals() async =>
       (await _protected('GET', '/api/mobile/rentals'))['rentals'] as List<dynamic>;
 

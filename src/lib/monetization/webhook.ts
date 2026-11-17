@@ -6,6 +6,7 @@ import { retrievePaymentIntent } from "@/lib/stripe";
 import { sendMembershipActivated, sendMembershipCancelled, sendMembershipPaymentFailed, sendPackagePurchased } from "@/lib/email-monetization";
 import { sendGroupFunded } from "@/lib/email-groups";
 import { giftClaimLink } from "@/lib/email-gifts";
+import { fulfillWalletTopup } from "@/lib/wallet-topups";
 import { CLAIM_TOKEN_TTL_HOURS, claimGiftUrl, generateClaimToken, hashClaimToken } from "@/lib/gifts-delivery";
 
 /**
@@ -273,6 +274,7 @@ export async function handleMonetizationEvent(db: SupabaseClient, event: { type:
         case "package": await fulfillPackage(db, o); return true;
         case "event_pass": await fulfillEventPass(db, o); return true;
         case "group_funding": await fulfillGroupFunding(db, o); return true;
+        case "wallet_topup": await fulfillWalletTopup(db, o); return true;
         default: return false;
       }
     }

@@ -10,6 +10,7 @@ import 'support.dart';
 import 'tabs.dart';
 import 'theme.dart';
 import 'widgets.dart';
+import 'wallet.dart';
 
 void _push(BuildContext c, Widget w) => Navigator.of(c).push(MaterialPageRoute<void>(builder: (_) => w));
 
@@ -73,7 +74,7 @@ class ProfileTab extends StatelessWidget {
             const SizedBox(width: 12),
             Expanded(child: _tile(Icons.support_agent_rounded, 'Help', () => app.setTab(3), badge: openTickets)),
             const SizedBox(width: 12),
-            Expanded(child: _tile(Icons.account_balance_wallet_outlined, 'Payments', () => _push(context, const PaymentsScreen()))),
+            Expanded(child: _tile(Icons.account_balance_wallet_outlined, 'Wallet', () => _push(context, const WalletScreen()))),
           ],
         ),
         const SizedBox(height: 18),
@@ -112,7 +113,7 @@ class AccountSettingsScreen extends StatelessWidget {
       SettingsRow(icon: Icons.shield_outlined, label: 'Login & security', onTap: () => _push(context, const SecurityScreen())),
       SettingsRow(icon: Icons.pan_tool_outlined, label: 'Privacy', onTap: () => _push(context, const PrivacyScreen())),
       SettingsRow(icon: Icons.notifications_active_outlined, label: 'Notifications', onTap: () => _push(context, const NotificationSettingsScreen())),
-      SettingsRow(icon: Icons.payments_outlined, label: 'Payments', onTap: () => _push(context, const PaymentsScreen())),
+      SettingsRow(icon: Icons.payments_outlined, label: 'Wallet & payments', onTap: () => _push(context, const WalletScreen())),
       SettingsRow(icon: Icons.receipt_long_outlined, label: 'Receipts & history', onTap: () => _push(context, const HistoryScreen())),
       SettingsRow(icon: Icons.support_agent_rounded, label: 'Help & support', divider: false, onTap: () {
         final app = AppScope.of(context);
@@ -403,36 +404,6 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
         ),
         if (error != null) ErrorText(error!),
         SettingsRow(icon: Icons.inbox_outlined, label: 'Notification inbox', divider: false, onTap: () => _push(context, const NotificationsScreen())),
-      ],
-    );
-  }
-}
-
-class PaymentsScreen extends StatelessWidget {
-  const PaymentsScreen({super.key});
-  @override
-  Widget build(BuildContext context) {
-    final app = AppScope.of(context);
-    final paid = (app.rentals ?? const <Rental>[]).where((r) => r.amountCents != null && r.amountCents! > 0);
-    final total = paid.fold<int>(0, (a, r) => a + r.amountCents!);
-    return TitledPage(
-      title: 'Payments',
-      children: [
-        Glass(
-          padding: const EdgeInsets.all(22),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Eyebrow('Total spent'),
-              const SizedBox(height: 8),
-              CountUpMoney(cents: total, style: const TextStyle(fontSize: 42, fontWeight: FontWeight.w900, letterSpacing: -1.5)),
-              Text('${paid.length} paid rental${paid.length == 1 ? '' : 's'}', style: const TextStyle(color: muted)),
-            ],
-          ),
-        ),
-        const SizedBox(height: 10),
-        const SettingsRow(icon: Icons.lock_outline_rounded, label: 'Secure checkout', subtitle: 'Card, Apple Pay or Google Pay, handled by Stripe. We never see or store your card number.'),
-        SettingsRow(icon: Icons.receipt_long_outlined, label: 'Receipts', subtitle: 'Every rental has an itemized receipt', divider: false, onTap: () => _push(context, const HistoryScreen())),
       ],
     );
   }

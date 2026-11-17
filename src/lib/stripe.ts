@@ -133,6 +133,17 @@ export function createAdCheckoutSession(i: AdCheckoutInput) {
   return stripeCall<{ id: string; url: string | null }>("POST", "/checkout/sessions", body, `adcheckout_${i.campaignId}`);
 }
 
+/** Customer wallet credit purchase. Fulfillment happens only in the Stripe webhook. */
+export function createWalletTopupSession(i: { id: string; profileId: string; email: string; amountCents: number; successUrl: string; cancelUrl: string }) {
+  const metadata = { kind: "wallet_topup", topup_id: i.id, profile_id: i.profileId };
+  return stripeCall<{ id: string; url: string | null }>("POST", "/checkout/sessions", {
+    mode: "payment", payment_method_types: ["card"], customer_email: i.email, client_reference_id: i.id,
+    success_url: i.successUrl, cancel_url: i.cancelUrl,
+    line_items: [{ quantity: 1, price_data: { currency: "usd", unit_amount: i.amountCents, product_data: { name: "Zapnivo charging credit", description: "Credit for future Zapnivo charger rentals" } } }],
+    payment_intent_data: { receipt_email: i.email, metadata }, metadata,
+  }, `wallet_topup_${i.id}`);
+}
+
 export const capturePaymentIntent = (pi: string, amountCents: number, idem: string) =>
   stripeCall<{ id: string; status: string; amount_received?: number }>("POST", `/payment_intents/${encodeURIComponent(pi)}/capture`, { amount_to_capture: amountCents }, idem);
 
