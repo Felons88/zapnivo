@@ -378,6 +378,21 @@ class QuotePromo {
   );
 }
 
+/// How the server wants checkout completed: in-app PaymentSheet or hosted Stripe URL.
+class CheckoutInit {
+  const CheckoutInit._({this.hostedUrl, this.publishableKey, this.paymentIntentClientSecret, this.ephemeralKey, this.customerId, this.merchantDisplayName = 'Zapnivo'});
+  factory CheckoutInit.hosted(Uri url) => CheckoutInit._(hostedUrl: url);
+  factory CheckoutInit.sheet({required String publishableKey, required String paymentIntentClientSecret, required String ephemeralKey, required String customerId, String merchantDisplayName = 'Zapnivo'}) =>
+      CheckoutInit._(publishableKey: publishableKey, paymentIntentClientSecret: paymentIntentClientSecret, ephemeralKey: ephemeralKey, customerId: customerId, merchantDisplayName: merchantDisplayName);
+  final Uri? hostedUrl;
+  final String? publishableKey;
+  final String? paymentIntentClientSecret;
+  final String? ephemeralKey;
+  final String? customerId;
+  final String merchantDisplayName;
+  bool get isSheet => paymentIntentClientSecret != null;
+}
+
 class ApiException implements Exception {
   const ApiException(this.message);
   final String message;
@@ -553,7 +568,7 @@ class ZapnivoApi {
     return RentalQuote.fromJson(body['quote'] as Map<String, dynamic>? ?? const {});
   }
 
-  Future<Uri> createCheckout({
+  Future<CheckoutInit> createCheckout({
     required String stationId,
     required String email,
     required int bankCount,
@@ -572,6 +587,7 @@ class ZapnivoApi {
               'promo_code': promoCode?.trim(),
               'consent': true,
               'sms_consent': false,
+              'client': 'app',
             }),
           )
           .timeout(const Duration(seconds: 25));
@@ -588,13 +604,31 @@ class ZapnivoApi {
         'Checkout did not respond correctly. Nothing has been charged.',
       );
     }
+    if (response.statusCode == 201 && body['mode'] == 'payment_sheet') {
+      final pk = body['publishable_key'];
+      final secret = body['payment_intent_client_secret'];
+      final ek = body['ephemeral_key'];
+      final customer = body['customer_id'];
+      if (pk is String && secret is String && ek is String && customer is String) {
+        return CheckoutInit.sheet(
+          publishableKey: pk,
+          paymentIntentClientSecret: secret,
+          ephemeralKey: ek,
+          customerId: customer,
+          merchantDisplayName: body['merchant_display_name'] is String ? body['merchant_display_name'] as String : 'Zapnivo',
+        );
+      }
+      throw const ApiException(
+        'Checkout returned an invalid payment sheet. Nothing has been charged.',
+      );
+    }
     if (response.statusCode == 201 && body['checkout_url'] is String) {
       final url = Uri.tryParse(body['checkout_url'] as String);
       if (url != null &&
           url.scheme == 'https' &&
           (url.host == 'checkout.stripe.com' ||
               url.host.endsWith('.stripe.com'))) {
-        return url;
+        return CheckoutInit.hosted(url);
       }
       throw const ApiException(
         'Checkout returned an invalid payment link. Nothing has been charged.',

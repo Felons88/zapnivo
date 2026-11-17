@@ -57,10 +57,10 @@ class FakeApi extends ZapnivoApi {
   }
 
   @override
-  Future<Uri> createCheckout({required String stationId, required String email, required int bankCount, String? promoCode}) async {
+  Future<CheckoutInit> createCheckout({required String stationId, required String email, required int bankCount, String? promoCode}) async {
     checkoutCalls++;
     if (checkoutError != null) throw checkoutError!;
-    return checkoutUrl ?? Uri.parse('https://checkout.stripe.com/c/pay/test');
+    return CheckoutInit.hosted(checkoutUrl ?? Uri.parse('https://checkout.stripe.com/c/pay/test'));
   }
 }
 

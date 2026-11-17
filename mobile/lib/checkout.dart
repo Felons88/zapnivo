@@ -4,6 +4,9 @@ import 'dart:math' as math;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter_stripe/flutter_stripe.dart' as stripe;
+import 'package:material_ui/material_ui.dart' as mui;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -666,18 +669,40 @@ class _ConfirmRentalScreenState extends State<ConfirmRentalScreen> {
       }
       await app.refreshRentals();
       final known = (app.rentals ?? const <Rental>[]).map((r) => r.reference).toSet();
-      final url = await app.api.createCheckout(
+      final init = await app.api.createCheckout(
         stationId: widget.station.id,
         email: email.text,
         bankCount: count,
         promoCode: appliedPromo?.code,
       );
-      if (!await launchUrl(url, mode: LaunchMode.inAppBrowserView)) {
-        throw const ApiException('Payment page could not open. Please try again.');
+      if (init.isSheet) {
+        // In-app PaymentSheet: card entry + Google Pay, never leaving the app.
+        try {
+          stripe.Stripe.publishableKey = init.publishableKey!;
+          await stripe.Stripe.instance.initPaymentSheet(
+            paymentSheetParameters: stripe.SetupPaymentSheetParameters(
+              paymentIntentClientSecret: init.paymentIntentClientSecret!,
+              customerId: init.customerId!,
+              customerEphemeralKeySecret: init.ephemeralKey!,
+              merchantDisplayName: init.merchantDisplayName,
+              style: mui.ThemeMode.dark,
+              googlePay: const stripe.PaymentSheetGooglePay(merchantCountryCode: 'US', currencyCode: 'USD', testEnv: kDebugMode),
+              applePay: const stripe.PaymentSheetApplePay(merchantCountryCode: 'US'),
+            ),
+          );
+          await stripe.Stripe.instance.presentPaymentSheet();
+        } on stripe.StripeException catch (e) {
+          if (e.error.code == stripe.FailureCode.Canceled) return; // user backed out — no banner
+          throw ApiException(e.error.localizedMessage ?? 'Payment failed. Nothing has been charged.');
+        }
+      } else {
+        if (!await launchUrl(init.hostedUrl!, mode: LaunchMode.inAppBrowserView)) {
+          throw const ApiException('Payment page could not open. Please try again.');
+        }
       }
       if (!mounted) return;
       navigator.pushReplacement(MaterialPageRoute<void>(
-        builder: (_) => DispensingScreen(knownReferences: known, checkoutUrl: url, stationName: widget.station.name, bankCount: count),
+        builder: (_) => DispensingScreen(knownReferences: known, checkoutUrl: init.hostedUrl, stationName: widget.station.name, bankCount: count),
       ));
     } on ApiException catch (e) {
       if (mounted) setState(() => error = e.message);
@@ -1118,7 +1143,7 @@ const _stageLabels = {
 class DispensingScreen extends StatefulWidget {
   const DispensingScreen({super.key, required this.knownReferences, required this.checkoutUrl, required this.stationName, required this.bankCount});
   final Set<String> knownReferences;
-  final Uri checkoutUrl;
+  final Uri? checkoutUrl;
   final String stationName;
   final int bankCount;
   @override
@@ -1339,13 +1364,15 @@ class _DispensingScreenState extends State<DispensingScreen> with WidgetsBinding
             if (connecting) ...[
               PrimaryButton(label: 'I have paid, check status', onPressed: check),
               const SizedBox(height: 10),
-              GlassButton(label: 'Reopen payment page', icon: Icons.open_in_new, onPressed: () => launchUrl(widget.checkoutUrl, mode: LaunchMode.inAppBrowserView)),
+              if (widget.checkoutUrl != null) GlassButton(label: 'Reopen payment page', icon: Icons.open_in_new, onPressed: () => launchUrl(widget.checkoutUrl!, mode: LaunchMode.inAppBrowserView)),
               const SizedBox(height: 6),
-              const Center(
+              Center(
                 child: Text(
-                  'Complete payment in your browser — once verified, your rental progresses automatically.',
+                  widget.checkoutUrl != null
+                      ? 'Complete payment in your browser — once verified, your rental progresses automatically.'
+                      : 'Once verified, your rental progresses automatically.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: muted, fontSize: 12.5, height: 1.4),
+                  style: const TextStyle(color: muted, fontSize: 12.5, height: 1.4),
                 ),
               ),
             ] else if (failed || uncertain) ...[

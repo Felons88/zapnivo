@@ -100,6 +100,23 @@ async function handleEvent(db: Db, event: StripeEvent): Promise<boolean> {
       // NOTE: checkout phone/email are customer-typed and unverified — never bind them to a profile here.
       return true;
     }
+    // Native PaymentSheet path: a manual-capture PI fires amount_capturable_updated
+    // once the card is authorized — the exact analogue of checkout.session.completed.
+    case "payment_intent.amount_capturable_updated": {
+      const kind = (o.metadata as Record<string, string> | undefined)?.kind;
+      if (kind === "ad_campaign" || kind === "non_return_fee" || kind === "rental_overage") return true;
+      const { data: pay } = await db.from("payments").select("id,rental_id,state").eq("stripe_payment_intent_id", o.id).maybeSingle();
+      if (!pay) return true;
+      const revived = pay.state === "failed";
+      await requireWrite(db.from("payments").update({
+        ...(revived ? { state: "authorized", failure_code: null } : {}),
+      }).eq("id", pay.id));
+      await requireWrite(db.from("rentals").update({ state: "dispense_pending" }).eq("id", pay.rental_id).in("state", revived ? ["authorized", "cancelled"] : ["authorized"]));
+      await issueDispenseCommand(db, pay.rental_id).catch((e) =>
+        recordLog("error", "dispense_command_issue_failed", { service: "payments", route: "webhooks/stripe", attrs: { rentalId: pay.rental_id, reason: e instanceof Error ? e.message : "unknown" } }));
+      trackServer({ name: "rental_started", entityType: "rental", entityId: pay.rental_id });
+      return true;
+    }
     case "payment_intent.succeeded": {
       const pi = o as Obj & { amount_received?: number; receipt_email?: string; latest_charge?: unknown };
       const kind = (o.metadata as Record<string, string> | undefined)?.kind;

@@ -50,10 +50,11 @@ export type StripeResult<T> = { ok: true; data: T } | { ok: false; status: numbe
 
 export async function stripeCall<T = Record<string, unknown>>(
   method: "GET" | "POST", path: string, body?: Record<string, unknown>, idempotencyKey?: string,
+  extraHeaders?: Record<string, string>,
 ): Promise<StripeResult<T>> {
   const key = process.env.STRIPE_SECRET_KEY;
   if (!key) return { ok: false, status: 503, code: "payments_unconfigured", message: "Stripe is not configured." };
-  const headers: Record<string, string> = { Authorization: `Bearer ${key}` };
+  const headers: Record<string, string> = { Authorization: `Bearer ${key}`, ...extraHeaders };
   if (idempotencyKey) headers["Idempotency-Key"] = idempotencyKey;
   let payload: string | undefined;
   if (body) { headers["Content-Type"] = "application/x-www-form-urlencoded"; payload = formEncode(body).join("&"); }
@@ -175,6 +176,66 @@ export function createOffSessionPaymentIntent(i: {
     i.idempotencyKey,
   );
 }
+
+/* ── In-app PaymentSheet (native checkout) ─────────────────────────────────── */
+
+/** Native PaymentSheet needs BOTH keys: secret (server) + publishable (sent to the app). */
+export const nativePaymentsConfigured = () =>
+  Boolean(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_PUBLISHABLE_KEY);
+
+/** Publishable key — safe to hand to the app (it is designed for client bundles). */
+export const publishableKey = () => process.env.STRIPE_PUBLISHABLE_KEY ?? null;
+
+/** Finds a Stripe Customer by email; creates one when absent. */
+export async function findOrCreateCustomer(email: string, idempotencyKey: string): Promise<StripeResult<{ id: string }>> {
+  const found = await stripeCall<{ data?: { id?: string }[] }>("GET", `/customers?email=${encodeURIComponent(email)}&limit=1`);
+  const existing = found.ok ? found.data.data?.[0]?.id : null;
+  if (existing) return { ok: true, data: { id: existing } };
+  return stripeCall<{ id: string }>("POST", "/customers", { email }, idempotencyKey);
+}
+
+/**
+ * Ephemeral key for PaymentSheet. Stripe requires a Stripe-Version header naming an
+ * API version the mobile SDK understands — override via STRIPE_EPHEMERAL_KEY_API_VERSION.
+ * A fresh key is minted per call (they expire quickly); idempotency is per-minute.
+ */
+export function createEphemeralKey(customerId: string) {
+  return stripeCall<{ id: string; secret: string }>(
+    "POST", "/ephemeral_keys",
+    { customer: customerId },
+    `ek_${customerId}_${Math.floor(Date.now() / 60_000)}`,
+    { "Stripe-Version": process.env.STRIPE_EPHEMERAL_KEY_API_VERSION ?? "2025-08-27.basil" },
+  );
+}
+
+export type NativeCheckoutInput = {
+  rentalId: string; reference: string; holdCents: number;
+  email: string; stationId: string; bankCount: number; customerId: string;
+};
+
+/**
+ * Manual-capture authorization hold as a bare PaymentIntent for PaymentSheet.
+ * Same semantics as the hosted Checkout Session: capture_method=manual + the card
+ * is saved (setup_future_usage=off_session) so non-return/overage charges can bill
+ * it later without the customer present.
+ */
+export function createHoldPaymentIntent(i: NativeCheckoutInput) {
+  return stripeCall<{ id: string; client_secret: string }>(
+    "POST", "/payment_intents",
+    {
+      amount: i.holdCents, currency: "usd", customer: i.customerId,
+      capture_method: "manual", setup_future_usage: "off_session",
+      receipt_email: i.email,
+      automatic_payment_methods: { enabled: true },
+      description: `Zapnivo power bank rental hold (${i.bankCount} bank${i.bankCount > 1 ? "s" : ""}) — ${i.reference}`,
+      metadata: { rental_id: i.rentalId, rental_reference: i.reference, station_id: i.stationId },
+    },
+    `holdpi_${i.rentalId}`,
+  );
+}
+
+export const retrieveTaxRate = (id: string) =>
+  stripeCall<{ id: string; percentage: number; inclusive: boolean }>("GET", `/tax_rates/${encodeURIComponent(id)}`);
 
 export const disputeUrl = (id: string) => `https://dashboard.stripe.com/${process.env.STRIPE_SECRET_KEY?.startsWith("sk_test") ? "test/" : ""}disputes/${encodeURIComponent(id)}`;
 

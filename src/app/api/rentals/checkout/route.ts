@@ -6,7 +6,7 @@ import { lookupPromo, promoUsable, PROMO_CODE_RE, redeemPromo, releasePromo } fr
 import { likeEscape } from "@/lib/customer";
 import { rateLimit } from "@/lib/rate-limit";
 import { SITE } from "@/lib/site";
-import { createCheckoutSession, PAYMENTS_UNCONFIGURED, stripeConfigured } from "@/lib/stripe";
+import { createCheckoutSession, createEphemeralKey, createHoldPaymentIntent, findOrCreateCustomer, flatTaxRateId, nativePaymentsConfigured, PAYMENTS_UNCONFIGURED, publishableKey, retrieveTaxRate, stripeConfigured } from "@/lib/stripe";
 import { newTraceId, recordLog } from "@/lib/observability";
 import { serviceClient } from "@/lib/supabase";
 import { stationMaintenanceBlock } from "@/lib/kiosk/availability";
@@ -16,6 +16,7 @@ const schema = z.object({
   email: z.string().trim().toLowerCase().email().max(200),
   bank_count: z.coerce.number().int().min(1).max(3).default(1),
   promo_code: z.string().trim().regex(PROMO_CODE_RE).optional().or(z.literal("").transform(() => undefined)),
+  client: z.enum(["app", "web"]).optional(),
   consent: z.union([z.literal("on"), z.boolean()]).optional().transform((v) => v === true || v === "on"),
   sms_consent: z.union([z.literal("on"), z.boolean()]).optional().transform((v) => v === true || v === "on"),
   use_credits: z.union([z.literal("on"), z.literal("off"), z.boolean()]).optional()
@@ -38,7 +39,7 @@ export async function POST(req: Request) {
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid request body." }, { status: 400 }); }
   const parsed = schema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: "Please check the details you entered.", fields: parsed.error.flatten().fieldErrors }, { status: 422 });
-  const { station_id, email, bank_count, promo_code, consent, sms_consent, use_credits } = parsed.data;
+  const { station_id, email, bank_count, promo_code, consent, sms_consent, use_credits, client } = parsed.data;
   if (!consent) return NextResponse.json({ error: "Please accept the rental terms to continue.", fields: { consent: ["Rental terms acceptance is required."] } }, { status: 422 });
   const hasBearer = Boolean(req.headers.get("authorization"));
   const user = await (hasBearer ? getBearerUser(req) : getSessionUser()).catch(() => null);
@@ -146,6 +147,37 @@ export async function POST(req: Request) {
   };
   if (pErr || !pay) { await rollback(); log("error", "checkout_hold_failed", { reason: pErr?.code ?? "unknown", rental: rental.reference }); return NextResponse.json({ error: "We couldn't start your rental. Please try again." }, { status: 500 }); }
   log("info", "checkout_hold_created", { rental: rental.reference, holdCents: hold, bankCount: bank_count, promo: Boolean(promoCode) });
+
+  // Native app checkout: return PaymentSheet params instead of a hosted URL when
+  // the app asks and both Stripe keys are configured. Falls back to hosted Checkout
+  // so an app on an older build (or a missing publishable key) still completes payment.
+  if (client === "app" && nativePaymentsConfigured()) {
+    const customer = await findOrCreateCustomer(email, `cust_${rental.id}`);
+    if (!customer.ok) { await rollback(); log("error", "checkout_native_failed", { rental: rental.reference, reason: `customer:${customer.code}` }); return NextResponse.json({ error: "Payment couldn't be started. Please try again." }, { status: 502 }); }
+    const pi = await createHoldPaymentIntent({
+      rentalId: rental.id, reference: rental.reference, holdCents: hold, email,
+      stationId: station_id, bankCount: bank_count, customerId: customer.data.id,
+    });
+    if (!pi.ok || !pi.data.client_secret) { await rollback(); log("error", "checkout_native_failed", { rental: rental.reference, reason: `pi:${pi.ok ? "no_secret" : pi.code}` }); return NextResponse.json({ error: "Payment couldn't be started. Please try again." }, { status: 502 }); }
+    const ek = await createEphemeralKey(customer.data.id);
+    if (!ek.ok) { await rollback(); log("error", "checkout_native_failed", { rental: rental.reference, reason: `ek:${ek.code}` }); return NextResponse.json({ error: "Payment couldn't be started. Please try again." }, { status: 502 }); }
+    // Estimated tax on the hold (mirrors the session path where Stripe computes it):
+    // settlement scales this proportionally to the final charge.
+    let taxCents = 0;
+    const rateId = flatTaxRateId();
+    if (rateId) {
+      const rate = await retrieveTaxRate(rateId);
+      if (rate.ok && !rate.data.inclusive) taxCents = Math.round((hold * rate.data.percentage) / 100);
+    }
+    await db.from("payments").update({ stripe_payment_intent_id: pi.data.id, tax_cents: taxCents }).eq("id", pay.id);
+    log("info", "checkout_completed", { rental: rental.reference, holdCents: hold, mode: "native" });
+    return NextResponse.json({
+      rental_reference: rental.reference, mode: "payment_sheet",
+      publishable_key: publishableKey(), payment_intent_client_secret: pi.data.client_secret,
+      ephemeral_key: ek.data.secret, customer_id: customer.data.id,
+      merchant_display_name: "Zapnivo",
+    }, { status: 201 });
+  }
 
   const base = SITE.url.replace(/\/$/, "");
   const session = await createCheckoutSession({
