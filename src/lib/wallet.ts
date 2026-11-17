@@ -71,4 +71,4 @@ export async function linkedCards(email: string): Promise<LinkedCard[] | null> {
   }));
 }
 
-export const walletTopupsReady = () => giftLaunchStatus().status === "enabled" && stripeConfigured();
+export const walletTopupsReady = () => process.env.WALLET_TOPUPS_ENABLED === "1" && giftLaunchStatus().status === "enabled" && stripeConfigured();

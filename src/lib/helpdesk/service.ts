@@ -20,6 +20,8 @@ import { notifyTicketReceived } from "../notifications";
 import { recordLog } from "../observability";
 import { pushToEmail } from "../push";
 import { auditLog } from "../audit";
+import { serviceClient } from "../supabase";
+import { supportIdentity } from "./identity";
 import type { TicketFilter } from "./types";
 
 export type Ctx = { repo: HelpdeskRepo; chat: ChatFn | null; mailer: Mailer | null; rentals: RentalDirectory; refunds: RefundProvider; now: () => Date; siteUrl: string; agentGate?: AgentGateFn };
@@ -331,7 +333,15 @@ export async function getRequesterThread(c: Ctx, actor: Actor, number: string): 
   const t = await must(c, number);
   assertOwner(t, actor);
   const msgs = await c.repo.listMessages(t.id);
-  return { id: t.id, number: t.number, category: t.category, subject: t.subject, state: t.state, withPerson: t.aiState === "human" || t.aiState === "needs_human", createdAt: t.createdAt, messages: msgs.map((m) => ({ authorType: m.authorType, authorName: m.authorName, body: m.body, createdAt: m.createdAt })) };
+  const agentIds = [...new Set(msgs.filter((m) => m.authorType === "agent" && m.authorId && /^[0-9a-f-]{36}$/i.test(m.authorId)).map((m) => m.authorId!))];
+  const identities = new Map<string, string>();
+  const db = serviceClient();
+  if (db && agentIds.length) {
+    const profiles = await db.from("profiles").select("id,full_name,role,support_title").in("id", agentIds);
+    const fallback = profiles.error ? await db.from("profiles").select("id,full_name,role").in("id", agentIds) : null;
+    for (const row of (profiles.error ? fallback?.data : profiles.data) ?? []) identities.set(row.id, supportIdentity(row));
+  }
+  return { id: t.id, number: t.number, category: t.category, subject: t.subject, state: t.state, withPerson: t.aiState === "human" || t.aiState === "needs_human", createdAt: t.createdAt, messages: msgs.map((m) => ({ authorType: m.authorType, authorName: m.authorType === "agent" ? identities.get(m.authorId ?? "") ?? (m.authorName.includes(" · ") ? m.authorName : "Zapnivo Support · Support agent") : m.authorName, body: m.body, createdAt: m.createdAt })) };
 }
 
 export async function getStaffThread(c: Ctx, actor: Actor, number: string) {

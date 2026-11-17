@@ -14,8 +14,9 @@ export default async function Users() {
   const me = await getSessionUser();
   const isAdmin = me?.role === "admin";
   const db = serviceClient();
-  const res = db ? await db.from("profiles").select("id,email,full_name,role,created_at,organizations(name)").order("created_at", { ascending: false }).limit(500) : null;
-  const rows = (res?.data ?? []) as unknown as { id: string; email: string; full_name: string | null; role: keyof typeof ROLE_TONE; created_at: string; organizations: { name: string }[] | { name: string } | null }[];
+  const res = db ? await db.from("profiles").select("id,email,full_name,role,support_title,created_at,organizations(name)").order("created_at", { ascending: false }).limit(500) : null;
+  const legacyRes = res?.error && db ? await db.from("profiles").select("id,email,full_name,role,created_at,organizations(name)").order("created_at", { ascending: false }).limit(500) : null;
+  const rows = (res?.data ?? legacyRes?.data ?? []) as unknown as { id: string; email: string; full_name: string | null; role: keyof typeof ROLE_TONE; support_title?: "manager" | "support_agent" | null; created_at: string; organizations: { name: string }[] | { name: string } | null }[];
   const prefsRes = db && me && /^[0-9a-f-]{36}$/i.test(me.id) ? await db.from("notification_prefs").select("offline_alerts,low_battery_alerts,new_partner_inquiries").eq("profile_id", me.id).maybeSingle() : null;
   const prefs = (prefsRes?.data ?? { offline_alerts: true, low_battery_alerts: true, new_partner_inquiries: true }) as { offline_alerts: boolean; low_battery_alerts: boolean; new_partner_inquiries: boolean };
   const privRes = db ? await db.from("customer_data_requests").select("id,email,kind,created_at").eq("status", "pending").order("created_at").limit(50) : null;
@@ -48,8 +49,8 @@ export default async function Users() {
           ) : <p className="rounded-xl bg-gold/30 px-4 py-3 text-sm font-bold">Read-only — only admins can invite users or change roles.</p>}
 
           <section className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
-            <table className="w-full min-w-[760px] text-left text-sm">
-              <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite"><tr>{["User", "Role", "Organization", "Joined", isAdmin ? "Change role" : ""].map((h, i) => <th key={i} className="px-4 py-3 font-extrabold">{h}</th>)}</tr></thead>
+            <table className="w-full min-w-[960px] text-left text-sm">
+              <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite"><tr>{["User", "Role", "Organization", "Joined", "Support identity", isAdmin ? "Change role" : ""].map((h, i) => <th key={i} className="px-4 py-3 font-extrabold">{h}</th>)}</tr></thead>
               <tbody>
                 {rows.map((r) => (
                   <tr key={r.id} className="border-b border-mist/70 last:border-0">
@@ -57,6 +58,16 @@ export default async function Users() {
                     <td className="px-4 py-3"><Pill tone={ROLE_TONE[r.role] ?? "mist"}>{r.role}</Pill></td>
                     <td className="px-4 py-3 text-xs font-semibold">{org(r.organizations)}</td>
                     <td className="px-4 py-3 text-xs text-graphite">{new Date(r.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</td>
+                    <td className="px-4 py-3">
+                      {(r.role === "admin" || r.role === "staff") && (isAdmin ? (
+                        <form method="post" action="/api/admin/users" className="flex min-w-72 flex-wrap items-center gap-2">
+                          <input type="hidden" name="action" value="set_support_identity" /><input type="hidden" name="id" value={r.id} />
+                          <input name="full_name" defaultValue={r.full_name ?? ""} required aria-label={`Support name for ${r.email}`} placeholder="First and last name" className="min-h-8 w-40 rounded-lg border border-silver/60 px-2 text-xs" />
+                          <select name="support_title" defaultValue={r.support_title ?? (r.role === "admin" ? "manager" : "support_agent")} aria-label={`Support title for ${r.email}`} className="min-h-8 rounded-lg border border-silver/60 px-2 text-xs font-semibold"><option value="support_agent">Support agent</option><option value="manager">Manager</option></select>
+                          <button className="min-h-8 rounded-full bg-mist px-3 text-xs font-bold hover:bg-lime">Save</button>
+                        </form>
+                      ) : <span className="text-xs font-semibold">{r.full_name ?? "Name needed"} · {(r.support_title ?? (r.role === "admin" ? "manager" : "support_agent")) === "manager" ? "Manager" : "Support agent"}</span>)}
+                    </td>
                     <td className="px-4 py-3">
                       {isAdmin && r.id !== me?.id && (
                         <form method="post" action="/api/admin/users" className="flex items-center gap-2">

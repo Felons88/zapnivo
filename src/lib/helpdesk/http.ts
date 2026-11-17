@@ -3,6 +3,8 @@ import { getSessionUser, isStaff } from "../auth";
 import { rateLimit } from "../rate-limit";
 import { defaultCtx, type Ctx } from "./service";
 import { HelpdeskError, type Actor } from "./types";
+import { serviceClient } from "../supabase";
+import { supportIdentity } from "./identity";
 
 export const clientIp = (req: Request) => req.headers.get("x-forwarded-for")?.split(",")[0].trim() || "unknown";
 
@@ -34,7 +36,11 @@ export async function needCtx(): Promise<Ctx | NextResponse> {
 export async function staffActor(): Promise<Extract<Actor, { kind: "staff" }> | null> {
   const u = await getSessionUser();
   if (!u || !isStaff(u)) return null;
-  return { kind: "staff", id: u.id, name: u.email.split("@")[0], role: u.role === "admin" ? "admin" : "staff" };
+  const db = serviceClient();
+  const profile = db ? await db.from("profiles").select("full_name,role,support_title").eq("id", u.id).maybeSingle() : null;
+  const fallback = profile?.error && db ? await db.from("profiles").select("full_name,role").eq("id", u.id).maybeSingle() : null;
+  const row = profile?.error ? fallback?.data : profile?.data;
+  return { kind: "staff", id: u.id, name: supportIdentity(row ?? { role: u.role }), role: u.role === "admin" ? "admin" : "staff" };
 }
 
 export async function partnerActor(): Promise<Extract<Actor, { kind: "partner" }> | null> {

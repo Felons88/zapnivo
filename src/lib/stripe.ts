@@ -134,13 +134,13 @@ export function createAdCheckoutSession(i: AdCheckoutInput) {
 }
 
 /** Customer wallet credit purchase. Fulfillment happens only in the Stripe webhook. */
-export function createWalletTopupSession(i: { id: string; profileId: string; email: string; amountCents: number; successUrl: string; cancelUrl: string }) {
+export function createWalletTopupSession(i: { id: string; profileId: string; email?: string; amountCents: number; successUrl: string; cancelUrl: string }) {
   const metadata = { kind: "wallet_topup", topup_id: i.id, profile_id: i.profileId };
   return stripeCall<{ id: string; url: string | null }>("POST", "/checkout/sessions", {
-    mode: "payment", payment_method_types: ["card"], customer_email: i.email, client_reference_id: i.id,
+    mode: "payment", payment_method_types: ["card"], ...(i.email ? { customer_email: i.email } : {}), client_reference_id: i.id,
     success_url: i.successUrl, cancel_url: i.cancelUrl,
     line_items: [{ quantity: 1, price_data: { currency: "usd", unit_amount: i.amountCents, product_data: { name: "Zapnivo charging credit", description: "Credit for future Zapnivo charger rentals" } } }],
-    payment_intent_data: { receipt_email: i.email, metadata }, metadata,
+    payment_intent_data: { ...(i.email ? { receipt_email: i.email } : {}), metadata }, metadata,
   }, `wallet_topup_${i.id}`);
 }
 

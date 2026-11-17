@@ -194,7 +194,7 @@ class _AddFundsScreenState extends State<AddFundsScreen> {
     try {
       final result = await AppScope.of(context).api.startWalletTopup(amount);
       final uri = Uri.tryParse(result['checkout_url'] as String? ?? '');
-      if (uri == null || uri.scheme != 'https' || !uri.host.endsWith('stripe.com') || !await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+      if (uri == null || uri.scheme != 'https' || uri.host != 'checkout.stripe.com' || !await launchUrl(uri, mode: LaunchMode.externalApplication)) {
         throw const ApiException('Secure checkout could not open. Nothing was charged.');
       }
     } on ApiException catch (e) {

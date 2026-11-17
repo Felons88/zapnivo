@@ -43,5 +43,21 @@ export async function POST(req: Request) {
     return back(req);
   }
 
+  if (action === "set_support_identity") {
+    const parsed = z.object({
+      id: z.string().uuid(),
+      full_name: z.string().trim().max(120).refine((value) => value.split(/\s+/).length >= 2, "Enter a first and last name."),
+      support_title: z.enum(["manager", "support_agent"]),
+    }).safeParse({ id: form.get("id"), full_name: form.get("full_name"), support_title: form.get("support_title") });
+    if (!parsed.success) return NextResponse.json({ error: "Enter the agent's first and last name and support title." }, { status: 422 });
+    const { data: target, error: lookupError } = await db.from("profiles").select("role").eq("id", parsed.data.id).maybeSingle();
+    if (lookupError) return NextResponse.json({ error: "Couldn't load the team member." }, { status: 500 });
+    if (target?.role !== "admin" && target?.role !== "staff") return NextResponse.json({ error: "Support identity applies to team members only." }, { status: 422 });
+    const { error } = await db.from("profiles").update({ full_name: parsed.data.full_name.replace(/\s+/g, " "), support_title: parsed.data.support_title }).eq("id", parsed.data.id);
+    if (error) return NextResponse.json({ error: "Couldn't save the support identity. Check that the latest database migration is applied." }, { status: 503 });
+    await auditLog(user.id, "set_support_identity", "profile", parsed.data.id, { support_title: parsed.data.support_title });
+    return back(req);
+  }
+
   return NextResponse.json({ error: "Unknown action" }, { status: 400 });
 }

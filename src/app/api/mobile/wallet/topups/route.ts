@@ -20,7 +20,7 @@ export async function POST(req: Request) {
   const { data: topup, error } = await c.db.from("wallet_topups").insert({ profile_id: c.user.id, amount_cents: parsed.data.amount_cents }).select("id").single();
   if (error || !topup) return NextResponse.json({ error: "Could not start a secure checkout." }, { status: 503 });
   const checkout = await createWalletTopupSession({
-    id: topup.id, profileId: c.user.id, email: c.email, amountCents: parsed.data.amount_cents,
+    id: topup.id, profileId: c.user.id, email: c.email.endsWith("@mobile.zapnivo.com") ? undefined : c.email, amountCents: parsed.data.amount_cents,
     successUrl: `${SITE.url}/account/charging?wallet=success`, cancelUrl: `${SITE.url}/account/charging?wallet=cancelled`,
   });
   if (!checkout.ok || !checkout.data.url) {
