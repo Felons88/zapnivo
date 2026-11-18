@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic";
 import type { Metadata } from "next";
+import Link from "next/link";
 import { AdminGate } from "@/components/AdminShell";
 import { EmptyCard, Metric } from "@/components/PortalShell";
 import { Pill } from "@/components/SupportNav";
@@ -75,7 +76,7 @@ export default async function Rentals({ searchParams }: { searchParams: Promise<
                     const overdue = r.non_return_deadline && !r.returned_at && new Date(r.non_return_deadline) < new Date();
                     return (
                       <tr key={r.id} className="border-b border-mist/70 last:border-0 hover:bg-lime/10">
-                        <td className="px-4 py-3 font-bold">{r.reference}</td>
+                        <td className="px-4 py-3 font-bold"><Link className="text-forest underline hover:text-ink" href={`/admin/rentals/${r.id}`}>{r.reference}</Link></td>
                         <td className="px-4 py-3"><p className="font-semibold">{r.kiosks?.venues?.name ?? r.kiosks?.station_id ?? "—"}</p><p className="text-xs text-graphite">{r.kiosks?.venues?.city ?? ""}</p></td>
                         <td className="px-4 py-3"><Pill tone={overdue ? "red" : STATE_TONE[r.state] ?? "mist"}>{overdue ? "overdue" : r.state.replace("_", " ")}</Pill></td>
                         <td className="px-4 py-3 text-xs text-graphite">{when(r.started_at ?? r.created_at)}</td>
