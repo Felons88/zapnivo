@@ -223,8 +223,13 @@ export async function deliverEvent(db: SupabaseClient, event: {
       .insert({ profile_id: event.profile_id, category: tpl.category, kind: event.kind, title: rendered.title, body: rendered.body, data, dedupe_key: dedupe })
       .select("id").maybeSingle();
     if (insErr) {
-      await db.from("notification_events").update({ status: "failed", last_error: insErr.message.slice(0, 240), attempts: 1 }).eq("id", event.id);
-      return "failed";
+      // Dedupe conflict = a concurrent/replayed delivery already wrote the row — done, not failed.
+      const isDedupe = (insErr as { code?: string }).code === "23505";
+      await db.from("notification_events").update({
+        status: isDedupe ? "done" : "failed", processed_at: new Date().toISOString(),
+        ...(isDedupe ? {} : { last_error: insErr.message.slice(0, 240), attempts: 1 }),
+      }).eq("id", event.id);
+      return isDedupe ? "done" : "failed";
     }
     if (!notif) { await db.from("notification_events").update({ status: "done", processed_at: new Date().toISOString() }).eq("id", event.id); return "done"; }
     nid = (notif as { id: string }).id;
@@ -256,8 +261,9 @@ export async function deliverEvent(db: SupabaseClient, event: {
     if (ch === "push") {
       const { pushToUser } = await import("./push");
       await deliver(db, nid, "push", async () => {
-        const n = await pushToUser(event.profile_id, { title: rendered.title, body: rendered.body, data });
-        if (n === 0) throw new Error("no_active_devices");
+        const diag: { reason?: string } = {};
+        const n = await pushToUser(event.profile_id, { title: rendered.title, body: rendered.body, data }, db, diag);
+        if (n === 0) throw new Error(diag.reason ?? "not_sent");
         return `${n} device(s)`;
       });
     } else if (ch === "email") {

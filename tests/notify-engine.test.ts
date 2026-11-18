@@ -5,8 +5,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 const pushCalls: { userId: string; msg: { title: string; body: string } }[] = [];
 let pushResult = 1;
 vi.mock("../src/lib/push", () => ({
-  pushToUser: vi.fn(async (userId: string, msg: { title: string; body: string }) => {
+  pushToUser: vi.fn(async (userId: string, msg: { title: string; body: string }, _db?: unknown, diag?: { reason?: string }) => {
     pushCalls.push({ userId, msg });
+    if (pushResult === 0 && diag) diag.reason = "no_devices";
     return pushResult;
   }),
   pushToEmail: vi.fn(async () => pushResult),
@@ -229,7 +230,7 @@ describe("deliverEvent", () => {
     const { db, tables } = seed();
     await deliverEvent(db, event() as never);
     expect(tables.notification_deliveries.find((d) => d.channel === "push")?.status).toBe("failed");
-    expect(tables.notification_deliveries.find((d) => d.channel === "push")?.detail).toBe("no_active_devices");
+    expect(tables.notification_deliveries.find((d) => d.channel === "push")?.detail).toBe("no_devices");
   });
 
   it("defers optional categories to quiet-hours and requeues the push", async () => {

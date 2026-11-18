@@ -41,28 +41,35 @@ async function accessToken(a: ServiceAccount): Promise<string | null> {
 }
 
 export type PushMessage = { title: string; body: string; data?: Record<string, string> };
+export type PushDiag = { reason?: string };
 
-/** Best-effort push to every device a customer registered. Never throws. */
-export async function pushToUser(userId: string | null | undefined, msg: PushMessage, db: SupabaseClient | null = serviceClient()): Promise<number> {
+/** Best-effort push to every device a customer registered. Never throws.
+ *  diag.reason reports why a send didn't happen so delivery records stay honest:
+ *  not_configured | no_devices | fcm_auth | fcm_<status> | unreachable | thrown. */
+export async function pushToUser(userId: string | null | undefined, msg: PushMessage, db: SupabaseClient | null = serviceClient(), diag?: PushDiag): Promise<number> {
   try {
     const a = account();
-    if (!a || !db || !userId) return 0;
+    if (!a) { if (diag) diag.reason = "not_configured"; return 0; }
+    if (!db || !userId) { if (diag) diag.reason = "no_user"; return 0; }
     const { data } = await db.from("mobile_devices").select("token").eq("user_id", userId);
     const tokens = ((data ?? []) as { token: string }[]).map((d) => d.token);
-    if (!tokens.length) return 0;
+    if (!tokens.length) { if (diag) diag.reason = "no_devices"; return 0; }
     const bearer = await accessToken(a);
-    if (!bearer) return 0;
+    if (!bearer) { if (diag) diag.reason = "fcm_auth"; return 0; }
     let sent = 0;
+    let lastStatus: number | null = null;
     for (const token of tokens) {
       const res = await fetch(`https://fcm.googleapis.com/v1/projects/${a.project_id}/messages:send`, {
         method: "POST", headers: { Authorization: `Bearer ${bearer}`, "Content-Type": "application/json" },
         body: JSON.stringify({ message: { token, notification: { title: msg.title, body: msg.body }, data: msg.data ?? {}, android: { priority: "HIGH", notification: { channel_id: "zapnivo_default" } } } }),
       }).catch(() => null);
-      if (res?.ok) sent++;
-      else if (res && (res.status === 404 || res.status === 400)) await db.from("mobile_devices").delete().eq("token", token);
+      if (res?.ok) { sent++; continue; }
+      lastStatus = res?.status ?? null;
+      if (res && (res.status === 404 || res.status === 400)) await db.from("mobile_devices").delete().eq("token", token);
     }
+    if (!sent && diag) diag.reason = lastStatus ? `fcm_${lastStatus}` : "unreachable";
     return sent;
-  } catch { return 0; }
+  } catch { if (diag) diag.reason = "thrown"; return 0; }
 }
 
 export async function pushToRentalCustomer(rentalId: string, msg: PushMessage) {
