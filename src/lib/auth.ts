@@ -1,26 +1,17 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { cookies, headers } from "next/headers";
 import { anonClient, serviceClient } from "./supabase";
+import { devAuth, DEV_COOKIE, DEV_USERS, type SessionUser } from "./dev-auth";
 
 export type Role = "admin" | "staff" | "partner" | "customer";
-export type SessionUser = { id: string; email: string; role: Role; organizationId: string | null };
+// Re-exported from ./dev-auth (edge-safe) so edge-bundled modules can use them
+// without pulling this file's node:crypto imports into the edge bundle.
+export type { SessionUser } from "./dev-auth";
+export { devAuth, DEV_USERS, DEV_COOKIE } from "./dev-auth";
 
 export const SESSION_COOKIE = "zapnivo_access";
 /** Signed first-authentication anchor — fallback deadline for tokens without a session_id claim. */
 export const ANCHOR_COOKIE = "zapnivo_anchor";
-
-/**
- * DEV ONLY: with HELPDESK_DEV_STORE=1 under `next dev`, sign-in is bypassed and you act as a synthetic user
- * (switch with /api/dev/as?role=admin|admin2|agent|partner). Hard-disabled in production builds.
- */
-export const devAuth = () => process.env.NODE_ENV === "development" && process.env.HELPDESK_DEV_STORE === "1";
-export const DEV_USERS = {
-  admin: { id: "dev-admin", email: "admin@dev.local", role: "admin", organizationId: "dev-org" },
-  admin2: { id: "dev-admin-2", email: "admin2@dev.local", role: "admin", organizationId: "dev-org" },
-  agent: { id: "dev-agent", email: "agent@dev.local", role: "staff", organizationId: "dev-org" },
-  partner: { id: "dev-partner", email: "owner@demo-tavern.local", role: "partner", organizationId: "dev-org" },
-} as const satisfies Record<string, SessionUser>;
-export const DEV_COOKIE = "zapnivo_dev_as";
 
 export const authConfigured = () => devAuth() || Boolean(anonClient() && serviceClient());
 

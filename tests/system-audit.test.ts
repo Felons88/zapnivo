@@ -5,7 +5,7 @@ import {
   type ChangeRequestRow,
 } from "@/lib/system/audit";
 import { setFeatureFlag } from "@/lib/system/flags";
-import { requireSystem } from "@/lib/system/rbac";
+import { requireSystem } from "@/lib/system/require-system";
 import type { SessionUser } from "@/lib/auth";
 
 const actor = (id: string, role = "sysadmin") => ({ id, role });

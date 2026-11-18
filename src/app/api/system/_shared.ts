@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { rateLimit } from "@/lib/rate-limit";
-import { requireSystem, systemAuthzResponse } from "@/lib/system/rbac";
+import { requireSystem, systemAuthzResponse } from "@/lib/system/require-system";
 import type { SessionUser } from "@/lib/auth";
 import type { SystemPermission, SystemRole } from "@/lib/system/rbac";
 

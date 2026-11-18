@@ -2,9 +2,10 @@ import { describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   SYSTEM_PERMISSIONS, SYSTEM_ROLES, authorize, isSystemRole, mutationNeedsApproval,
-  requireSystem, roleCan, ROLE_PERMISSIONS, systemRole,
+  roleCan, ROLE_PERMISSIONS, systemRole,
   type SystemPermission, type SystemRole,
 } from "@/lib/system/rbac";
+import { requireSystem } from "@/lib/system/require-system";
 import type { SessionUser } from "@/lib/auth";
 import { planRoute } from "@/lib/subdomains";
 
