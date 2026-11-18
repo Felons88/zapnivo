@@ -21,6 +21,9 @@ export async function POST(req: Request) {
   if (!phone) return NextResponse.json({ error: "Enter a valid phone number and message." }, { status: 422 });
   const { data: inbound, error } = await db.from("sms_messages").select("id").eq("direction", "inbound").eq("from_number", phone).limit(1);
   if (error || !inbound?.length) return NextResponse.json({ error: "Reply requires an existing inbound text." }, { status: 403 });
+  const { data: optOut, error: optOutError } = await db.from("sms_opt_outs").select("phone").eq("phone", phone).maybeSingle();
+  if (optOutError) return NextResponse.json({ error: "Consent status is unavailable. Nothing was sent." }, { status: 503 });
+  if (optOut) return NextResponse.json({ error: "This contact opted out of texts." }, { status: 403 });
   if (!rateLimit("receptionist-sms:" + user!.id, 12, 60 * 60_000).ok) return NextResponse.json({ error: "Too many replies. Try again later." }, { status: 429 });
   const sent = await sendSms(db, { to: phone, body: parsed.data.body });
   await auditLog(user!.id, "receptionist_sms_reply", "sms_message", inbound[0].id, { sent: sent.sent, reason: sent.reason ?? null });

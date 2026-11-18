@@ -52,7 +52,7 @@ export default async function TicketPage({ params }: { params: Promise<{ number:
             <TicketLive ticketId={t.id} intervalMs={15000} accessToken={accessToken} />
             <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
               <Link href="/admin/support" className="font-bold text-graphite hover:text-ink">← All conversations</Link>
-              <div className="flex gap-2"><a href="#ticket-conversation" className="rounded-lg border border-mist bg-white px-3 py-2 font-bold hover:bg-lime/30">Conversation</a><a href="#ticket-compose" className="rounded-lg bg-ink px-3 py-2 font-bold text-white hover:bg-forest">Write a reply ↓</a></div>
+              <div className="flex flex-wrap gap-2"><a href="#ticket-conversation" className="rounded-lg border border-mist bg-white px-3 py-2 font-bold hover:bg-lime/30">Conversation</a><a href="#ticket-controls" className="rounded-lg border border-mist bg-white px-3 py-2 font-bold hover:bg-lime/30">Case controls</a><a href="#ticket-compose" className="rounded-lg bg-ink px-3 py-2 font-bold text-white hover:bg-forest">Write a reply ↓</a></div>
             </div>
             <section aria-label="Case overview" className="rounded-2xl border border-[#dbe5dc] bg-white p-5 shadow-sm md:p-7">
               <div className="flex flex-wrap items-start justify-between gap-4">

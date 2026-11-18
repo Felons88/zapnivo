@@ -31,7 +31,7 @@ export default async function Inquiries({ searchParams }: { searchParams: Promis
   };
   const open = rows.filter((r) => !r.handled).length;
   return <AdminGate title="Inquiries" nav="inquiries">
-    {!db ? <EmptyCard title="Contact data not connected">Connect Supabase to see live messages.</EmptyCard> :
+    {!db || res?.error ? <EmptyCard title="Contact data unavailable">{res?.error ? "The inquiry list could not load. Try again shortly." : "Connect Supabase to see live messages."}</EmptyCard> :
     <div className="space-y-5">
       <section className="flex flex-wrap items-end justify-between gap-4 rounded-2xl bg-[#142126] p-6 text-white md:p-8">
         <div><p className="eyebrow text-lime">Contact intake</p><h2 className="mt-2 text-3xl font-bold tracking-tight">Every message has a next step.</h2><p className="mt-2 max-w-2xl text-sm text-[#b7c8c2]">Triage website inquiries, review the full message, then move the conversation into the right customer or partner workspace.</p></div>

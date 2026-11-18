@@ -46,7 +46,8 @@ export function AgentConsole({ ticket, me, aiAvailable, macros, suggestions, rem
 
   return (
     <div className="space-y-6">
-      <section className="rounded-2xl border border-mist bg-white p-4 shadow-sm" aria-label="Reply">
+      <section className="rounded-2xl border border-mist bg-white p-5 shadow-sm" aria-label="Reply">
+        <div className="mb-4"><p className="eyebrow text-forest">Composer</p><h2 className="mt-1 text-lg font-bold">Move this case forward</h2></div>
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <div role="tablist" aria-label="Reply type" className="inline-flex rounded-full bg-mist p-1">
             {(["reply", "note"] as const).map((m) => <button key={m} role="tab" aria-selected={mode === m} onClick={() => setMode(m)} className={`min-h-9 rounded-full px-4 text-sm font-bold ${mode === m ? "bg-forest text-white" : ""}`}>{m === "reply" ? "Reply to requester" : "Internal note"}</button>)}
@@ -75,7 +76,7 @@ export function AgentConsole({ ticket, me, aiAvailable, macros, suggestions, rem
         {msg && <p role="status" className={`mt-3 rounded-lg p-2 text-sm font-semibold ${msg.ok ? "bg-lime/50" : "bg-red-50 text-red-800"}`}>{msg.text}</p>}
       </section>
 
-      <section className="rounded-2xl border border-mist bg-white p-4 shadow-sm" aria-label="Ticket controls">
+      <section id="ticket-controls" className="scroll-mt-40 rounded-2xl border border-mist bg-white p-5 shadow-sm" aria-label="Ticket controls">
         <h2 className="font-display text-lg font-bold">Controls</h2>
         <div className="mt-3 grid gap-3 sm:grid-cols-3">
           <label className="text-xs font-bold">Status<select className={`${sel} mt-1 w-full`} value={ticket.state} onChange={(e) => call("state", { op: "state", number: ticket.number, state: e.target.value })}>{STATES.map((s) => <option key={s}>{s}</option>)}</select></label>

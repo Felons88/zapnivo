@@ -6,7 +6,7 @@ import { EmptyCard } from "@/components/PortalShell";
 import { Pill } from "@/components/SupportNav";
 import { getSessionUser, isStaff } from "@/lib/auth";
 import { getThreadDetail, listThreads } from "@/lib/receptionist/service";
-import { FOLDERS, FOLDER_LABELS, type Folder } from "@/lib/receptionist/types";
+import { FOLDERS, FOLDER_LABELS, RECEPTIONIST_CATEGORIES, type Folder, type ReceptionistCategory } from "@/lib/receptionist/types";
 import { serviceClient } from "@/lib/supabase";
 import { ThreadDetail } from "./ThreadDetail";
 import { PhoneDesk, type PhoneMessage } from "./PhoneDesk";
@@ -16,10 +16,11 @@ export const metadata: Metadata = { title: "Receptionist", robots: { index: fals
 const PRIO_TONE = { urgent: "red", high: "gold", normal: "mist", low: "mist" } as const;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export default async function ReceptionistPage({ searchParams }: { searchParams: Promise<{ folder?: string; q?: string; thread?: string; channel?: string; phone?: string; result?: string }> }) {
+export default async function ReceptionistPage({ searchParams }: { searchParams: Promise<{ folder?: string; q?: string; category?: string; thread?: string; channel?: string; phone?: string; result?: string }> }) {
   const sp = await searchParams;
   const channel = sp.channel === "phone" ? "phone" : "email";
   const folder = (FOLDERS as readonly string[]).includes(sp.folder ?? "") ? (sp.folder as Folder) : "new";
+  const category = (RECEPTIONIST_CATEGORIES as readonly string[]).includes(sp.category ?? "") ? sp.category as ReceptionistCategory : undefined;
   const user = await getSessionUser();
   const db = serviceClient();
 
@@ -27,13 +28,20 @@ export default async function ReceptionistPage({ searchParams }: { searchParams:
   let detail: Awaited<ReturnType<typeof getThreadDetail>> = null;
   let staffList: { id: string; label: string }[] = [];
   let phoneRows: PhoneMessage[] = [];
+  let optedOutPhones: string[] = [];
+  let phoneError = false;
 
   if (db && user && isStaff(user)) {
     if (channel === "phone") {
-      const { data } = await db.from("sms_messages").select("id,direction,from_number,to_number,body,status,created_at").order("created_at", { ascending: false }).limit(500);
-      phoneRows = (data ?? []) as PhoneMessage[];
+      const [messages, optOuts] = await Promise.all([
+        db.from("sms_messages").select("id,direction,from_number,to_number,body,status,created_at").order("created_at", { ascending: false }).limit(500),
+        db.from("sms_opt_outs").select("phone").limit(500),
+      ]);
+      phoneRows = (messages.data ?? []) as PhoneMessage[];
+      optedOutPhones = (optOuts.data ?? []).map((row) => String(row.phone));
+      phoneError = !!(messages.error || optOuts.error);
     } else {
-      threads = await listThreads(db, { folder, q: sp.q, limit: 100 });
+      threads = await listThreads(db, { folder, category, q: sp.q, limit: 100 });
       if (sp.thread && UUID.test(sp.thread)) detail = await getThreadDetail(db, sp.thread);
       const { data: profs } = await db.from("profiles").select("id,email,full_name").in("role", ["admin", "staff"]).order("full_name").limit(200);
       staffList = ((profs ?? []) as { id: string; email: string | null; full_name: string | null }[])
@@ -43,7 +51,7 @@ export default async function ReceptionistPage({ searchParams }: { searchParams:
 
   const href = (extra: Record<string, string | undefined>) => {
     const p = new URLSearchParams();
-    const merged = { folder, q: sp.q, ...extra };
+    const merged = { folder, category, q: sp.q, ...extra };
     for (const [k, v] of Object.entries(merged)) if (v) p.set(k, v);
     const s = p.toString();
     return `/admin/receptionist${s ? `?${s}` : ""}`;
@@ -63,7 +71,7 @@ export default async function ReceptionistPage({ searchParams }: { searchParams:
             <Link href="/admin/receptionist" className={"rounded-lg px-4 py-2 text-sm font-bold " + (channel === "email" ? "bg-ink text-white" : "bg-white text-graphite")}>Email threads</Link>
             <Link href="/admin/receptionist?channel=phone" className={"rounded-lg px-4 py-2 text-sm font-bold " + (channel === "phone" ? "bg-ink text-white" : "bg-white text-graphite")}>Phone &amp; SMS</Link>
           </nav>
-          {channel === "phone" ? <PhoneDesk rows={phoneRows} selectedPhone={sp.phone} q={sp.q} result={sp.result} /> : <>
+          {channel === "phone" ? phoneError ? <EmptyCard title="Phone messages unavailable">The SMS log or opt-out list could not load. Try again shortly.</EmptyCard> : <PhoneDesk rows={phoneRows} optedOutPhones={optedOutPhones} selectedPhone={sp.phone} q={sp.q} result={sp.result} /> : <>
           <div className="grid gap-3 sm:grid-cols-3">
             <div className="rounded-xl border border-mist bg-white p-4"><p className="eyebrow text-forest">Current folder</p><p className="mt-2 text-xl font-bold">{FOLDER_LABELS[folder]}</p></div>
             <div className="rounded-xl border border-mist bg-white p-4"><p className="eyebrow text-forest">Conversations</p><p className="mt-2 text-xl font-bold">{threads.length}</p></div>
@@ -82,9 +90,10 @@ export default async function ReceptionistPage({ searchParams }: { searchParams:
 
           {/* Thread list */}
           <div className="min-w-0">
-            <form action="/admin/receptionist" className="mb-3 flex gap-2">
+            <form action="/admin/receptionist" className="mb-3 flex flex-wrap gap-2">
               <input type="hidden" name="folder" value={folder} />
-              <input name="q" defaultValue={sp.q} aria-label="Search correspondence" placeholder="Search sender or subject…" className="min-h-10 w-full rounded-lg border border-silver/70 bg-white px-4 text-sm" />
+              <input name="q" defaultValue={sp.q} aria-label="Search correspondence" placeholder="Search sender or subject…" className="min-h-10 min-w-[160px] flex-1 rounded-lg border border-silver/70 bg-white px-4 text-sm" />
+              <select name="category" defaultValue={category ?? ""} aria-label="Filter by category" className="min-h-10 max-w-32 rounded-lg border border-silver/70 bg-white px-2 text-xs"><option value="">All topics</option>{RECEPTIONIST_CATEGORIES.map((c) => <option key={c} value={c}>{c.replace(/_/g, " ")}</option>)}</select>
               <button className="rounded-lg bg-ink px-3 text-xs font-bold text-white">Find</button>
             </form>
             {threads.length === 0 ? (

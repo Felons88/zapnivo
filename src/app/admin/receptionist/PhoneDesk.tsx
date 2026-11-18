@@ -6,7 +6,7 @@ export type PhoneMessage = { id: string; direction: string; from_number: string;
 const when = (iso: string) => new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 const contact = (m: PhoneMessage) => normalizePhone(m.direction === "inbound" ? m.from_number : m.to_number);
 
-export function PhoneDesk({ rows, selectedPhone, q, result }: { rows: PhoneMessage[]; selectedPhone?: string; q?: string; result?: string }) {
+export function PhoneDesk({ rows, optedOutPhones, selectedPhone, q, result }: { rows: PhoneMessage[]; optedOutPhones: string[]; selectedPhone?: string; q?: string; result?: string }) {
   const inbound = new Set(rows.filter((m) => m.direction === "inbound").map(contact).filter((p): p is string => !!p));
   const conversations = [...inbound].map((phone) => {
     const messages = rows.filter((m) => contact(m) === phone);
@@ -17,6 +17,7 @@ export function PhoneDesk({ rows, selectedPhone, q, result }: { rows: PhoneMessa
     return (!!digits && c.phone.includes(digits)) || c.messages.some((m) => m.body.toLowerCase().includes(q.toLowerCase()));
   });
   const selected = conversations.find((c) => c.phone === selectedPhone) ?? conversations[0];
+  const selectedOptedOut = !!selected && optedOutPhones.includes(selected.phone);
   const href = (phone: string) => "/admin/receptionist?channel=phone&phone=" + encodeURIComponent(phone) + (q ? "&q=" + encodeURIComponent(q) : "");
   return <div className="space-y-4">
     <div className="grid gap-3 sm:grid-cols-3">
@@ -36,7 +37,8 @@ export function PhoneDesk({ rows, selectedPhone, q, result }: { rows: PhoneMessa
           <div className="flex flex-wrap items-start justify-between gap-3 border-b border-mist p-5"><div><p className="eyebrow text-forest">Phone / SMS</p><h3 className="mt-1 text-xl font-bold">{selected.phone}</h3><p className="mt-1 text-xs text-graphite">Latest message {when(selected.last.created_at)}</p></div><Link href={"/admin/customers?q=" + encodeURIComponent(selected.phone)} className="rounded-lg bg-mist px-3 py-2 text-xs font-bold">Find customer →</Link></div>
           <ol className="max-h-[460px] space-y-3 overflow-y-auto p-5">{[...selected.messages].reverse().map((m) => <li key={m.id} className={"max-w-[90%] rounded-xl p-3 text-sm " + (m.direction === "inbound" ? "border border-mist bg-[#f5f7f4]" : "ml-auto bg-[#eaf4dc]")}><div className="mb-2 flex items-center justify-between gap-2"><Pill tone={m.direction === "inbound" ? "mist" : "lime"}>{m.direction}</Pill><span className="text-xs text-graphite">{when(m.created_at)}</span></div><p className="whitespace-pre-wrap leading-6">{m.body}</p><p className="mt-2 text-[11px] text-graphite">{m.status}</p></li>)}</ol>
           <div className="border-t border-mist p-5"><p className="text-xs font-extrabold uppercase tracking-wider text-graphite">Reply by SMS</p><p className="mt-1 text-xs text-graphite">Replies are sent through Twilio and logged. Opt-outs remain enforced.</p>
-            <form method="post" action="/api/admin/receptionist/phone/reply" className="mt-3 space-y-2"><input type="hidden" name="phone" value={selected.phone} /><textarea name="body" required minLength={1} maxLength={480} rows={4} placeholder="Write a concise reply…" aria-label="SMS reply" className="w-full rounded-lg border border-silver/70 p-3 text-sm" /><button disabled={!smsConfigured()} className="rounded-lg bg-ink px-4 py-2.5 text-sm font-bold text-white disabled:opacity-40">Send SMS reply</button></form>
+            {selectedOptedOut && <p role="status" className="mt-3 rounded-lg bg-gold/30 px-3 py-2 text-xs font-bold">This number opted out of texts. Reply is unavailable until they send START.</p>}
+            <form method="post" action="/api/admin/receptionist/phone/reply" className="mt-3 space-y-2"><input type="hidden" name="phone" value={selected.phone} /><textarea name="body" required minLength={1} maxLength={480} rows={4} placeholder="Write a concise reply…" aria-label="SMS reply" disabled={selectedOptedOut} className="w-full rounded-lg border border-silver/70 p-3 text-sm disabled:opacity-50" /><button disabled={!smsConfigured() || selectedOptedOut} className="rounded-lg bg-ink px-4 py-2.5 text-sm font-bold text-white disabled:opacity-40">Send SMS reply</button></form>
           </div>
         </>}
       </section>

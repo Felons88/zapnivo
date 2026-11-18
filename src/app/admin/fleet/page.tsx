@@ -3,13 +3,13 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { AdminGate } from "@/components/AdminShell";
 import { EmptyCard, Metric } from "@/components/PortalShell";
-import { Pill } from "@/components/SupportNav";
+import { FleetStationGrid, type FleetStation } from "@/components/FleetStationGrid";
 import { serviceClient } from "@/lib/supabase";
 import { heartbeatStale } from "@/lib/kiosk/heartbeat";
 
 export const metadata: Metadata = { title: "Fleet", robots: { index: false, follow: false } };
 
-const STATE_TONE = { online: "lime", offline: "red", maintenance: "gold", provisioning: "cyan", disabled: "mist" } as const;
+const FILTERS = ["all", "attention", "online", "offline", "maintenance", "provisioning", "disabled"] as const;
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "—");
 
 export default async function Fleet({ searchParams }: { searchParams: Promise<{ result?: string; detail?: string; q?: string; state?: string }> }) {
@@ -25,10 +25,9 @@ export default async function Fleet({ searchParams }: { searchParams: Promise<{ 
     db.from("organizations").select("id,name").order("name").limit(200),
   ]) : [null, null, null, null, null, null, null];
 
-  type Kiosk = { id: string; station_id: string; venue_id: string | null; state: keyof typeof STATE_TONE; model: string | null; firmware_version: string | null; last_seen_at: string | null; installed_at: string | null; slot_count: number; venues: { name: string; city: string; state: string } | null };
-  const kioskRows = (kiosks?.data ?? []) as unknown as Kiosk[];
+  const kioskRows = (kiosks?.data ?? []) as unknown as FleetStation[];
   const q = (feedback.q ?? "").trim().toLowerCase().slice(0, 80);
-  const state = (["all", "online", "offline", "maintenance", "provisioning", "disabled", "attention"] as const).includes(feedback.state as "all") ? feedback.state! : "all";
+  const state = FILTERS.find((filter) => filter === feedback.state) ?? "all";
   const visibleRows = kioskRows.filter((k) => {
     const stale = k.state === "online" && heartbeatStale(k.last_seen_at);
     const stateMatch = state === "all" || (state === "attention" ? stale || k.state === "offline" || k.state === "maintenance" : k.state === state);
@@ -48,13 +47,14 @@ export default async function Fleet({ searchParams }: { searchParams: Promise<{ 
   const eventRows = (events?.data ?? []) as unknown as { id: number; event_type: string; occurred_at: string; kiosks: { station_id: string } | null }[];
   const venueRows = (venues?.data ?? []) as { id: string; name: string; city: string; state: string }[];
   const orgRows = (orgs?.data ?? []) as { id: string; name: string }[];
+  const criticalError = !!(kiosks?.error || slots?.error || banks?.error);
   const inputCls = "min-h-10 rounded-lg border border-silver/70 px-3 text-sm";
   const filterHref = (next: string) => "/admin/fleet?state=" + next + (q ? "&q=" + encodeURIComponent(q) : "") + "#fleet-stations";
 
   return (
     <AdminGate title="Fleet" nav="fleet">
-      {!db ? (
-        <EmptyCard title="Fleet data not connected">Connect Supabase to see live station, slot and device data.</EmptyCard>
+      {!db || criticalError ? (
+        <EmptyCard title="Fleet data unavailable">{criticalError ? "Station or inventory data could not load. Try again shortly." : "Connect Supabase to see live station, slot and device data."}</EmptyCard>
       ) : (
         <div className="space-y-6">
           <section className="flex flex-wrap items-end justify-between gap-4 rounded-2xl bg-[#142126] p-6 text-white md:p-8">
@@ -75,47 +75,14 @@ export default async function Fleet({ searchParams }: { searchParams: Promise<{ 
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-mist px-6 py-5"><div><p className="eyebrow text-forest">Station directory</p><h2 className="mt-1 font-display text-xl font-bold">Fleet status</h2></div><p className="text-xs text-graphite">Showing {visibleRows.length} of {kioskRows.length}</p></div>
             <div className="space-y-3 border-b border-mist px-5 py-4">
               <form action="/admin/fleet" className="flex max-w-md gap-2"><input type="hidden" name="state" value={state} /><input name="q" defaultValue={feedback.q} aria-label="Search stations" placeholder="Search station, venue or model…" className="min-h-10 min-w-0 flex-1 rounded-lg border border-silver/70 px-3 text-sm" /><button className="rounded-lg bg-ink px-4 text-xs font-bold text-white">Search</button></form>
-              <nav aria-label="Station status filters" className="flex gap-2 overflow-x-auto">{(["all", "attention", "online", "offline", "maintenance", "provisioning", "disabled"] as const).map((filter) => <Link key={filter} href={filterHref(filter)} className={"shrink-0 rounded-full px-3 py-1.5 text-xs font-bold " + (state === filter ? "bg-lime text-ink" : "bg-[#f2f5f1] text-graphite hover:bg-mist")}>{filter === "all" ? "All stations" : filter}</Link>)}</nav>
+              <nav aria-label="Station status filters" className="flex gap-2 overflow-x-auto">{FILTERS.map((filter) => <Link key={filter} href={filterHref(filter)} className={"shrink-0 rounded-full px-3 py-1.5 text-xs font-bold " + (state === filter ? "bg-lime text-ink" : "bg-[#f2f5f1] text-graphite hover:bg-mist")}>{filter === "all" ? "All stations" : filter}</Link>)}</nav>
             </div>
             {kioskRows.length === 0 ? (
               <p className="px-6 py-10 text-sm text-graphite">No stations registered yet. The first kiosk appears here once provisioned.</p>
             ) : visibleRows.length === 0 ? (
               <p className="px-6 py-10 text-sm text-graphite">No stations match these filters. Search by station ID or choose another status.</p>
             ) : (
-              <div className="overflow-x-auto">
-              <table className="w-full min-w-[880px] text-left text-sm">
-                <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite">
-                  <tr>{["Station", "Venue", "State", "Slots (ready/charge/empty/fault)", "Last seen", "Installed", "Model / FW"].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr>
-                </thead>
-                <tbody>
-                  {visibleRows.map((k) => {
-                    const s = byKiosk.get(k.id) ?? {};
-                    const stale = k.state === "online" && heartbeatStale(k.last_seen_at);
-                    return (
-                      <tr key={k.id} className="border-b border-mist/70 last:border-0 hover:bg-lime/10">
-                        <td className="px-4 py-3 font-bold"><Link href={`/admin/fleet/${k.station_id}`} className="underline underline-offset-4 hover:text-forest">{k.station_id}</Link></td>
-                        <td className="px-4 py-3">
-                          <form method="post" action="/api/admin/fleet" className="flex items-center gap-2">
-                            <input type="hidden" name="action" value="assign_kiosk" /><input type="hidden" name="kiosk_id" value={k.id} />
-                            <select name="venue_id" defaultValue={k.venue_id ?? ""} aria-label={`Assign ${k.station_id} to venue`} className="min-h-8 rounded-lg border border-silver/60 px-2 text-xs font-semibold">
-                              <option value="">— unassigned —</option>
-                              {venueRows.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
-                            </select>
-                            <button className="min-h-8 rounded-full bg-mist px-3 text-xs font-bold hover:bg-lime">Assign</button>
-                          </form>
-                          {k.venues && <p className="mt-0.5 text-xs text-graphite">{k.venues.name} · {k.venues.city}, {k.venues.state}</p>}
-                        </td>
-                        <td className="px-4 py-3"><span className="inline-flex items-center gap-1"><Pill tone={STATE_TONE[k.state] ?? "mist"}>{k.state}</Pill>{stale && <Pill tone="gold">stale</Pill>}</span></td>
-                        <td className="px-4 py-3 text-xs font-semibold">{s.ready ?? 0} / {s.charging ?? 0} / {s.empty ?? 0} / {s.fault ?? 0}<span className="block text-graphite">{Object.values(s).reduce((a, b) => a + b, 0)} of {k.slot_count} registered</span></td>
-                        <td className="px-4 py-3 text-xs text-graphite">{when(k.last_seen_at)}</td>
-                        <td className="px-4 py-3 text-xs text-graphite">{when(k.installed_at)}{!k.installed_at && k.venue_id && <form method="post" action="/api/admin/fleet" className="mt-2"><input type="hidden" name="action" value="record_installation" /><input type="hidden" name="kiosk_id" value={k.id} /><label className="flex items-start gap-1.5 text-[11px]"><input type="checkbox" name="confirmed" value="yes" required className="mt-0.5" />Physically installed</label><button className="mt-1 rounded-full bg-mist px-2.5 py-1 text-[11px] font-bold hover:bg-lime">Record</button></form>}</td>
-                        <td className="px-4 py-3 text-xs text-graphite">{[k.model, k.firmware_version].filter(Boolean).join(" · ") || "—"}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-              </div>
+              <FleetStationGrid rows={visibleRows} slots={byKiosk} venues={venueRows} />
             )}
           </section>
 
