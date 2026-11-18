@@ -5,10 +5,12 @@ import { serviceClient } from "./supabase";
 
 export type MobileCustomer = { user: SessionUser; db: SupabaseClient; name: string; email: string };
 
-/** Bearer-authenticated customer for native-app routes. Returns a ready NextResponse on failure. */
+/** Bearer-authenticated account for native-app routes. Returns a ready NextResponse on failure. */
 export async function mobileCustomer(req: Request): Promise<MobileCustomer | NextResponse> {
   const user = await getBearerUser(req).catch(() => null);
-  if (!user || user.role !== "customer") return NextResponse.json({ error: "Sign in again." }, { status: 401 });
+  // Every mobile route is scoped to the caller's own data, so staff/admin
+  // accounts work too — they simply see their own consumer account.
+  if (!user || !["customer", "staff", "admin"].includes(user.role)) return NextResponse.json({ error: "Sign in again." }, { status: 401 });
   const db = serviceClient();
   if (!db) return NextResponse.json({ error: "Service unavailable." }, { status: 503 });
   const { data } = await db.from("profiles").select("full_name,email").eq("id", user.id).maybeSingle();
