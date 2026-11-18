@@ -251,7 +251,7 @@ class AppState extends ChangeNotifier {
     } else if (link == 'support') {
       setTab(3);
     } else {
-      onOpenLink?.call(link); // wallet, notifications
+      onOpenLink?.call(link); // wallet, notifications, security
     }
   }
 

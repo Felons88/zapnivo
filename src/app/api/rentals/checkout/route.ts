@@ -43,7 +43,9 @@ export async function POST(req: Request) {
   if (!consent) return NextResponse.json({ error: "Please accept the rental terms to continue.", fields: { consent: ["Rental terms acceptance is required."] } }, { status: 422 });
   const hasBearer = Boolean(req.headers.get("authorization"));
   const user = await (hasBearer ? getBearerUser(req) : getSessionUser()).catch(() => null);
-  if (hasBearer && (!user || user.role !== "customer")) return NextResponse.json({ error: "Sign in again to continue." }, { status: 401 });
+  // Any validly signed-in account can rent — staff/admin roles are customers too.
+  // 401 only means the bearer itself is dead (expired/revoked), so "sign in again" stays honest.
+  if (hasBearer && !user) return NextResponse.json({ error: "Sign in again to continue." }, { status: 401 });
   log("info", "checkout_started", { stationId: station_id, bankCount: bank_count, hasPromo: Boolean(promo_code), smsConsent: Boolean(sms_consent) });
 
   const db = serviceClient();

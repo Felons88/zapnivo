@@ -324,13 +324,16 @@ class StationSnapshot {
 /// A persistent notification-center entry (server is the source of truth —
 /// read state syncs across devices through the same API).
 class AppNotification {
-  const AppNotification({required this.id, required this.category, required this.kind, required this.title, required this.body, this.deepLink, required this.read, this.createdAt});
+  const AppNotification({required this.id, required this.category, required this.kind, required this.title, required this.body, this.deepLink, this.data = const {}, required this.read, this.createdAt});
   final String id;
   final String category;
   final String kind;
   final String title;
   final String body;
   final String? deepLink;
+
+  /// Machine context for deep-link screens (device, place, lat, lng).
+  final Map<String, String> data;
   final bool read;
   final DateTime? createdAt;
   factory AppNotification.fromJson(Map<String, dynamic> j) => AppNotification(
@@ -340,6 +343,7 @@ class AppNotification {
     title: j['title'] as String? ?? '',
     body: j['body'] as String? ?? '',
     deepLink: j['deepLink'] as String?,
+    data: (j['data'] as Map<String, dynamic>? ?? const {}).map((k, v) => MapEntry(k, '$v')),
     read: j['read'] == true,
     createdAt: DateTime.tryParse(j['createdAt'] as String? ?? '')?.toLocal(),
   );

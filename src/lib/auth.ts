@@ -117,24 +117,33 @@ async function enforceSession(
   return ins as SessionRow;
 }
 
-/** Approximate location from edge geo headers — " near Chicago, US" or "". Never presented as exact. */
-function geoHint(h: Headers | null): string {
-  if (!h) return "";
+/** Approximate location from edge geo headers — label "near Chicago, US" plus
+ *  coarse lat/lng for the app's security map. Never presented as exact. */
+function geoHint(h: Headers | null): { label: string; lat: string; lng: string } {
+  if (!h) return { label: "", lat: "", lng: "" };
   try {
     const city = h.get("x-vercel-ip-city"), country = h.get("x-vercel-ip-country");
     const where = [city ? decodeURIComponent(city) : null, country].filter(Boolean).join(", ");
-    return where ? ` near ${where}` : "";
-  } catch { return ""; }
+    return {
+      label: where ? ` near ${where}` : "",
+      lat: h.get("x-vercel-ip-latitude") ?? "",
+      lng: h.get("x-vercel-ip-longitude") ?? "",
+    };
+  } catch { return { label: "", lat: "", lng: "" }; }
 }
 
-/** Emits the new-device sign-in alert for a first-seen session. Best-effort. */
+/** Emits the new-device sign-in alert for a first-seen session. Best-effort.
+ *  Geo/deep-link fields ride as _-prefixed vars — copied into notification
+ *  data by the engine, never rendered into customer copy. */
 export function alertNewSignIn(
   db: NonNullable<ReturnType<typeof serviceClient>>,
   userId: string, sessionKey: string, device: string, h: Headers | null,
 ): void {
+  const geo = geoHint(h);
   void import("./notify").then(({ emit }) => emit(db, {
     profileId: userId, kind: "new_signin",
-    vars: { device, location: geoHint(h) }, deepLink: "account",
+    vars: { device, location: geo.label, _lat: geo.lat, _lng: geo.lng, _place: geo.label.replace(/^ near /, ""), _device: device },
+    deepLink: "security",
     dedupeKey: `signin:${sessionKey}`,
   })).catch(() => undefined);
 }

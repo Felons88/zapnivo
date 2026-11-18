@@ -37,11 +37,17 @@ export async function GET(req: Request) {
     c.db.from("notifications").select("id", { count: "exact", head: true }).eq("profile_id", c.user.id).is("read_at", null),
   ]);
   const rows = (data ?? []) as { id: string; category: string; kind: string; title: string; body: string; data: Record<string, string>; read_at: string | null; created_at: string }[];
-  const items = rows.slice(0, limit).map((r) => ({
-    id: r.id, category: r.category, kind: r.kind, title: r.title, body: r.body,
-    deepLink: typeof r.data?.deep_link === "string" ? r.data.deep_link : null,
-    read: r.read_at !== null, createdAt: r.created_at,
-  }));
+  const items = rows.slice(0, limit).map((r) => {
+    const d = (r.data ?? {}) as Record<string, string>;
+    // Whitelist machine context the app renders (deep link + sign-in geo/device).
+    const data: Record<string, string> = {};
+    for (const k of ["device", "place", "lat", "lng"]) if (typeof d[k] === "string" && d[k]) data[k] = d[k];
+    return {
+      id: r.id, category: r.category, kind: r.kind, title: r.title, body: r.body,
+      deepLink: typeof d.deep_link === "string" ? d.deep_link : null,
+      data, read: r.read_at !== null, createdAt: r.created_at,
+    };
+  });
   return NextResponse.json({
     items,
     unread: count ?? 0,

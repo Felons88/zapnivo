@@ -36,7 +36,7 @@ export type NotifyTemplate = {
 };
 
 /** Deep-link allowlist — the only targets a notification may carry. */
-const DEEP_LINK_RE = /^(rental:[A-Z0-9-]{4,20}|ticket:Z-[0-9]{3,10}|wallet|account|notifications|support)$/;
+const DEEP_LINK_RE = /^(rental:[A-Z0-9-]{4,20}|ticket:Z-[0-9]{3,10}|wallet|account|notifications|support|security)$/;
 
 /**
  * Whitelisted template variables. Anything not in this set can never reach a
@@ -213,6 +213,11 @@ export async function deliverEvent(db: SupabaseClient, event: {
   const attach = typeof evVars._attach === "string" ? evVars._attach : null;
   const data: Record<string, string> = { kind: event.kind };
   if (evVars.deep_link && DEEP_LINK_RE.test(evVars.deep_link)) data.deep_link = evVars.deep_link;
+  // _-prefixed vars are machine context for the app (geo, device) — they land in
+  // notification data but can never render into copy (not in NOTIFY_VARS).
+  for (const [k, v] of Object.entries(evVars)) {
+    if (k.startsWith("_") && k !== "_attach" && typeof v === "string" && v) data[k.slice(1)] = v;
+  }
   let nid: string | null = null;
   if (attach) {
     const { data: prior } = await db.from("notifications").select("id").eq("dedupe_key", attach).maybeSingle();

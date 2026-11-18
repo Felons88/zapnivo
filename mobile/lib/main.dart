@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'api.dart';
 import 'app_state.dart';
 import 'auth.dart';
+import 'notifications.dart';
 import 'onboarding.dart';
 import 'rental_flow.dart';
 import 'services.dart';
@@ -189,6 +190,14 @@ class _HomeShellState extends State<HomeShell> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     app ??= AppScope.of(context)..start();
+    // Screen-level deep links (wallet/notifications/security) — push payloads
+    // only carry the link, so detail lives on the destination screen.
+    app?.onOpenLink = (link) {
+      Widget? target;
+      if (link == 'wallet') target = const WalletScreen();
+      if (link == 'notifications' || link == 'security') target = const NotificationsScreen();
+      if (target != null) Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => target!));
+    };
   }
 
   @override

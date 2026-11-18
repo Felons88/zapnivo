@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'animations.dart';
 import 'api.dart';
 import 'app_state.dart';
+import 'security.dart';
 import 'settings.dart';
 import 'support.dart';
 import 'theme.dart';
@@ -140,6 +141,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       Navigator.of(context).maybePop();
     } else if (link == 'wallet') {
       Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const WalletScreen()));
+    } else if (link == 'security') {
+      Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => SignInActivityScreen(notification: n)));
     } else if (link == 'account') {
       app.setTab(4);
       Navigator.of(context).maybePop();
