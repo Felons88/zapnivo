@@ -498,7 +498,7 @@ class ZapnivoApi {
     final http.Response response;
     try {
       response = await _client
-          .get(_url('/api/mobile/stations'))
+          .get(_url('/api/mobile/stations'), headers: _authHeaders)
           .timeout(const Duration(seconds: 15));
     } catch (_) {
       throw const ApiException(

@@ -134,8 +134,10 @@ export function Locator({ stations }: { stations: Station[] }) {
                 </p>
                 {s.accessibility && <p className="mt-1 text-xs text-graphite">{s.accessibility}</p>}
                 <div className="mt-4 flex items-center gap-4 pt-1 text-sm font-bold">
-                  <button type="button" onClick={() => setFocus({ lng: s.lng, lat: s.lat, zoom: 14 })} className="underline">Show on map</button>
-                  <a href={dir(s)} target="_blank" rel="noopener noreferrer" className="underline">Directions →</a>
+                  {s.lat != null && s.lng != null && <>
+                    <button type="button" onClick={() => setFocus({ lng: s.lng!, lat: s.lat!, zoom: 14 })} className="underline">Show on map</button>
+                    <a href={dir(s)} target="_blank" rel="noopener noreferrer" className="underline">Directions →</a>
+                  </>}
                   {s.website && <a href={s.website} target="_blank" rel="noopener noreferrer" className="underline">Website</a>}
                 </div>
               </li>

@@ -22,12 +22,13 @@ type Kiosk = {
   kiosk_slots?: { state: string; power_bank_id: string | null }[];
 };
 
-/** Chainable stand-in for the venues→kiosks query (any .eq() resolves to the same result). */
-function result(kiosks: Kiosk[]) {
-  const data = [{ ...venue, kiosks }];
-  const q: Record<string, unknown> = { data, error: null };
-  q.eq = () => q;
-  service.mockReturnValue({ from: () => ({ select: () => q }) });
+/** Chainable stand-in for the venues→kiosks query (any .eq()/.is() resolves to the same result). */
+function result(kiosks: Kiosk[], orphans: Kiosk[] = []) {
+  const q: Record<string, unknown> = { data: [{ ...venue, kiosks }], error: null };
+  q.eq = () => q; q.is = () => q;
+  const orphanQ: Record<string, unknown> = { data: orphans, error: null };
+  orphanQ.eq = () => orphanQ; orphanQ.is = () => orphanQ;
+  service.mockReturnValue({ from: (t: string) => ({ select: () => (t === "kiosks" ? orphanQ : q) }) });
 }
 
 describe("public station map", () => {
@@ -61,5 +62,23 @@ describe("public station map", () => {
   it("never lists test-mode kiosks publicly", async () => {
     result([{ station_id: "ZN-TEST", state: "online", installed_at: INSTALLED, last_seen_at: FRESH, test_mode: true }]);
     expect(await getStations()).toEqual([]);
+  });
+
+  it("includeTest lists test kiosks clearly marked, with honest telemetry", async () => {
+    result([{ station_id: "ZN-TEST", state: "offline", installed_at: INSTALLED, last_seen_at: FRESH, test_mode: true,
+      kiosk_slots: [{ state: "ready", power_bank_id: "b1" }] }]);
+    const [s] = await getStations({ includeTest: true });
+    expect(s).toMatchObject({
+      id: "ZN-TEST", test_mode: true, station_state: "offline",
+      rentals_available: true, ready_banks: 1,
+    });
+    expect(s.availability).toContain("Test mode");
+  });
+
+  it("includeTest still lists venue-less bench kiosks without coordinates", async () => {
+    result([], [{ station_id: "ZN-BENCH", state: "provisioning", installed_at: null, test_mode: true }]);
+    const [s] = await getStations({ includeTest: true });
+    expect(s).toMatchObject({ id: "ZN-BENCH", test_mode: true, lat: null, lng: null });
+    expect(s.name).toContain("ZN-BENCH");
   });
 });

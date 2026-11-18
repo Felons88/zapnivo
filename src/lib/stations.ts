@@ -10,8 +10,11 @@ export type Station = {
   city: string;
   state: string;
   zip: string;
-  lat: number;
-  lng: number;
+  /** Null only for venue-less test stations — a bench device has no real pin. */
+  lat: number | null;
+  lng: number | null;
+  /** True for test-mode kiosks — only ever sent to staff/tester callers. */
+  test_mode?: boolean;
   hours: string | null;
   availability: string | null;
   /** Live operational status derived from real kiosk telemetry. */
@@ -64,27 +67,52 @@ export const STATE_LABEL: Record<StationState, string> = {
  * Live stations straight from the database: published + active venues that
  * have an installed kiosk. Offline/maintenance stations are returned too —
  * surfaces show their real status instead of hiding or faking availability.
- * Test-mode kiosks are never listed publicly.
+ * Test-mode kiosks are never listed publicly; includeTest adds them clearly
+ * marked (staff/tester callers only), including venue-less bench devices.
  * Server-only — call from server components/route handlers.
  */
-export async function getStations(): Promise<Station[]> {
+export async function getStations(opts: { includeTest?: boolean } = {}): Promise<Station[]> {
   const { serviceClient } = await import("./supabase");
   const db = serviceClient();
   if (!db) return [];
-  const { data, error } = await db
+  const includeTest = opts.includeTest === true;
+  let q = db
     .from("venues")
-    .select("name,venue_type,street,city,state,zip,hours,lat,lng,phone,website,description,accessibility,kiosks(station_id,state,installed_at,last_seen_at,slot_count,test_mode,kiosk_slots(state,power_bank_id))")
-    .eq("published", true)
-    .eq("active", true);
+    .select("name,venue_type,street,city,state,zip,hours,lat,lng,phone,website,description,accessibility,kiosks(station_id,state,installed_at,last_seen_at,slot_count,test_mode,kiosk_slots(state,power_bank_id))");
+  if (!includeTest) q = q.eq("published", true).eq("active", true);
+  const { data, error } = await q;
   if (error || !data) return [];
+  const readyOf = (k: KioskJoin) => (k.kiosk_slots ?? []).filter((s) => s.state === "ready" && s.power_bank_id != null).length;
+  const testStation = (k: KioskJoin, v: VenueJoin | null): Station => ({
+    id: k.station_id,
+    name: v?.name ?? `Test station ${k.station_id}`,
+    address: v ? `${v.street}, ${v.city}, ${v.state}${v.zip ? ` ${v.zip}` : ""}` : "",
+    city: v?.city ?? "", state: v?.state ?? "", zip: v?.zip ?? "",
+    lat: v?.lat == null ? null : Number(v.lat), lng: v?.lng == null ? null : Number(v.lng),
+    hours: v?.hours ?? null,
+    availability: "Test mode — not a public location",
+    station_state: stationStateOf(k) ?? "offline",
+    ready_banks: readyOf(k),
+    slot_count: k.slot_count,
+    venue_type: v?.venue_type ?? null, phone: v?.phone ?? null, website: v?.website ?? null,
+    description: v?.description ?? null, accessibility: v?.accessibility ?? null,
+    // The server relaxes live gates for test-mode kiosks, so a test rental can
+    // be started; the hardware state is still reported honestly above.
+    rentals_available: true,
+    test_mode: true,
+  });
   const out: Station[] = [];
+  const listed = new Set<string>();
   for (const v of data as (VenueJoin & { kiosks: KioskJoin[] | null })[]) {
-    if (v.lat == null || v.lng == null) continue;
     for (const k of v.kiosks ?? []) {
-      if (k.test_mode === true) continue;
+      if (k.test_mode === true) {
+        if (includeTest) { listed.add(k.station_id); out.push(testStation(k, v)); }
+        continue;
+      }
+      if (v.lat == null || v.lng == null) continue;
       const ss = stationStateOf(k);
       if (!ss) continue; // provisioning/disabled/never installed
-      const ready = (k.kiosk_slots ?? []).filter((s) => s.state === "ready" && s.power_bank_id != null).length;
+      const ready = readyOf(k);
       out.push({
         id: k.station_id,
         name: v.name,
@@ -100,6 +128,19 @@ export async function getStations(): Promise<Station[]> {
         description: v.description, accessibility: v.accessibility,
         rentals_available: ss === "available" && ready > 0,
       });
+    }
+  }
+  if (includeTest) {
+    // Bench test kiosks with no venue have no real location — listed without
+    // map coordinates so testers can still reach them from the list view.
+    const { data: orphans } = await db
+      .from("kiosks")
+      .select("station_id,state,installed_at,last_seen_at,slot_count,test_mode,kiosk_slots(state,power_bank_id)")
+      .eq("test_mode", true)
+      .is("venue_id", null);
+    for (const k of (orphans ?? []) as KioskJoin[]) {
+      if (listed.has(k.station_id)) continue;
+      out.push(testStation(k, null));
     }
   }
   return out;

@@ -65,7 +65,8 @@ export function NetworkMap({ stations, focus = null, className = "", interactive
           if (!cancelled && (code === 401 || code === 403)) setStatus("error");
         });
 
-        for (const s of stations) {
+        const mappable = stations.filter((s): s is Station & { lat: number; lng: number } => s.lat != null && s.lng != null);
+        for (const s of mappable) {
           const el = document.createElement("button");
           el.type = "button";
           el.setAttribute("aria-label", `Zapnivo station: ${s.name}`);
@@ -77,11 +78,11 @@ export function NetworkMap({ stations, focus = null, className = "", interactive
           );
           new mapboxgl.Marker({ element: el }).setLngLat([s.lng, s.lat]).setPopup(popup).addTo(map);
         }
-        if (stations.length > 1) {
+        if (mappable.length > 1) {
           const b = new mapboxgl.LngLatBounds();
-          stations.forEach((s) => b.extend([s.lng, s.lat]));
+          mappable.forEach((s) => b.extend([s.lng, s.lat]));
           map.fitBounds(b, { padding: 80, maxZoom: 12, duration: 0 });
-        } else if (stations.length === 1) map.jumpTo({ center: [stations[0].lng, stations[0].lat], zoom: 12 });
+        } else if (mappable.length === 1) map.jumpTo({ center: [mappable[0].lng, mappable[0].lat], zoom: 12 });
       } catch {
         if (!cancelled) setStatus("error");
       }

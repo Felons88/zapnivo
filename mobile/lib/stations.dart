@@ -18,6 +18,9 @@ const mapboxToken = String.fromEnvironment('MAPBOX_PUBLIC_TOKEN');
 /// bank is ready. `stationState` (available/offline/maintenance/stale) comes
 /// from live telemetry; on older payloads we fall back to rentalsAvailable.
 bool stationAvailable(Station s) {
+  // Test stations are rentable by definition — the server relaxes its live
+  // gates for test-mode kiosks, so simulated rentals can start.
+  if (s.testMode) return true;
   if (s.stationState != null) return s.stationState == 'available' && (s.readyBanks ?? 1) > 0;
   return s.rentalsAvailable != false && (s.readyBanks ?? 1) > 0;
 }
@@ -36,6 +39,7 @@ Color stationDot(Station s) {
 }
 
 String availabilityLabel(Station s) {
+  if (s.testMode) return 'Test mode';
   switch (s.stationState) {
     case 'offline':
       return 'Station offline';
