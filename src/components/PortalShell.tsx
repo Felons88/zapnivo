@@ -1,9 +1,14 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { authConfigured, devAuth, getSessionUser, isStaff, type SessionUser } from "@/lib/auth";
+import { cookies } from "next/headers";
+import { authConfigured, devAuth, getSessionUser, isStaff, SESSION_COOKIE, type SessionUser } from "@/lib/auth";
 import { Notice } from "./ui";
 import { LogoutButton } from "./LogoutButton";
+import { LiveSync } from "./LiveSync";
+
+/** Portal-relevant realtime tables — RLS scopes the events each user receives. */
+const LIVE_TABLES = ["rentals", "support_tickets", "support_messages", "payments"];
 
 /** Empty-state card used while integrations are pending. */
 export function EmptyCard({ title, children }: { title: string; children: ReactNode }) {
@@ -65,8 +70,10 @@ export async function PortalGate({
   if (require === "staff" && !isStaff(user)) redirect("/partners");
   if (require === "partner" && user.role !== "partner" && !isStaff(user)) redirect("/login");
 
+  const accessToken = (await cookies()).get(SESSION_COOKIE)?.value ?? null;
   return (
     <div className="on-dark bg-ink pt-10 text-white">
+      <LiveSync channel="portal-live" tables={LIVE_TABLES} intervalMs={30000} accessToken={accessToken} />
       {devAuth() && (
         <div className="bg-gold px-4 py-2 text-center text-xs font-bold text-ink">
           DEV STORE · not real data · acting as <b>{user.email}</b> ({user.role}) — switch:{" "}

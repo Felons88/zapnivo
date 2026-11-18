@@ -1,12 +1,21 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { authConfigured, devAuth, getSessionUser, isStaff } from "@/lib/auth";
+import { cookies } from "next/headers";
+import { authConfigured, devAuth, getSessionUser, isStaff, SESSION_COOKIE } from "@/lib/auth";
 import { Logo } from "./Logo";
 import { LogoutButton } from "./LogoutButton";
+import { LiveSync } from "./LiveSync";
 import { Notice } from "./ui";
 import { SITE } from "@/lib/site";
 import { getPublishedContent, flag, text as cmsText } from "@/lib/site-content";
+
+/** Staff-visible tables in the realtime publication — any change refreshes the open page. */
+const LIVE_TABLES = [
+  "rentals", "payments", "support_tickets", "support_messages", "refund_requests",
+  "disputes", "incident_reports", "customer_notes", "customer_data_requests",
+  "sms_messages", "profiles", "entitlement_grants", "wallet_topups",
+];
 
 const stroke = { fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round", strokeLinejoin: "round" } as const;
 const I = ({ children, className = "h-[18px] w-[18px] shrink-0" }: { children: ReactNode; className?: string }) => (
@@ -129,6 +138,7 @@ export async function AdminGate({ title, nav, children }: { title: string; nav: 
   if (!user) redirect("/login");
   if (!isStaff(user)) redirect("/partners");
 
+  const accessToken = (await cookies()).get(SESSION_COOKIE)?.value ?? null;
   const all = Object.entries(NAV_ITEMS) as [AdminNavKey, (typeof NAV_ITEMS)[AdminNavKey]][];
   // CMS announcement banner (internal/global) — cached read, off unless enabled.
   const cms = await getPublishedContent("internal", "global");
@@ -137,6 +147,7 @@ export async function AdminGate({ title, nav, children }: { title: string; nav: 
     : null;
   return (
     <div className="min-h-screen bg-[#f2f1fa] text-ink">
+      <LiveSync channel="admin-live" tables={LIVE_TABLES} intervalMs={30000} accessToken={accessToken} />
       {devAuth() && (
         <div className="relative z-50 bg-gold px-4 py-2 text-center text-xs font-bold text-ink">
           DEV STORE · not real data · acting as <b>{user.email}</b> ({user.role}) — switch:{" "}
