@@ -132,43 +132,47 @@ class PersonalInfoScreen extends StatefulWidget {
 
 class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
   final name = TextEditingController();
+  final phone = TextEditingController();
+  final email = TextEditingController();
+  final otp = TextEditingController();
   bool saving = false;
   String? error;
-  bool saved = false;
+  String? notice;
+  bool awaitingOtp = false;
+  bool emailSent = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final app = AppScope.of(context);
-      name.text = (app.profile?['name'] as String?) ?? '';
-      app.refreshProfile().then((_) {
-        if (mounted && name.text.isEmpty) name.text = (app.profile?['name'] as String?) ?? '';
-      });
+      void fill() {
+        if (!mounted) return;
+        if (name.text.isEmpty) name.text = (app.profile?['name'] as String?) ?? '';
+        if (phone.text.isEmpty) phone.text = (app.profile?['phone'] as String?) ?? '';
+        if (email.text.isEmpty) email.text = (app.profile?['email'] as String?) ?? '';
+      }
+      fill();
+      app.refreshProfile().then((_) => fill());
     });
   }
 
   @override
   void dispose() {
     name.dispose();
+    phone.dispose();
+    email.dispose();
+    otp.dispose();
     super.dispose();
   }
 
-  Future<void> save() async {
+  Future<void> _run(Future<Map<String, dynamic>> Function() call, {String? okMessage}) async {
     final app = AppScope.of(context);
-    if (name.text.trim().isEmpty) {
-      setState(() => error = 'Enter your name.');
-      return;
-    }
-    setState(() {
-      saving = true;
-      error = null;
-      saved = false;
-    });
+    setState(() { saving = true; error = null; notice = null; });
     try {
-      await app.api.updateProfile(name: name.text.trim());
+      final res = await call();
       await app.refreshProfile();
-      if (mounted) setState(() => saved = true);
+      if (mounted) setState(() => notice = okMessage ?? (res['email'] == 'verification_sent' ? 'Check the new inbox — the change applies after you tap the link.' : 'Saved.'));
     } on ApiException catch (e) {
       if (mounted) setState(() => error = e.message);
     } finally {
@@ -176,33 +180,57 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final app = AppScope.of(context);
-    final email = app.profile?['email'] as String?;
-    final phone = app.profile?['phone'] as String?;
-    return TitledPage(
-      title: 'Personal information',
-      children: [
-        TextField(controller: name, textCapitalization: TextCapitalization.words, decoration: const InputDecoration(labelText: 'Legal name')),
-        const SizedBox(height: 14),
-        _readonly('Email', email ?? 'Not set'),
-        const SizedBox(height: 14),
-        _readonly('Phone', phone ?? 'Not set'),
-        const SizedBox(height: 8),
-        const Text('Email and phone are tied to how you sign in. Contact support to change them.', style: TextStyle(color: muted, fontSize: 13, height: 1.4)),
-        if (error != null) ErrorText(error!),
-        if (saved) const Padding(padding: EdgeInsets.only(top: 12), child: Text('Saved.', style: TextStyle(color: lime, fontWeight: FontWeight.w800))),
-        const SizedBox(height: 22),
-        PrimaryButton(label: 'Save', loading: saving, onPressed: save),
-        TextButton(onPressed: () => _push(context, const NewTicketScreen(category: 'Other')), child: const Text('Contact support to change email or phone')),
-      ],
-    );
+  Future<void> saveName() {
+    if (name.text.trim().isEmpty) { setState(() => error = 'Enter your name.'); return Future.value(); }
+    return _run(() => AppScope.of(context).api.updateProfile(name: name.text.trim()));
   }
 
-  Widget _readonly(String label, String value) => InputDecorator(
-    decoration: InputDecoration(labelText: label, enabled: false),
-    child: Text(value, style: const TextStyle(color: muted)),
+  Future<void> saveEmail() {
+    final v = email.text.trim();
+    if (!v.contains('@')) { setState(() => error = 'Enter a valid email.'); return Future.value(); }
+    return _run(() => AppScope.of(context).api.updateProfile(email: v)).then((_) {
+      if (mounted && error == null) setState(() => emailSent = true);
+    });
+  }
+
+  Future<void> sendPhoneCode() {
+    if (phone.text.trim().length < 7) { setState(() => error = 'Enter a valid mobile number.'); return Future.value(); }
+    return _run(() => AppScope.of(context).api.updateProfile(phone: phone.text.trim())).then((_) {
+      if (mounted && error == null) setState(() { awaitingOtp = true; notice = 'We texted a 6-digit code to ${phone.text.trim()}.'; });
+    });
+  }
+
+  Future<void> confirmPhone() {
+    if (otp.text.trim().length < 4) { setState(() => error = 'Enter the code from the text.'); return Future.value(); }
+    return _run(() => AppScope.of(context).api.updateProfile(phone: phone.text.trim(), otp: otp.text.trim())).then((_) {
+      if (mounted && error == null) setState(() { awaitingOtp = false; otp.clear(); notice = 'Phone number updated.'; });
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => TitledPage(
+    title: 'Personal information',
+    children: [
+      TextField(controller: name, textCapitalization: TextCapitalization.words, decoration: const InputDecoration(labelText: 'Legal name')),
+      const SizedBox(height: 10),
+      Align(alignment: Alignment.centerRight, child: TextButton(onPressed: saving ? null : saveName, child: const Text('Save name'))),
+      const Divider(height: 28),
+      TextField(controller: email, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Email')),
+      const SizedBox(height: 6),
+      Text(emailSent ? 'Verification sent — the change applies after you tap the link in the new inbox.' : 'Changing your email sends a verification link to the new address.', style: const TextStyle(color: muted, fontSize: 13, height: 1.4)),
+      Align(alignment: Alignment.centerRight, child: TextButton(onPressed: saving ? null : saveEmail, child: const Text('Verify new email'))),
+      const Divider(height: 28),
+      TextField(controller: phone, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'Phone')),
+      const SizedBox(height: 6),
+      const Text('Changing your number texts you a code to prove it\'s yours.', style: TextStyle(color: muted, fontSize: 13, height: 1.4)),
+      if (awaitingOtp) ...[
+        const SizedBox(height: 10),
+        TextField(controller: otp, keyboardType: TextInputType.number, maxLength: 6, decoration: const InputDecoration(labelText: '6-digit code', counterText: '')),
+      ],
+      Align(alignment: Alignment.centerRight, child: TextButton(onPressed: saving ? null : (awaitingOtp ? confirmPhone : sendPhoneCode), child: Text(awaitingOtp ? 'Confirm code' : 'Text me a code'))),
+      if (error != null) ErrorText(error!),
+      if (notice != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(notice!, style: const TextStyle(color: lime, fontWeight: FontWeight.w800))),
+    ],
   );
 }
 

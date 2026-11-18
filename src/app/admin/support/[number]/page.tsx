@@ -48,22 +48,41 @@ export default async function TicketPage({ params }: { params: Promise<{ number:
         const t = data.ticket;
         const sla = slaStatus(t, now);
         return (
-          <div className="grid gap-6 lg:grid-cols-[1.6fr_1fr]">
+          <div className="space-y-5">
             <TicketLive ticketId={t.id} intervalMs={15000} accessToken={accessToken} />
-            <div className="space-y-6">
-              <Link href="/admin/support" className="text-sm font-bold underline underline-offset-4">← Inbox</Link>
+            <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+              <Link href="/admin/support" className="font-bold text-graphite hover:text-ink">← All conversations</Link>
+              <div className="flex gap-2"><a href="#ticket-conversation" className="rounded-lg border border-mist bg-white px-3 py-2 font-bold hover:bg-lime/30">Conversation</a><a href="#ticket-compose" className="rounded-lg bg-ink px-3 py-2 font-bold text-white hover:bg-forest">Write a reply ↓</a></div>
+            </div>
+            <section aria-label="Case overview" className="rounded-2xl border border-[#dbe5dc] bg-white p-5 shadow-sm md:p-7">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div><p className="eyebrow text-forest">Support case / {t.number}</p><h2 className="mt-2 text-2xl font-bold tracking-tight md:text-3xl">{t.subject || t.category}</h2><p className="mt-2 text-sm text-graphite">From {t.name} · opened {when(t.createdAt)} · {t.queue} queue</p></div>
+                <div className="flex flex-wrap gap-2"><Pill tone={t.state === "resolved" || t.state === "closed" ? "lime" : "gold"}>{t.state.replace(/_/g, " ")}</Pill><Pill tone={t.priority === "urgent" ? "red" : t.priority === "high" ? "gold" : "mist"}>{t.priority} priority</Pill></div>
+              </div>
+              <div className="mt-5 grid gap-3 border-t border-mist pt-4 text-xs sm:grid-cols-3">
+                <div><p className="font-bold uppercase tracking-wider text-graphite">Owner</p><p className="mt-1 font-semibold">{t.assignedTo ? "Assigned" : "Unassigned"}</p></div>
+                <div><p className="font-bold uppercase tracking-wider text-graphite">First response</p><p className="mt-1 font-semibold">{t.firstResponseAt ? "Met" : humanDue(t.firstResponseDueAt, now)}</p></div>
+                <div><p className="font-bold uppercase tracking-wider text-graphite">Resolution target</p><p className="mt-1 font-semibold">{t.resolvedAt ? "Resolved" : humanDue(t.resolutionDueAt, now)}</p></div>
+              </div>
+            </section>
+            <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
+            <div className="min-w-0 space-y-5">
               {t.queue === "safety" && <p role="alert" className="rounded-xl bg-red-100 p-4 text-sm font-bold text-red-900">SAFETY REPORT. Possible battery hazard. Contact the requester, arrange retrieval of the unit, and log the incident in Fleet. Do not close until the unit is secured.</p>}
-              {t.aiSummary && <div className="rounded-xl border border-lime bg-lime/20 p-4 text-sm"><b>AI summary:</b> {t.aiSummary}</div>}
-              <ol className="space-y-3" aria-label="Conversation">
+              {t.aiSummary && <div className="rounded-xl border border-lime bg-[#f0f7e3] p-4 text-sm"><p className="text-xs font-extrabold uppercase tracking-wider text-forest">Agent brief · AI generated</p><p className="mt-2 leading-6">{t.aiSummary}</p></div>}
+              <section id="ticket-conversation" className="scroll-mt-40 overflow-hidden rounded-2xl border border-mist bg-white">
+                <div className="flex items-center justify-between border-b border-mist px-5 py-4"><div><p className="eyebrow text-forest">Conversation</p><h3 className="mt-1 text-lg font-bold">{data.messages.length} message{data.messages.length === 1 ? "" : "s"}</h3></div><span className="text-xs text-graphite">Oldest first</span></div>
+              <ol className="space-y-0 divide-y divide-mist/70 px-5" aria-label="Conversation">
                 {data.messages.map((m) => (
-                  <li key={m.id} className={m.internal ? "rounded-xl border border-gold bg-gold/20 p-4" : m.authorType === "customer" || m.authorType === "partner" ? "rounded-xl bg-white p-4 shadow-sm" : "ml-6 rounded-xl border-l-4 border-lime bg-white p-4 shadow-sm"}>
+                  <li key={m.id} className={m.internal ? "my-3 rounded-xl border border-gold/60 bg-gold/15 p-4" : "py-5"}>
                     <p className="flex flex-wrap items-center gap-2 text-xs font-extrabold uppercase tracking-wider text-forest/70">
                       {m.internal && <Pill tone="gold">Internal</Pill>}<span>{m.authorName || m.authorType}</span><Pill tone={m.authorType === "ai" ? "lime" : m.authorType === "system" ? "mist" : "ink"}>{m.authorType}</Pill><span className="font-medium normal-case tracking-normal">{when(m.createdAt)}</span>
                     </p>
-                    <p className="mt-2 whitespace-pre-wrap text-sm leading-6">{m.body}</p>
+                    <p className="mt-3 whitespace-pre-wrap text-sm leading-7">{m.body}</p>
                   </li>
                 ))}
               </ol>
+              </section>
+              <div id="ticket-compose" className="scroll-mt-40">
               <AgentConsole
                 ticket={{ number: t.number, state: t.state, priority: t.priority, assignedTo: t.assignedTo, rentalRef: t.rentalRef }}
                 me={{ id: user.id, role: user.role === "admin" ? "admin" : "staff" }}
@@ -73,9 +92,10 @@ export default async function TicketPage({ params }: { params: Promise<{ number:
                 remainingCents={data.remainingCents}
                 refunds={data.refunds}
               />
+              </div>
             </div>
 
-            <aside className="space-y-4 text-sm" aria-label="Ticket details">
+            <aside className="min-w-0 space-y-4 self-start text-sm xl:sticky xl:top-24" aria-label="Ticket details">
               <div className="rounded-xl bg-white p-4 shadow-sm">
                 <div className="flex items-center justify-between gap-2">
                   <h2 className="font-display text-lg font-bold">Requester</h2>
@@ -133,6 +153,7 @@ export default async function TicketPage({ params }: { params: Promise<{ number:
                 <ol className="mt-3 space-y-2 text-xs text-graphite">{data.events.map((e) => <li key={e.id}><b className="text-ink">{e.type.replace(/_/g, " ")}</b> · {e.actor} · {when(e.createdAt)}</li>)}</ol>
               </div>
             </aside>
+            </div>
           </div>
         );
       })()}

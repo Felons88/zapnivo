@@ -431,10 +431,14 @@ class ZapnivoApi {
       .where((r) => r.isVisible)
       .toList(growable: false);
 
-  Future<void> updateProfile({String? name, bool? notifySms}) => _protected('PATCH', '/api/mobile/me', body: {
-    if (name != null) 'name': name,
-    if (notifySms != null) 'notify_sms': notifySms,
-  });
+  Future<Map<String, dynamic>> updateProfile({String? name, bool? notifySms, String? phone, String? otp, String? email}) =>
+      _protected('PATCH', '/api/mobile/me', body: {
+        if (name != null) 'name': name,
+        if (notifySms != null) 'notify_sms': notifySms,
+        if (phone != null) 'phone': phone,
+        if (otp != null) 'otp': otp,
+        if (email != null) 'email': email,
+      });
 
   Future<void> requestAccountDeletion() => _protected('DELETE', '/api/mobile/me');
 

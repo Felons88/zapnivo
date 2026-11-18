@@ -83,8 +83,9 @@ describe("webhook/job constants", () => {
 
   it("cron routes mirror vercel.json schedules", () => {
     const byPath = Object.fromEntries(CRON_ROUTES.map((c) => [c.path, c.schedule]));
+    expect(byPath["/api/cron/notifications"]).toBe("*/15 * * * *");
     expect(byPath["/api/cron/rentals"]).toBe("0 12 * * *");
-    expect(byPath["/api/cron/inbound"]).toBe("0 13 * * *");
+    expect(byPath["/api/cron/inbound"]).toBe("*/10 * * * *");
     expect(byPath["/api/cron/uptime"]).toBe("0 14 * * *");
     expect(byPath["/api/cron/analytics"]).toBe("30 14 * * *");
   });

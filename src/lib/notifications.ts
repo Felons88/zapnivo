@@ -95,19 +95,20 @@ export async function flag(db: SupabaseClient, key: string): Promise<boolean> {
  * `push_enabled` kill switch (default on) controls them.
  * `activation` returns null — triggerRentalStarted already pushes directly. */
 export function pushForJob(kind: string, vars: Record<string, string>): PushMessage | null {
+  const hi = vars.name ? `${vars.name}, ` : "";
   const b = (title: string, body: string): PushMessage => ({ title, body, data: { type: "rental", reference: vars.ref ?? "" } });
   switch (kind) {
     case "activation": return null;
     case "reminder_1h":
     case "reminder_3h":
     case "reminder_6h":
-      return b("Your rental is running", `Rental ${vars.ref} — ${vars.charges} so far. Return by ${vars.deadline} to any live station.`);
+      return b("Your rental is running", `${hi}rental ${vars.ref} is at ${vars.charges} so far. Return by ${vars.deadline} to any live station.`);
     case "reminder_12h":
-      return b("12 hours left", `Rental ${vars.ref} — return by ${vars.deadline}. Charges so far: ${vars.charges}.`);
+      return b("12 hours left", `${hi}rental ${vars.ref} is due back by ${vars.deadline}. Charges so far: ${vars.charges}.`);
     case "warning_20h":
-      return b("4 hours left to return", `Rental ${vars.ref} — after ${vars.deadline} the ${vars.fee} non-return fee applies.`);
+      return b("4 hours left to return", `${hi}rental ${vars.ref} needs to be back by ${vars.deadline} — after that the ${vars.fee} non-return fee applies.`);
     case "warning_23h":
-      return b("Final reminder: 1 hour left", `Rental ${vars.ref} — return to any Zapnivo station by ${vars.deadline} to avoid the ${vars.fee} fee.`);
+      return b("Final reminder: 1 hour left", `${hi}return ${vars.ref} to any Zapnivo station by ${vars.deadline} to avoid the ${vars.fee} fee.`);
     case "deadline_24h":
       return b("Return deadline passed", `Rental ${vars.ref} — return now to avoid the ${vars.fee} non-return fee.`);
     case "return_failed":
@@ -147,6 +148,9 @@ export async function queueJob(db: SupabaseClient, job: { kind: SmsJobKind; rent
   };
   const onConflict = job.ticketId && !job.rentalId ? "ticket_id,kind" : "rental_id,kind";
   await db.from("notification_jobs").upsert(row, { onConflict, ignoreDuplicates: true });
+  // Due-now jobs are drained in-band so transactional pushes/SMS arrive in seconds,
+  // not on the next sweep. Scheduled (future due_at) jobs still wait for the sweep.
+  if (!job.dueAt || job.dueAt.getTime() <= Date.now()) await runSmsSweep(db).catch(() => ({ sent: 0, failed: 0 }));
   return true;
 }
 
@@ -264,9 +268,9 @@ export async function runSmsSweep(db: SupabaseClient, now = new Date()) {
     }
 
     const { data: r } = await db.from("rentals")
-      .select("id,reference,state,started_at,dispensed_at,non_return_deadline,returned_at,sms_consent,paused_at,paused_seconds,payments(customer_phone,amount_captured_cents)")
+      .select("id,reference,state,started_at,dispensed_at,non_return_deadline,returned_at,sms_consent,paused_at,paused_seconds,customer_id,renter_profile,payments(customer_phone,amount_captured_cents)")
       .eq("id", job.rental_id).maybeSingle();
-    const rental = r as { id: string; reference: string; state: string; started_at: string | null; dispensed_at: string | null; non_return_deadline: string | null; returned_at: string | null; sms_consent: boolean; paused_at: string | null; paused_seconds: number | null; payments: { customer_phone: string | null; amount_captured_cents: number | null }[] | { customer_phone: string | null; amount_captured_cents: number | null } | null } | null;
+    const rental = r as { id: string; reference: string; state: string; started_at: string | null; dispensed_at: string | null; non_return_deadline: string | null; returned_at: string | null; sms_consent: boolean; paused_at: string | null; paused_seconds: number | null; customer_id: string | null; renter_profile: string | null; payments: { customer_phone: string | null; amount_captured_cents: number | null }[] | { customer_phone: string | null; amount_captured_cents: number | null } | null } | null;
     const pay = rental?.payments ? (Array.isArray(rental.payments) ? rental.payments[0] : rental.payments) : null;
     const phone = pay?.customer_phone ?? null;
     const terminal = !rental || rental.returned_at || ["returned", "closed", "cancelled", "disputed"].includes(rental.state);
@@ -296,6 +300,14 @@ export async function runSmsSweep(db: SupabaseClient, now = new Date()) {
       charges: charges != null ? fmt(charges) : "—",
       url: `${SITE.url.replace(/\/$/, "")}/account`, ticket: "", name: "",
     };
+
+    // Personalize with the renter's first name when the account carries one.
+    const renterId = rental.customer_id ?? rental.renter_profile;
+    if (renterId) {
+      const { data: prof } = await db.from("profiles").select("full_name").eq("id", renterId).maybeSingle();
+      const first = (prof as { full_name: string | null } | null)?.full_name?.trim().split(/\s+/)[0];
+      if (first) vars.name = first;
+    }
 
     // PUSH — first attempt only, and NOT gated on sms_consent/opt-out: the app's
     // OS notification permission is the push opt-in (SMS consent wording covers

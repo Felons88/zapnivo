@@ -9,10 +9,12 @@ import { nonReturnDeadlineIso } from "@/lib/payments/nonreturn-deadline";
 import { cancelPaymentIntent, capturePaymentIntent, createOffSessionPaymentIntent, PAYMENTS_UNCONFIGURED, retrievePaymentIntent, stripeConfigured, taxEnabled } from "@/lib/stripe";
 import { chargeNonReturnFee } from "@/lib/payments/nonreturn";
 import { notifyFeeCharged, queueJob } from "@/lib/notifications";
+import { pushToRentalCustomer } from "@/lib/push";
 import { sendToCustomer } from "@/lib/email-triggers";
 import { appendLedger } from "@/lib/payments/ledger";
 import { sponsoredDiscountCents, recordSponsorSpend } from "@/lib/ads/sponsored";
 import { serviceClient } from "@/lib/supabase";
+import { fmt } from "@/lib/pricing";
 
 /** Staff rental lifecycle actions. Dispense/return confirmations fire the branded customer emails. */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -263,9 +265,14 @@ async function captureOnReturn(db: NonNullable<ReturnType<typeof serviceClient>>
   await db.from("payments").update({ state: "captured", amount_captured_cents: billedCents, discount_cents: discountCents, tax_cents: tax, credit_cents: creditApplied, captured_at: now.toISOString() }).eq("id", pay.id);
   if (sponsorCampaignId && sponsorDiscount > 0) await recordSponsorSpend(db, sponsorCampaignId, sponsorDiscount).catch(() => undefined);
   await auditLog(actor, "capture_on_return", "payment", pay.id, { total, chargeTotal, captureNow, overageCents, discountCents, sponsorDiscount, creditApplied, tax, banks: r.bank_count });
+  // Instant charge confirmation — same channel as the other rental pushes.
+  if (await flag(db, "push_enabled")) {
+    const credited = creditApplied > 0 ? ` (${fmt(creditApplied)} covered by credits)` : "";
+    void pushToRentalCustomer(id, { title: `${fmt(billedCents)} charged for ${r.reference}`, body: `Your rental is settled${credited}. Thanks for returning on time — see your receipt in the app.`, data: { type: "rental", reference: r.reference } }).catch(() => 0);
+  }
   const detail = remainder > 0
-    ? (overageCents === remainder ? `Charge captured — ${remainder}¢ above the hold billed to the saved card.` : `Hold captured; ${remainder}¢ overage could not be billed off-session — needs review.`)
-    : (creditApplied > 0 ? `Charge captured (${creditApplied}¢ covered by credits).` : "Charge captured.");
+    ? (overageCents === remainder ? `Charge captured — ${fmt(remainder)} above the hold billed to the saved card.` : `Hold captured; ${fmt(remainder)} overage could not be billed off-session — needs review.`)
+    : (creditApplied > 0 ? `Charge captured (${fmt(creditApplied)} covered by credits).` : "Charge captured.");
   return { status: "captured", detail, cents: billedCents };
 }
 

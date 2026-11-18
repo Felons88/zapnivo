@@ -101,6 +101,26 @@ export async function POST(req: Request) {
     return back("state");
   }
 
+  if (action === "manual_command") {
+    // Admin-only actuation: reboot, unlock a slot, or force dispense/return when
+    // the automated path stalled. Goes through the same idempotent command queue —
+    // nothing is claimed acknowledged until the kiosk reports back.
+    if (user!.role !== "admin") return fail("Only an admin can run manual hardware commands.");
+    const kioskId = String(form.get("kiosk_id") ?? "");
+    const command = String(form.get("command") ?? "");
+    const reason = String(form.get("reason") ?? "").trim().slice(0, 300);
+    if (!uuid.safeParse(kioskId).success || !["reboot", "unlock_slot", "dispense", "return_slot"].includes(command)) return fail("Invalid manual command.");
+    if (command !== "reboot" && reason.length < 3) return fail("A reason is required for actuation commands.");
+    const slot = Number.parseInt(String(form.get("slot") ?? ""), 10);
+    const q = await queueCommand(db, {
+      kioskId, command: command as "reboot" | "unlock_slot" | "dispense" | "return_slot", issuedBy: actor,
+      key: `manual:${kioskId}:${command}:${Date.now()}`,
+      payload: { manual: true, reason, ...(Number.isFinite(slot) && slot >= 0 ? { slot } : {}) },
+    });
+    await auditLog(actor, "kiosk_manual_command", "kiosk", kioskId, { command, reason, slot: Number.isFinite(slot) ? slot : null, queued: !q.duplicate });
+    return back("state", q.duplicate ? "An identical command is already queued." : `${command} queued — the kiosk acknowledges it on its next poll.`);
+  }
+
   if (action === "log_maintenance") {
     const kioskId = String(form.get("kiosk_id") ?? "");
     const notes = String(form.get("notes") ?? "").trim().slice(0, 4000);

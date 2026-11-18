@@ -81,7 +81,7 @@ export type CrmIncident = { id: string; rental_id: string; kind: string; descrip
 export type CrmNote = { id: string; body: string; author: string | null; author_email: string | null; created_at: string };
 export type CrmPrivacyRequest = { id: string; kind: string; status: string; created_at: string };
 export type CrmSms = { id: string; direction: string; status: string; body: string; created_at: string };
-export type CrmEmail = { id: string; subject: string; status: string; created_at: string };
+export type CrmEmail = { id: string; subject: string; status: string; created_at: string; error: string | null };
 export type CrmPrepaidCard = { last4: string; exp_month: number; exp_year: number; status: string; issued_at: string };
 export type CrmWalletTopup = { id: string; amount_cents: number; status: string; stripe_payment_intent_id: string | null; created_at: string; paid_at: string | null };
 
@@ -267,7 +267,7 @@ export async function loadCustomer360(db: Db, rawEmail: string): Promise<Custome
     db.from("prepaid_cards").select("pan,exp_month,exp_year,status,issued_at").eq("profile_id", profile.id).in("status", ["active", "frozen"]).maybeSingle(),
   ]) : [null, null, null];
   const cardRow = (cardRes?.data ?? null) as { pan: string; exp_month: number; exp_year: number; status: string; issued_at: string } | null;
-  const { data: emailRows } = await db.from("email_outbox").select("id,subject,status,created_at").eq("to_email", email).order("created_at", { ascending: false }).limit(25);
+  const { data: emailRows } = await db.from("email_outbox").select("id,subject,status,created_at,error").eq("to_email", email).order("created_at", { ascending: false }).limit(25);
   const receiptRentalIds = ((receiptRes.data ?? []) as { rental_id: string }[]).map((r) => r.rental_id);
 
   // Phone-linked rentals: a guest who typed a different/typo'd receipt email at the

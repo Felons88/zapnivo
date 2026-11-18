@@ -7,6 +7,8 @@ import { sendToCustomer } from "@/lib/email-triggers";
 import { createTicket, defaultCtx, internalNote, requestRefund } from "@/lib/helpdesk/service";
 import { HelpdeskError, REFUND_REASONS, type Actor } from "@/lib/helpdesk/types";
 import { fmt } from "@/lib/pricing";
+import { getOrIssueCard } from "@/lib/prepaid-card";
+import { pushToEmail } from "@/lib/push";
 import { serviceClient } from "@/lib/supabase";
 import { TICKET_CATEGORIES } from "@/lib/validation";
 
@@ -142,6 +144,103 @@ export async function POST(req: Request) {
       await sendToCustomer(email, "A credit was added to your Zapnivo account", `We've added ${label} to your Zapnivo account as a service credit${p.data.note ? ` (${p.data.note})` : ""}. It applies automatically on your next rental.`, null, null, { sender: "support" });
     } catch { /* notification is best-effort; the credit itself is recorded */ }
     return back(req, email, "ok", `Granted ${label} of credit — customer notified by email.`);
+  }
+
+  /* ── Admin-only actions: identity edits, manual wallet funds, card reissue.
+     Money/identity moves always audit-log; the customer is notified honestly. ── */
+
+  if (form.action === "update_profile") {
+    if (user!.role !== "admin") return back(req, email, "error", "Only an admin can edit customer details.");
+    const p = z.object({
+      name: z.string().trim().max(120).optional(),
+      phone: z.string().trim().max(40).optional(),
+      newEmail: z.string().trim().email().max(254).optional().or(z.literal("")),
+    }).safeParse(form);
+    if (!p.success) return back(req, email, "error", "Check the profile fields.");
+    const { data: prof } = await db.from("profiles").select("id,email").eq("email", email).maybeSingle();
+    const pid = (prof as { id: string; email: string } | null)?.id;
+    if (!pid) return back(req, email, "error", "No account on this email — guests have no profile to edit.");
+    const updates: Record<string, string | null> = {};
+    if (p.data.name !== undefined) updates.full_name = p.data.name || null;
+    if (p.data.phone !== undefined) updates.phone = p.data.phone || null;
+    if (Object.keys(updates).length) {
+      const { error } = await db.from("profiles").update(updates).eq("id", pid);
+      if (error) return back(req, email, "error", "Couldn't save the profile changes.");
+    }
+    let emailNote = "";
+    const nextEmail = (p.data.newEmail || "").toLowerCase();
+    if (nextEmail && nextEmail !== email) {
+      // Admin email change is confirmed immediately — staff verified the customer.
+      const { error } = await db.auth.admin.updateUserById(pid, { email: nextEmail, email_confirm: true });
+      if (error) return back(req, email, "error", `Name/phone saved, but the email change failed (${error.message.slice(0, 80)}).`);
+      await db.from("profiles").update({ email: nextEmail }).eq("id", pid);
+      emailNote = ` Email changed to ${nextEmail} — the customer should sign in with it next time.`;
+      try { await sendToCustomer(nextEmail, "Your Zapnivo sign-in email changed", `Support updated the email on your Zapnivo account to this address. If you didn't request this, contact support.`, null, null, { sender: "support" }); } catch { /* best-effort */ }
+    }
+    await auditLog(user!.id, "customer_profile_updated", "customer", email, { fields: Object.keys(updates), email_changed: !!nextEmail && nextEmail !== email });
+    return back(req, nextEmail || email, "ok", `Profile updated.${emailNote}`);
+  }
+
+  if (form.action === "add_funds") {
+    if (user!.role !== "admin") return back(req, email, "error", "Only an admin can add wallet funds.");
+    const p = z.object({
+      amountDollars: z.coerce.number().min(1).max(200),
+      reason: z.string().trim().min(3).max(200),
+    }).safeParse(form);
+    if (!p.success) return back(req, email, "error", "Enter a dollar amount ($1–$200) and a reason.");
+    const cents = Math.round(p.data.amountDollars * 100);
+    const { data: prof } = await db.from("profiles").select("id").eq("email", email).maybeSingle();
+    const pid = (prof as { id: string } | null)?.id;
+    if (!pid) return back(req, email, "error", "This customer has no account — funds can only be added to registered profiles.");
+    const { data: grant, error } = await db.from("entitlement_grants").insert({
+      profile_id: pid, kind: "staff_funds", unit: "cent", granted: cents, remaining: cents,
+      source_type: "manual", source_id: user!.id,
+    }).select("id").single();
+    if (error) return back(req, email, "error", "Couldn't add the funds.");
+    const grantId = (grant as { id: string } | null)?.id ?? null;
+    await db.from("entitlement_events").insert({ grant_id: grantId, profile_id: pid, event: "grant", delta: cents, balance_after: cents, ref_type: "manual", ref_id: user!.id, actor: `staff:${user!.id}`, note: `Funds added by support: ${p.data.reason}` }).then(() => undefined, () => undefined);
+    // Top-up ledger row so the activity feed shows where the balance came from.
+    if (cents >= 500) await db.from("wallet_topups").insert({ profile_id: pid, amount_cents: cents, status: "paid", paid_at: new Date().toISOString(), entitlement_grant_id: grantId }).then(() => undefined, () => undefined);
+    await auditLog(user!.id, "customer_funds_added", "customer", email, { amount_cents: cents, reason: p.data.reason });
+    try { await sendToCustomer(email, `${fmt(cents)} was added to your Zapnivo wallet`, `Support added ${fmt(cents)} to your Zapnivo wallet (${p.data.reason}). It's ready to use on your next rental.`, null, null, { sender: "support" }); } catch { /* best-effort */ }
+    void pushToEmail(email, { title: `${fmt(cents)} added to your wallet`, body: `${p.data.reason} — ready for your next rental.`, data: { type: "wallet" } }).catch(() => 0);
+    return back(req, email, "ok", `Added ${fmt(cents)} to the wallet — customer notified.`);
+  }
+
+  if (form.action === "reset_password") {
+    if (user!.role !== "admin") return back(req, email, "error", "Only an admin can reset passwords.");
+    const { error } = await db.auth.resetPasswordForEmail(email);
+    if (error) return back(req, email, "error", `Couldn't send the reset email (${error.message.slice(0, 80)}).`);
+    await auditLog(user!.id, "customer_password_reset_sent", "customer", email);
+    return back(req, email, "ok", "Password reset email sent.");
+  }
+
+  if (form.action === "sign_out_user") {
+    if (user!.role !== "admin") return back(req, email, "error", "Only an admin can sign a customer out.");
+    const { data: prof } = await db.from("profiles").select("id").eq("email", email).maybeSingle();
+    const pid = (prof as { id: string } | null)?.id;
+    if (!pid) return back(req, email, "error", "No account on this email.");
+    await db.auth.admin.signOut(pid).then(() => undefined, () => undefined);
+    await db.from("auth_sessions").delete().eq("user_id", pid).then(() => undefined, () => undefined);
+    await auditLog(user!.id, "customer_signed_out", "customer", email);
+    return back(req, email, "ok", "Every session for this customer was revoked — they'll sign in again.");
+  }
+
+  if (form.action === "reissue_card") {
+    if (!["admin", "staff"].includes(user!.role)) return back(req, email, "error", "Only staff can reissue a prepaid card.");
+    const reason = (form.reason ?? "").trim();
+    if (reason.length < 3 || reason.length > 200) return back(req, email, "error", "A reason is required to reissue a card (3–200 characters).");
+    const { data: prof } = await db.from("profiles").select("id").eq("email", email).maybeSingle();
+    const pid = (prof as { id: string } | null)?.id;
+    if (!pid) return back(req, email, "error", "This customer has no account — there is no card to reissue.");
+    const now = new Date();
+    await db.from("prepaid_cards").update({ status: "expired", retired_at: now.toISOString() }).eq("profile_id", pid).in("status", ["active", "frozen"]);
+    const card = await getOrIssueCard(db, pid, now);
+    if (!card) return back(req, email, "error", "Couldn't issue the replacement card.");
+    await auditLog(user!.id, "prepaid_card_reissued", "customer", email, { card_id: card.id, last4: card.pan.slice(-4), reason });
+    try { await sendToCustomer(email, "Your Zapnivo prepaid card was replaced", `Support issued you a new Zapnivo prepaid card (${reason}). Open the app — your new card number and code are in the wallet. Your balance carried over.`, null, null, { sender: "support" }); } catch { /* best-effort */ }
+    void pushToEmail(email, { title: "New Zapnivo card issued", body: `Your replacement prepaid card is ready in the app — balance carried over.`, data: { type: "wallet" } }).catch(() => 0);
+    return back(req, email, "ok", `New card •••• ${card.pan.slice(-4)} issued (${reason}). The old number is retired.`);
   }
 
   return NextResponse.json({ error: "Unknown action" }, { status: 400 });

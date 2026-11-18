@@ -12,7 +12,7 @@ export const metadata: Metadata = { title: "Fleet", robots: { index: false, foll
 const STATE_TONE = { online: "lime", offline: "red", maintenance: "gold", provisioning: "cyan", disabled: "mist" } as const;
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "—");
 
-export default async function Fleet({ searchParams }: { searchParams: Promise<{ result?: string; detail?: string }> }) {
+export default async function Fleet({ searchParams }: { searchParams: Promise<{ result?: string; detail?: string; q?: string; state?: string }> }) {
   const feedback = await searchParams;
   const db = serviceClient();
   const [kiosks, slots, banks, visits, events, venues, orgs] = db ? await Promise.all([
@@ -27,6 +27,14 @@ export default async function Fleet({ searchParams }: { searchParams: Promise<{ 
 
   type Kiosk = { id: string; station_id: string; venue_id: string | null; state: keyof typeof STATE_TONE; model: string | null; firmware_version: string | null; last_seen_at: string | null; installed_at: string | null; slot_count: number; venues: { name: string; city: string; state: string } | null };
   const kioskRows = (kiosks?.data ?? []) as unknown as Kiosk[];
+  const q = (feedback.q ?? "").trim().toLowerCase().slice(0, 80);
+  const state = (["all", "online", "offline", "maintenance", "provisioning", "disabled", "attention"] as const).includes(feedback.state as "all") ? feedback.state! : "all";
+  const visibleRows = kioskRows.filter((k) => {
+    const stale = k.state === "online" && heartbeatStale(k.last_seen_at);
+    const stateMatch = state === "all" || (state === "attention" ? stale || k.state === "offline" || k.state === "maintenance" : k.state === state);
+    return stateMatch && (!q || [k.station_id, k.venues?.name, k.venues?.city, k.model].some((v) => v?.toLowerCase().includes(q)));
+  });
+  const attentionCount = kioskRows.filter((k) => k.state === "offline" || k.state === "maintenance" || (k.state === "online" && heartbeatStale(k.last_seen_at))).length;
   const slotRows = (slots?.data ?? []) as { kiosk_id: string; state: string }[];
   const byKiosk = new Map<string, Record<string, number>>();
   for (const s of slotRows) {
@@ -41,6 +49,7 @@ export default async function Fleet({ searchParams }: { searchParams: Promise<{ 
   const venueRows = (venues?.data ?? []) as { id: string; name: string; city: string; state: string }[];
   const orgRows = (orgs?.data ?? []) as { id: string; name: string }[];
   const inputCls = "min-h-10 rounded-lg border border-silver/70 px-3 text-sm";
+  const filterHref = (next: string) => "/admin/fleet?state=" + next + (q ? "&q=" + encodeURIComponent(q) : "") + "#fleet-stations";
 
   return (
     <AdminGate title="Fleet" nav="fleet">
@@ -48,17 +57,71 @@ export default async function Fleet({ searchParams }: { searchParams: Promise<{ 
         <EmptyCard title="Fleet data not connected">Connect Supabase to see live station, slot and device data.</EmptyCard>
       ) : (
         <div className="space-y-6">
+          <section className="flex flex-wrap items-end justify-between gap-4 rounded-2xl bg-[#142126] p-6 text-white md:p-8">
+            <div><p className="eyebrow text-lime">Network operations</p><h2 className="mt-2 text-3xl font-bold tracking-tight">Know what needs attention.</h2><p className="mt-2 max-w-2xl text-sm text-[#b7c8c2]">Monitor live station state, slot readiness and recent device activity. Open a station to investigate and act.</p></div>
+            <div className="flex gap-2"><a href="#fleet-stations" className="rounded-lg bg-lime px-4 py-2.5 text-sm font-bold text-ink">View stations ↓</a><a href="#fleet-setup" className="rounded-lg border border-white/25 px-4 py-2.5 text-sm font-bold hover:bg-white/10">Setup tools</a></div>
+          </section>
           {feedback.result && <div role="status" className={`rounded-xl px-5 py-3 text-sm font-bold ${feedback.result === "error" ? "bg-red-100 text-red-900" : "bg-lime text-ink"}`}>
             {feedback.result === "created" ? `Kiosk ${feedback.detail ?? ""} registered with its slot records. It is provisioning until connected hardware confirms status.` : feedback.result === "venue" ? "Venue added as unpublished." : feedback.result === "assigned" ? "Kiosk assignment saved." : feedback.result === "installed" ? "Physical installation recorded. The station remains nonpublic until its device is online and its venue is published." : feedback.detail ?? "The fleet action failed."}
           </div>}
           <section aria-label="Fleet at a glance" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <Metric label="Stations" value={kioskRows.length} sub={`${kioskRows.filter((k) => k.state === "online").length} online`} />
+            <Metric label="Needs attention" value={attentionCount} sub="Offline, maintenance or stale" />
             <Metric label="Slots" value={slotRows.length} sub={`${slotRows.filter((s) => s.state === "ready").length} ready · ${slotRows.filter((s) => s.state === "fault").length} fault`} />
             <Metric label="Power banks" value={live.length} sub={`${bankRows.length - live.length} retired`} />
-            <Metric label="Maintenance visits" value={visitRows.length} sub="Most recent shown below" />
           </section>
 
-          <div className="grid gap-6 lg:grid-cols-2">
+          <section id="fleet-stations" aria-label="Stations" className="scroll-mt-24 overflow-hidden rounded-2xl border border-mist bg-white shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-mist px-6 py-5"><div><p className="eyebrow text-forest">Station directory</p><h2 className="mt-1 font-display text-xl font-bold">Fleet status</h2></div><p className="text-xs text-graphite">Showing {visibleRows.length} of {kioskRows.length}</p></div>
+            <div className="space-y-3 border-b border-mist px-5 py-4">
+              <form action="/admin/fleet" className="flex max-w-md gap-2"><input type="hidden" name="state" value={state} /><input name="q" defaultValue={feedback.q} aria-label="Search stations" placeholder="Search station, venue or model…" className="min-h-10 min-w-0 flex-1 rounded-lg border border-silver/70 px-3 text-sm" /><button className="rounded-lg bg-ink px-4 text-xs font-bold text-white">Search</button></form>
+              <nav aria-label="Station status filters" className="flex gap-2 overflow-x-auto">{(["all", "attention", "online", "offline", "maintenance", "provisioning", "disabled"] as const).map((filter) => <Link key={filter} href={filterHref(filter)} className={"shrink-0 rounded-full px-3 py-1.5 text-xs font-bold " + (state === filter ? "bg-lime text-ink" : "bg-[#f2f5f1] text-graphite hover:bg-mist")}>{filter === "all" ? "All stations" : filter}</Link>)}</nav>
+            </div>
+            {kioskRows.length === 0 ? (
+              <p className="px-6 py-10 text-sm text-graphite">No stations registered yet. The first kiosk appears here once provisioned.</p>
+            ) : visibleRows.length === 0 ? (
+              <p className="px-6 py-10 text-sm text-graphite">No stations match these filters. Search by station ID or choose another status.</p>
+            ) : (
+              <div className="overflow-x-auto">
+              <table className="w-full min-w-[880px] text-left text-sm">
+                <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite">
+                  <tr>{["Station", "Venue", "State", "Slots (ready/charge/empty/fault)", "Last seen", "Installed", "Model / FW"].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr>
+                </thead>
+                <tbody>
+                  {visibleRows.map((k) => {
+                    const s = byKiosk.get(k.id) ?? {};
+                    const stale = k.state === "online" && heartbeatStale(k.last_seen_at);
+                    return (
+                      <tr key={k.id} className="border-b border-mist/70 last:border-0 hover:bg-lime/10">
+                        <td className="px-4 py-3 font-bold"><Link href={`/admin/fleet/${k.station_id}`} className="underline underline-offset-4 hover:text-forest">{k.station_id}</Link></td>
+                        <td className="px-4 py-3">
+                          <form method="post" action="/api/admin/fleet" className="flex items-center gap-2">
+                            <input type="hidden" name="action" value="assign_kiosk" /><input type="hidden" name="kiosk_id" value={k.id} />
+                            <select name="venue_id" defaultValue={k.venue_id ?? ""} aria-label={`Assign ${k.station_id} to venue`} className="min-h-8 rounded-lg border border-silver/60 px-2 text-xs font-semibold">
+                              <option value="">— unassigned —</option>
+                              {venueRows.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+                            </select>
+                            <button className="min-h-8 rounded-full bg-mist px-3 text-xs font-bold hover:bg-lime">Assign</button>
+                          </form>
+                          {k.venues && <p className="mt-0.5 text-xs text-graphite">{k.venues.name} · {k.venues.city}, {k.venues.state}</p>}
+                        </td>
+                        <td className="px-4 py-3"><span className="inline-flex items-center gap-1"><Pill tone={STATE_TONE[k.state] ?? "mist"}>{k.state}</Pill>{stale && <Pill tone="gold">stale</Pill>}</span></td>
+                        <td className="px-4 py-3 text-xs font-semibold">{s.ready ?? 0} / {s.charging ?? 0} / {s.empty ?? 0} / {s.fault ?? 0}<span className="block text-graphite">{Object.values(s).reduce((a, b) => a + b, 0)} of {k.slot_count} registered</span></td>
+                        <td className="px-4 py-3 text-xs text-graphite">{when(k.last_seen_at)}</td>
+                        <td className="px-4 py-3 text-xs text-graphite">{when(k.installed_at)}{!k.installed_at && k.venue_id && <form method="post" action="/api/admin/fleet" className="mt-2"><input type="hidden" name="action" value="record_installation" /><input type="hidden" name="kiosk_id" value={k.id} /><label className="flex items-start gap-1.5 text-[11px]"><input type="checkbox" name="confirmed" value="yes" required className="mt-0.5" />Physically installed</label><button className="mt-1 rounded-full bg-mist px-2.5 py-1 text-[11px] font-bold hover:bg-lime">Record</button></form>}</td>
+                        <td className="px-4 py-3 text-xs text-graphite">{[k.model, k.firmware_version].filter(Boolean).join(" · ") || "—"}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              </div>
+            )}
+          </section>
+
+          <details id="fleet-setup" className="rounded-2xl border border-mist bg-white p-5">
+            <summary className="cursor-pointer text-sm font-bold">Station setup · register kiosk or add venue <span className="float-right text-graphite">⌄</span></summary>
+          <div className="mt-5 grid gap-6 lg:grid-cols-2">
             <section id="register-kiosk" aria-label="Register kiosk" className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
               <h2 className="font-display text-lg font-bold">Register a kiosk</h2>
               <form method="post" action="/api/admin/fleet" className="mt-4 flex flex-wrap items-end gap-3">
@@ -88,46 +151,7 @@ export default async function Fleet({ searchParams }: { searchParams: Promise<{ 
               <p className="mt-3 text-xs text-graphite">Venues start unpublished. Link an owner organization on <Link href="/admin/partners" className="font-bold text-forest underline">Partners</Link>; add verified coordinates and publish only after installation and live device verification.</p>
             </section>
           </div>
-
-          <section aria-label="Stations" className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
-            <div className="border-b border-mist px-6 py-4"><h2 className="font-display text-lg font-bold">Stations</h2></div>
-            {kioskRows.length === 0 ? (
-              <p className="px-6 py-10 text-sm text-graphite">No stations registered yet. The first kiosk appears here once provisioned.</p>
-            ) : (
-              <table className="w-full min-w-[880px] text-left text-sm">
-                <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite">
-                  <tr>{["Station", "Venue", "State", "Slots (ready/charge/empty/fault)", "Last seen", "Installed", "Model / FW"].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr>
-                </thead>
-                <tbody>
-                  {kioskRows.map((k) => {
-                    const s = byKiosk.get(k.id) ?? {};
-                    const stale = k.state === "online" && heartbeatStale(k.last_seen_at);
-                    return (
-                      <tr key={k.id} className="border-b border-mist/70 last:border-0 hover:bg-lime/10">
-                        <td className="px-4 py-3 font-bold"><Link href={`/admin/fleet/${k.station_id}`} className="underline underline-offset-4 hover:text-forest">{k.station_id}</Link></td>
-                        <td className="px-4 py-3">
-                          <form method="post" action="/api/admin/fleet" className="flex items-center gap-2">
-                            <input type="hidden" name="action" value="assign_kiosk" /><input type="hidden" name="kiosk_id" value={k.id} />
-                            <select name="venue_id" defaultValue={k.venue_id ?? ""} aria-label={`Assign ${k.station_id} to venue`} className="min-h-8 rounded-lg border border-silver/60 px-2 text-xs font-semibold">
-                              <option value="">— unassigned —</option>
-                              {venueRows.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
-                            </select>
-                            <button className="min-h-8 rounded-full bg-mist px-3 text-xs font-bold hover:bg-lime">Assign</button>
-                          </form>
-                          {k.venues && <p className="mt-0.5 text-xs text-graphite">{k.venues.name} · {k.venues.city}, {k.venues.state}</p>}
-                        </td>
-                        <td className="px-4 py-3"><span className="inline-flex items-center gap-1"><Pill tone={STATE_TONE[k.state] ?? "mist"}>{k.state}</Pill>{stale && <Pill tone="gold">stale</Pill>}</span></td>
-                        <td className="px-4 py-3 text-xs font-semibold">{s.ready ?? 0} / {s.charging ?? 0} / {s.empty ?? 0} / {s.fault ?? 0}<span className="block text-graphite">{Object.values(s).reduce((a, b) => a + b, 0)} of {k.slot_count} registered</span></td>
-                        <td className="px-4 py-3 text-xs text-graphite">{when(k.last_seen_at)}</td>
-                        <td className="px-4 py-3 text-xs text-graphite">{when(k.installed_at)}{!k.installed_at && k.venue_id && <form method="post" action="/api/admin/fleet" className="mt-2"><input type="hidden" name="action" value="record_installation" /><input type="hidden" name="kiosk_id" value={k.id} /><label className="flex items-start gap-1.5 text-[11px]"><input type="checkbox" name="confirmed" value="yes" required className="mt-0.5" />Physically installed</label><button className="mt-1 rounded-full bg-mist px-2.5 py-1 text-[11px] font-bold hover:bg-lime">Record</button></form>}</td>
-                        <td className="px-4 py-3 text-xs text-graphite">{[k.model, k.firmware_version].filter(Boolean).join(" · ") || "—"}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            )}
-          </section>
+          </details>
 
           <div className="grid gap-6 lg:grid-cols-2">
             <section aria-label="Recent maintenance" className="rounded-2xl border border-mist bg-white p-6 shadow-sm">

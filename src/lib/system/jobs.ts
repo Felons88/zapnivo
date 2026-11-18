@@ -13,8 +13,9 @@ import { pausedJobSet } from "./job-controls";
 
 /** Vercel cron entries (vercel.json) → the cron_runs job names each route records. */
 export const CRON_ROUTES: readonly { path: string; schedule: string; jobs: readonly string[]; recordsCronRuns: boolean }[] = [
+  { path: "/api/cron/notifications", schedule: "*/15 * * * *", jobs: ["sms"], recordsCronRuns: true },
   { path: "/api/cron/rentals", schedule: "0 12 * * *", jobs: ["rentals", "sms", "fleet", "entitlements", "ledgers"], recordsCronRuns: true },
-  { path: "/api/cron/inbound", schedule: "0 13 * * *", jobs: ["inbound"], recordsCronRuns: true },
+  { path: "/api/cron/inbound", schedule: "*/10 * * * *", jobs: ["inbound"], recordsCronRuns: true },
   { path: "/api/cron/uptime", schedule: "0 14 * * *", jobs: ["uptime"], recordsCronRuns: true }, // recordCron since Phase 2.7
   { path: "/api/cron/analytics", schedule: "30 14 * * *", jobs: ["analytics"], recordsCronRuns: true }, // recordCron since Phase 2.7
   { path: "/api/cron/retention", schedule: "0 4 * * *", jobs: ["retention"], recordsCronRuns: true }, // recordCron since Phase 2.7

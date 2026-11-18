@@ -50,12 +50,23 @@ class _WalletScreenState extends State<WalletScreen> {
     if (!started) {
       started = true;
       refresh();
+      // Live balance: AppState bumps walletTick on top-up/grant changes and on
+      // its 30s poll — refresh silently so the number moves by itself.
+      _appState = AppScope.of(context);
+      _appState?.walletTick.addListener(_onWalletTick);
     }
   }
+
+  void _onWalletTick() {
+    if (mounted && !loading) refresh();
+  }
+
+  AppState? _appState;
 
   @override
   void dispose() {
     hideTimer?.cancel();
+    _appState?.walletTick.removeListener(_onWalletTick);
     super.dispose();
   }
 

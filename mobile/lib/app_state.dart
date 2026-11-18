@@ -27,6 +27,7 @@ class AppState extends ChangeNotifier {
   String? ticketsError;
   /// Bumped when a support message arrives so open threads reload.
   final ticketTick = ValueNotifier<int>(0);
+  final walletTick = ValueNotifier<int>(0);
 
   Map<String, dynamic>? profile;
 
@@ -68,6 +69,7 @@ class AppState extends ChangeNotifier {
     _poll ??= Timer.periodic(const Duration(seconds: 30), (_) {
       refreshRentals();
       refreshTickets();
+      walletTick.value++;
     });
   }
 
@@ -89,6 +91,11 @@ class AppState extends ChangeNotifier {
               refreshTickets();
             },
           )
+          // Wallet activity: top-up confirmations (webhook), credit grants and
+          // staff adjustments all land here — balance and activity move in
+          // real time without a pull-to-refresh.
+          .onPostgresChanges(event: PostgresChangeEvent.all, schema: 'public', table: 'wallet_topups', callback: (_) => walletTick.value++)
+          .onPostgresChanges(event: PostgresChangeEvent.all, schema: 'public', table: 'entitlement_grants', callback: (_) => walletTick.value++)
           .subscribe();
     } catch (_) {}
   }

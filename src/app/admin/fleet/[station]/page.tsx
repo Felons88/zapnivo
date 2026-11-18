@@ -95,6 +95,19 @@ export default async function StationDetail({ params, searchParams }: { params: 
               <button className={`min-h-10 rounded-full px-5 text-sm font-bold ${kiosk.state === "disabled" ? "bg-lime text-ink" : "bg-red-600 text-white"}`}>{kiosk.state === "disabled" ? "Enable station" : "Disable station"}</button>
             </form>
             <p className="mt-3 text-xs text-graphite">Changes the station state immediately and queues a hardware command. Commands stay <b>queued</b> until a kiosk adapter confirms them — nothing is claimed as acknowledged.</p>
+            {viewer.role === "admin" && (
+              <form method="post" action="/api/admin/fleet" className="mt-4 space-y-2 rounded-xl border border-gold/50 bg-gold/10 p-3">
+                <input type="hidden" name="action" value="manual_command" /><input type="hidden" name="kiosk_id" value={kiosk.id} /><input type="hidden" name="return_to" value={ret} />
+                <p className="text-xs font-extrabold uppercase tracking-wider text-gold">Manual command · admin</p>
+                <div className="flex flex-wrap gap-2">
+                  <select name="command" defaultValue="reboot" className={`${input} w-auto`}><option value="reboot">Reboot</option><option value="unlock_slot">Unlock slot</option><option value="dispense">Force dispense</option><option value="return_slot">Force return slot</option></select>
+                  <input name="slot" type="number" min="0" placeholder="Slot #" aria-label="Slot number" className={`${input} w-20`} />
+                  <input name="reason" placeholder="Why? (required except reboot)" aria-label="Reason" className={`${input} min-w-0 flex-1`} />
+                  <button className="min-h-10 rounded-full bg-gold/80 px-4 text-xs font-bold text-ink">Queue</button>
+                </div>
+                <p className="text-[11px] text-graphite">For stalled automation only — e.g. a bank the system didn't release. Runs through the same idempotent queue and is audit-logged.</p>
+              </form>
+            )}
             {cmds.length > 0 && <ul className="mt-4 space-y-1 text-xs">{cmds.map((c) => <li key={c.id} className="flex justify-between"><span className="font-bold">{c.command}</span><span className="text-graphite">{c.status} · {when(c.created_at)}</span></li>)}</ul>}
           </section>
 

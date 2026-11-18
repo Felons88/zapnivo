@@ -33,7 +33,7 @@ const paySummary = (r: CrmRental) => {
   return `${fmt(amt)} · ${p.state}${refunded > 0 ? ` · ${fmt(refunded)} refunded` : ""}`;
 };
 
-export default async function Customer360({ params, searchParams }: { params: Promise<{ email: string }>; searchParams: Promise<{ result?: string; detail?: string }> }) {
+export default async function Customer360({ params, searchParams }: { params: Promise<{ email: string }>; searchParams: Promise<{ result?: string; detail?: string; all?: string }> }) {
   const user = await getSessionUser();
   if (!user) redirect("/login");
   if (!isStaff(user)) redirect("/partners");
@@ -53,13 +53,13 @@ export default async function Customer360({ params, searchParams }: { params: Pr
   const nextStep = latestTicket
     ? { title: "Continue the open conversation", detail: `${latestTicket.ticket_number} · ${latestTicket.category} · ${latestTicket.state.replace(/_/g, " ")}`, href: `/admin/support/${latestTicket.ticket_number}`, action: "Open ticket" }
     : latestRental
-      ? { title: "Review the rental still in progress", detail: `${latestRental.reference} · ${latestRental.state.replace(/_/g, " ")}`, href: "#customer-rentals", action: "Review rental" }
+      ? { title: "Review the rental still in progress", detail: `${latestRental.reference} · ${latestRental.state.replace(/_/g, " ")}`, href: `/admin/rentals/${latestRental.id}`, action: "Review rental" }
       : pendingRefunds[0]
         ? { title: "Review the refund request", detail: `${pendingRefunds[0].rental_ref} · ${pendingRefunds[0].status}`, href: "#customer-support", action: "Review request" }
         : { title: "No active case on this record", detail: "Review recent activity or open a new ticket to document a customer issue.", href: "#customer-actions", action: "Open a ticket" };
   const activity = c ? [
     ...c.tickets.map((t) => ({ id: `ticket-${t.id}`, at: t.created_at, title: `Ticket ${t.ticket_number} opened`, detail: `${t.category} · ${t.state.replace(/_/g, " ")}`, href: `/admin/support/${t.ticket_number}` })),
-    ...c.rentals.map((r) => ({ id: `rental-${r.id}`, at: r.created_at, title: `Rental ${r.reference}`, detail: `${r.state.replace(/_/g, " ")} · ${r.kiosks?.venues?.name ?? r.kiosks?.station_id ?? "Station unknown"}`, href: "#customer-rentals" })),
+    ...c.rentals.map((r) => ({ id: `rental-${r.id}`, at: r.created_at, title: `Rental ${r.reference}`, detail: `${r.state.replace(/_/g, " ")} · ${r.kiosks?.venues?.name ?? r.kiosks?.station_id ?? "Station unknown"}`, href: `/admin/rentals/${r.id}` })),
     ...c.notes.map((n) => ({ id: `note-${n.id}`, at: n.created_at, title: "Staff note added", detail: n.author_email ?? "Staff", href: "#customer-actions" })),
     ...c.refundRequests.map((r) => ({ id: `refund-${r.id}`, at: r.created_at, title: `Refund request for ${r.rental_ref}`, detail: `${fmt(r.amount_cents)} · ${r.status}`, href: "#customer-support" })),
     ...(c.wallet?.topups ?? []).map((t) => ({ id: `topup-${t.id}`, at: t.created_at, title: `Wallet top-up ${t.status}`, detail: fmt(t.amount_cents), href: "#customer-wallet" })),
@@ -174,6 +174,30 @@ export default async function Customer360({ params, searchParams }: { params: Pr
                     </>
                   ) : <span className="text-graphite">Not issued yet — created the first time the customer opens their wallet.</span>}
                 </div>
+                {c.profile && (
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    {isAdmin && (
+                      <form method="post" action="/api/admin/customers" className="rounded-xl border border-mist p-3">
+                        <input type="hidden" name="action" value="add_funds" /><input type="hidden" name="email" value={c.email} />
+                        <p className="text-xs font-extrabold uppercase tracking-wider text-forest">Add funds <span className="text-silver">· admin</span></p>
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <input name="amountDollars" type="number" min="1" max="200" step="0.01" required placeholder="$25.00" aria-label="Amount in dollars" className="min-h-9 w-24 rounded-lg border border-silver/60 px-2 text-xs" />
+                          <input name="reason" required minLength={3} maxLength={200} placeholder="Reason (shown to customer)" aria-label="Reason" className="min-h-9 min-w-0 flex-1 rounded-lg border border-silver/60 px-2 text-xs" />
+                          <button className={`${btn} bg-ink text-white`}>Add</button>
+                        </div>
+                      </form>
+                    )}
+                    <form method="post" action="/api/admin/customers" className="rounded-xl border border-mist p-3">
+                      <input type="hidden" name="action" value="reissue_card" /><input type="hidden" name="email" value={c.email} />
+                      <p className="text-xs font-extrabold uppercase tracking-wider text-forest">Reissue prepaid card</p>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <input name="reason" required minLength={3} maxLength={200} placeholder="Why? (e.g. customer lost the card)" aria-label="Reissue reason" className="min-h-9 min-w-0 flex-1 rounded-lg border border-silver/60 px-2 text-xs" />
+                        <button className={`${btn} border border-silver/60 hover:border-ink`}>New card</button>
+                      </div>
+                      <p className="mt-1.5 text-[11px] text-graphite">Retires the old number and issues a fresh one. Balance carries over; a reason is required and audit-logged.</p>
+                    </form>
+                  </div>
+                )}
                 {c.wallet?.topups.length === 0 ? <p className="mt-3 text-sm text-graphite">No top-up attempts recorded.</p> : (
                   <ul className="mt-2 divide-y divide-mist">
                     {c.wallet?.topups.map((t) => <li key={t.id} className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm">
@@ -248,6 +272,34 @@ export default async function Customer360({ params, searchParams }: { params: Pr
               )}
             </section>
 
+            {isAdmin && c.profile && (
+              <section className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+                <h2 className="font-display text-lg font-bold">Edit customer details <span className="ml-2 align-middle text-[10px] font-extrabold uppercase tracking-widest text-silver">admin only</span></h2>
+                <p className="mt-1 text-xs text-graphite">Name and phone update instantly. An email change is applied immediately and the customer is told at the new address — every change is audit-logged.</p>
+                <form method="post" action="/api/admin/customers" className="mt-4 space-y-3">
+                  <input type="hidden" name="action" value="update_profile" />
+                  <input type="hidden" name="email" value={c.email} />
+                  <div>
+                    <label htmlFor="ep-name" className="mb-1 block text-xs font-bold">Full name</label>
+                    <input id="ep-name" name="name" defaultValue={c.names[0] ?? ""} maxLength={120} className={`${input} w-full`} />
+                  </div>
+                  <div>
+                    <label htmlFor="ep-phone" className="mb-1 block text-xs font-bold">Phone</label>
+                    <input id="ep-phone" name="phone" type="tel" defaultValue={c.phones[0] ?? ""} maxLength={40} className={`${input} w-full`} />
+                  </div>
+                  <div>
+                    <label htmlFor="ep-email" className="mb-1 block text-xs font-bold">New email (leave blank to keep {c.email})</label>
+                    <input id="ep-email" name="newEmail" type="email" maxLength={254} className={`${input} w-full`} placeholder="new.address@example.com" />
+                  </div>
+                  <button className="min-h-10 rounded-full bg-ink px-5 text-sm font-bold text-white">Save changes</button>
+                </form>
+                <div className="mt-4 flex flex-wrap gap-2 border-t border-mist pt-4">
+                  <form method="post" action="/api/admin/customers"><input type="hidden" name="action" value="reset_password" /><input type="hidden" name="email" value={c.email} /><button className={`${btn} border border-silver/60 hover:border-ink`}>Send password reset</button></form>
+                  <form method="post" action="/api/admin/customers"><input type="hidden" name="action" value="sign_out_user" /><input type="hidden" name="email" value={c.email} /><button className={`${btn} border border-silver/60 hover:border-ink`}>Sign out everywhere</button></form>
+                </div>
+              </section>
+            )}
+
             <section className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
               <h2 className="font-display text-lg font-bold">Add a staff note</h2>
               <p className="mt-1 text-xs text-graphite">Internal only — attached to this customer and audit-logged. Never emailed.</p>
@@ -282,13 +334,13 @@ export default async function Customer360({ params, searchParams }: { params: Pr
                   <tr>{["Reference", "Station", "State", "Started", "Returned", "Due back", "Payment", "Actions"].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr>
                 </thead>
                 <tbody>
-                  {c.rentals.map((r) => {
+                  {(feedback.all === "1" ? c.rentals : c.rentals.slice(0, 4)).map((r) => {
                     const od = overdue(r);
                     const incidents = c.incidents.filter((i) => i.rental_id === r.id);
                     return (
                       <tr key={r.id} className="border-b border-mist/70 align-top last:border-0 hover:bg-lime/10">
                         <td className="px-4 py-3">
-                          <p className="font-bold">{r.reference}</p>
+                          <p className="font-bold"><Link href={`/admin/rentals/${r.id}`} className="text-forest underline hover:text-ink">{r.reference}</Link></p>
                           {incidents.map((i) => <p key={i.id} className="mt-1 text-xs font-bold text-red-800">⚑ {i.kind} reported</p>)}
                         </td>
                         <td className="px-4 py-3"><p className="font-semibold">{r.kiosks?.venues?.name ?? r.kiosks?.station_id ?? "—"}</p><p className="text-xs text-graphite">{r.kiosks?.venues?.city ?? ""}</p></td>
@@ -349,6 +401,13 @@ export default async function Customer360({ params, searchParams }: { params: Pr
                   })}
                 </tbody>
               </table>
+            )}
+            {c.rentals.length > 4 && (
+              <p className="border-t border-mist px-6 py-3 text-xs">
+                {feedback.all === "1"
+                  ? <Link href={`${back}#customer-rentals`} className="font-bold text-forest underline">Show latest 4 only</Link>
+                  : <Link href={`${back}?all=1#customer-rentals`} className="font-bold text-forest underline">View all {c.rentals.length} rentals →</Link>}
+              </p>
             )}
           </section>
 
@@ -436,9 +495,11 @@ export default async function Customer360({ params, searchParams }: { params: Pr
               {c.emails.length === 0 ? <p className="mt-3 text-sm text-graphite">No emails sent to this address yet.</p> : (
                 <ul className="mt-3 space-y-2">
                   {c.emails.map((m) => (
-                    <li key={m.id} className="flex items-center justify-between gap-3 rounded-xl bg-mist/50 px-4 py-3 text-sm">
-                      <div className="min-w-0"><p className="truncate font-bold">{m.subject}</p><p className="text-xs text-graphite">{when(m.created_at)}</p></div>
-                      <Pill tone={m.status === "sent" ? "lime" : m.status === "failed" ? "red" : "gold"}>{m.status}</Pill>
+                    <li key={m.id}>
+                      <Link href={`/admin/emails/${m.id}`} className="flex items-center justify-between gap-3 rounded-xl bg-mist/50 px-4 py-3 text-sm hover:bg-lime/30">
+                        <div className="min-w-0"><p className="truncate font-bold">{m.subject}</p><p className="text-xs text-graphite">{when(m.created_at)}{m.error ? ` · ${m.error.slice(0, 80)}` : ""}</p></div>
+                        <Pill tone={m.status === "sent" ? "lime" : m.status === "failed" ? "red" : "gold"}>{m.status}</Pill>
+                      </Link>
                     </li>
                   ))}
                 </ul>

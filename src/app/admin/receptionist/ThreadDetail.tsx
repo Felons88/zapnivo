@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Pill } from "@/components/SupportNav";
 import { STAFF_TRANSITIONS } from "@/lib/receptionist/types";
 import type { AuditRow, MessageRow, ReceptionistStatus, ThreadRow } from "@/lib/receptionist/types";
@@ -20,10 +21,12 @@ const KIND_TONE: Record<string, "mist" | "lime" | "gold" | "red" | "ink" | "cyan
 };
 
 async function post(url: string, body: Record<string, unknown>) {
-  const res = await fetch(url, {
-    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
-  });
-  return res.ok;
+  try {
+    const res = await fetch(url, {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+    });
+    return res.ok;
+  } catch { return false; }
 }
 
 export function ThreadDetail({ thread, messages, audit, draft, staff, currentUserId }: Props) {
@@ -47,11 +50,12 @@ export function ThreadDetail({ thread, messages, audit, draft, staff, currentUse
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
+      <div className="rounded-2xl border border-mist bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div className="min-w-0">
-            <p className="font-bold">{thread.sender_email}</p>
-            <p className="text-sm text-graphite">{thread.subject}</p>
+            <p className="eyebrow text-forest">Email conversation</p>
+            <h2 className="mt-2 text-xl font-bold">{thread.subject}</h2>
+            <p className="mt-1 text-sm text-graphite">From {thread.sender_email}</p>
           </div>
           <div className="flex flex-wrap gap-1.5">
             <Pill tone="mist">{thread.category.replace(/_/g, " ")}</Pill>
@@ -59,6 +63,10 @@ export function ThreadDetail({ thread, messages, audit, draft, staff, currentUse
             <Pill tone="ink">{thread.status.replace(/_/g, " ")}</Pill>
             {thread.ai_confidence != null && <Pill tone="cyan">AI {Math.round(thread.ai_confidence * 100)}%</Pill>}
           </div>
+        </div>
+        <div className="mt-4 flex flex-wrap gap-2 border-t border-mist pt-4">
+          <Link href={"/admin/customers/" + encodeURIComponent(thread.sender_email)} className="rounded-lg bg-[#edf3ea] px-3 py-2 text-xs font-bold hover:bg-lime/40">Customer profile →</Link>
+          <Link href="/admin/support" className="rounded-lg border border-mist px-3 py-2 text-xs font-bold hover:bg-mist">Support inbox</Link>
         </div>
         {thread.escalation_reason && (
           <p className="mt-2 rounded-lg bg-gold/20 px-3 py-2 text-xs font-semibold">Escalation: {thread.escalation_reason}</p>
@@ -114,6 +122,8 @@ export function ThreadDetail({ thread, messages, audit, draft, staff, currentUse
       )}
 
       {/* Messages */}
+      <section className="rounded-2xl border border-mist bg-white p-5" aria-label="Email conversation">
+        <div className="mb-4 flex items-center justify-between border-b border-mist pb-3"><h3 className="text-lg font-bold">Conversation</h3><span className="text-xs text-graphite">{messages.length} messages</span></div>
       <div className="space-y-3">
         {messages.map((m) => (
           <div key={m.id} className={`rounded-2xl border p-4 ${m.direction === "internal" ? "border-cyan/40 bg-cyan/10" : "border-mist bg-white"}`}>
@@ -128,9 +138,10 @@ export function ThreadDetail({ thread, messages, audit, draft, staff, currentUse
           </div>
         ))}
       </div>
+      </section>
 
       {/* Reply + note */}
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="grid gap-3 2xl:grid-cols-2">
         <div className="rounded-2xl border border-mist bg-white p-4">
           <p className="mb-2 text-xs font-extrabold uppercase tracking-wider text-graphite">Reply as hello@zapnivo.com</p>
           <textarea value={reply} onChange={(e) => setReply(e.target.value)} rows={5}

@@ -63,15 +63,23 @@ async function creditVerifiedTopup(db: SupabaseClient, payment: VerifiedTopup): 
   if (saved.data?.length) await notifyTopupPaid(db, row.profile_id, row.amount_cents).catch(() => undefined);
 }
 
-/** Makes sure the customer's prepaid card exists and emails the receipt. Best-effort: credit is already granted. */
+/** Makes sure the customer's prepaid card exists and emails + pushes the receipt. Best-effort: credit is already granted. */
 async function notifyTopupPaid(db: SupabaseClient, profileId: string, amountCents: number) {
   const { getOrIssueCard, formatExpiry } = await import("./prepaid-card");
   const card = await getOrIssueCard(db, profileId);
-  const { data: profile } = await db.from("profiles").select("email").eq("id", profileId).maybeSingle();
-  const email = (profile as { email: string } | null)?.email;
+  const { data: profile } = await db.from("profiles").select("email,full_name").eq("id", profileId).maybeSingle();
+  const p = profile as { email: string; full_name: string | null } | null;
+  const { fmt } = await import("./pricing");
+  const first = p?.full_name?.trim().split(/\s+/)[0];
+  const { pushToUser } = await import("./push");
+  await pushToUser(profileId, {
+    title: `${fmt(amountCents)} added to your wallet`,
+    body: `${first ? `${first}, your` : "Your"} balance is topped up${card ? ` — card •••• ${card.pan.slice(-4)}` : ""} and ready at any Zapnivo machine.`,
+    data: { type: "wallet" },
+  }).catch(() => 0);
+  const email = p?.email;
   if (!email || email.endsWith("@mobile.zapnivo.com")) return;
   const { sendToCustomer } = await import("./email-triggers");
-  const { fmt } = await import("./pricing");
   await sendToCustomer(email, `${fmt(amountCents)} added to your Zapnivo card`,
     `Your top-up of ${fmt(amountCents)} was received and is on your Zapnivo prepaid card${card ? ` ending ${card.pan.slice(-4)} (expires ${formatExpiry(card)})` : ""}. It works at Zapnivo machines and machines we service. Open the app to see your balance and add the card to your phone wallet.`,
     null, null, { sender: "support", event: "wallet_topup_paid" });
