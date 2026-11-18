@@ -230,11 +230,11 @@ export default async function Customer360({ params, searchParams }: { params: Pr
                   <div className="flex gap-3">
                     <div className="flex-1">
                       <label htmlFor="gc-amount" className="mb-1 block text-xs font-bold">Amount</label>
-                      <input id="gc-amount" name="amount" type="number" min="1" required className={`${input} w-full`} placeholder="500" />
+                      <input id="gc-amount" name="amount" type="number" min="0.01" step="0.01" required className={`${input} w-full`} placeholder="25.00" />
                     </div>
                     <div>
                       <label htmlFor="gc-unit" className="mb-1 block text-xs font-bold">Unit</label>
-                      <select id="gc-unit" name="unit" className={input}><option value="cent">cents</option><option value="minute">minutes</option><option value="rental">rental</option></select>
+                      <select id="gc-unit" name="unit" className={input}><option value="cent">dollars</option><option value="minute">minutes</option><option value="rental">rental</option></select>
                     </div>
                   </div>
                   <div>
@@ -328,7 +328,7 @@ export default async function Customer360({ params, searchParams }: { params: Pr
                               <form method="post" action="/api/admin/customers" className="flex items-center gap-1">
                                 <input type="hidden" name="action" value="request_refund" /><input type="hidden" name="email" value={c.email} />
                                 <input type="hidden" name="name" value={c.names[0] ?? ""} /><input type="hidden" name="rentalRef" value={r.reference} />
-                                <input name="amountCents" type="number" min="1" max={(r.payments[0].amount_captured_cents ?? 0) - (r.payments[0].amount_refunded_cents ?? 0)} required placeholder="¢" aria-label="Refund amount in cents" className="min-h-8 w-20 rounded-lg border border-silver/60 px-1.5 text-xs" />
+                                <input name="amountDollars" type="number" min="0.01" step="0.01" max={((r.payments[0].amount_captured_cents ?? 0) - (r.payments[0].amount_refunded_cents ?? 0)) / 100} required placeholder="$0.00" aria-label="Refund amount in dollars" className="min-h-8 w-20 rounded-lg border border-silver/60 px-1.5 text-xs" />
                                 <select name="reason" defaultValue="goodwill" aria-label="Refund reason" className="min-h-8 rounded-lg border border-silver/60 px-1.5 text-xs font-semibold">
                                   {REFUND_REASONS.map((x) => <option key={x} value={x}>{x.replace(/_/g, " ")}</option>)}
                                 </select>

@@ -87,10 +87,11 @@ export async function POST(req: Request) {
     const p = z.object({
       rentalRef: z.string().trim().min(4).max(20),
       reason: z.enum(REFUND_REASONS),
-      amountCents: z.coerce.number().int().positive().max(100_000),
+      amountDollars: z.coerce.number().min(0.01).max(1_000),
       name: z.string().trim().min(1).max(120).optional(),
     }).safeParse(form);
     if (!p.success) return back(req, email, "error", "Check the refund fields — a rental, reason and amount are required.");
+    const amountCents = Math.round(p.data.amountDollars * 100);
     const ctx = await defaultCtx();
     if (!ctx) return back(req, email, "error", "Helpdesk backend isn't configured.");
     const a = actor(user!);
@@ -102,11 +103,11 @@ export async function POST(req: Request) {
         name: p.data.name ?? email.split("@")[0],
         email,
         category: "Refund request",
-        description: `Refund requested by support for rental ${p.data.rentalRef} (${fmt(p.data.amountCents)}, ${p.data.reason.replace(/_/g, " ")}).`,
+        description: `Refund requested by support for rental ${p.data.rentalRef} (${fmt(amountCents)}, ${p.data.reason.replace(/_/g, " ")}).`,
         rentalRef: p.data.rentalRef,
       });
       await internalNote(ctx, a, ticket.number, `Refund request entered by ${user!.email} from the customer 360.`);
-      const r = await requestRefund(ctx, a, { number: ticket.number, rentalRef: p.data.rentalRef, reason: p.data.reason, amountCents: p.data.amountCents });
+      const r = await requestRefund(ctx, a, { number: ticket.number, rentalRef: p.data.rentalRef, reason: p.data.reason, amountCents });
       await auditLog(user!.id, "customer_refund_requested", "refund", r.id, { customer: email, rental: p.data.rentalRef, amount_cents: r.amountCents });
       return back(req, email, "ok", `Refund of ${fmt(r.amountCents)} requested on ${r.rentalRef} via ${ticket.number}${r.requiresAdmin ? " — needs a second admin to approve." : " — ready to issue."}`);
     } catch (e) {
@@ -119,21 +120,24 @@ export async function POST(req: Request) {
     // Entitlement credits only exist on accounts — guests have no profile to grant to.
     const p = z.object({
       unit: z.enum(["cent", "minute", "rental"]),
-      amount: z.coerce.number().int().positive().max(1_000_000),
+      amount: z.coerce.number().positive().max(10_000),
       note: z.string().trim().max(200).optional(),
     }).safeParse(form);
     if (!p.success) return back(req, email, "error", "Check the credit fields.");
+    // Staff enter dollars for money credits — storage stays in the ledger's unit.
+    const units = p.data.unit === "cent" ? Math.round(p.data.amount * 100) : Math.round(p.data.amount);
+    if (!Number.isInteger(units) || units < 1) return back(req, email, "error", "Enter a valid amount.");
     const { data: prof } = await db.from("profiles").select("id").eq("email", email).maybeSingle();
     const pid = (prof as { id: string } | null)?.id;
     if (!pid) return back(req, email, "error", "This customer has no account — credits can only be granted to registered profiles.");
     const { data: grant, error } = await db.from("entitlement_grants").insert({
-      profile_id: pid, kind: "adjustment", unit: p.data.unit, granted: p.data.amount, remaining: p.data.amount,
+      profile_id: pid, kind: "adjustment", unit: p.data.unit, granted: units, remaining: units,
       source_type: "manual", source_id: user!.id,
     }).select("id").single();
     if (error) return back(req, email, "error", "Couldn't grant the credit.");
-    await db.from("entitlement_events").insert({ grant_id: (grant as { id: string } | null)?.id ?? null, profile_id: pid, event: "grant", delta: p.data.amount, balance_after: p.data.amount, ref_type: "manual", ref_id: user!.id, actor: `staff:${user!.id}`, note: p.data.note ?? "Granted from customer 360" }).then(() => undefined, () => undefined);
-    await auditLog(user!.id, "customer_credit_granted", "customer", email, { unit: p.data.unit, amount: p.data.amount, note: p.data.note ?? null });
-    const label = p.data.unit === "cent" ? fmt(p.data.amount) : `${p.data.amount} ${p.data.unit === "minute" ? "minutes" : "free rental"}`;
+    await db.from("entitlement_events").insert({ grant_id: (grant as { id: string } | null)?.id ?? null, profile_id: pid, event: "grant", delta: units, balance_after: units, ref_type: "manual", ref_id: user!.id, actor: `staff:${user!.id}`, note: p.data.note ?? "Granted from customer 360" }).then(() => undefined, () => undefined);
+    await auditLog(user!.id, "customer_credit_granted", "customer", email, { unit: p.data.unit, amount: units, note: p.data.note ?? null });
+    const label = p.data.unit === "cent" ? fmt(units) : `${units} ${p.data.unit === "minute" ? "minutes" : "free rental"}`;
     try {
       await sendToCustomer(email, "A credit was added to your Zapnivo account", `We've added ${label} to your Zapnivo account as a service credit${p.data.note ? ` (${p.data.note})` : ""}. It applies automatically on your next rental.`, null, null, { sender: "support" });
     } catch { /* notification is best-effort; the credit itself is recorded */ }
