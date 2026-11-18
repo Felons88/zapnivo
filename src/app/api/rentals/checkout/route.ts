@@ -6,7 +6,7 @@ import { lookupPromo, promoUsable, PROMO_CODE_RE, redeemPromo, releasePromo } fr
 import { likeEscape } from "@/lib/customer";
 import { rateLimit } from "@/lib/rate-limit";
 import { SITE } from "@/lib/site";
-import { createCheckoutSession, createEphemeralKey, createHoldPaymentIntent, findOrCreateCustomer, flatTaxRateId, nativePaymentsConfigured, PAYMENTS_UNCONFIGURED, publishableKey, retrieveTaxRate, stripeConfigured } from "@/lib/stripe";
+import { createCheckoutSession, PAYMENTS_UNCONFIGURED, stripeConfigured } from "@/lib/stripe";
 import { newTraceId, recordLog } from "@/lib/observability";
 import { serviceClient } from "@/lib/supabase";
 import { stationMaintenanceBlock } from "@/lib/kiosk/availability";
@@ -148,42 +148,16 @@ export async function POST(req: Request) {
   if (pErr || !pay) { await rollback(); log("error", "checkout_hold_failed", { reason: pErr?.code ?? "unknown", rental: rental.reference }); return NextResponse.json({ error: "We couldn't start your rental. Please try again." }, { status: 500 }); }
   log("info", "checkout_hold_created", { rental: rental.reference, holdCents: hold, bankCount: bank_count, promo: Boolean(promoCode) });
 
-  // Native app checkout: return PaymentSheet params instead of a hosted URL when
-  // the app asks and both Stripe keys are configured. Falls back to hosted Checkout
-  // so an app on an older build (or a missing publishable key) still completes payment.
-  if (client === "app" && nativePaymentsConfigured()) {
-    const customer = await findOrCreateCustomer(email, `cust_${rental.id}`);
-    if (!customer.ok) { await rollback(); log("error", "checkout_native_failed", { rental: rental.reference, reason: `customer:${customer.code}` }); return NextResponse.json({ error: "Payment couldn't be started. Please try again." }, { status: 502 }); }
-    const pi = await createHoldPaymentIntent({
-      rentalId: rental.id, reference: rental.reference, holdCents: hold, email,
-      stationId: station_id, bankCount: bank_count, customerId: customer.data.id,
-    });
-    if (!pi.ok || !pi.data.client_secret) { await rollback(); log("error", "checkout_native_failed", { rental: rental.reference, reason: `pi:${pi.ok ? "no_secret" : pi.code}` }); return NextResponse.json({ error: "Payment couldn't be started. Please try again." }, { status: 502 }); }
-    const ek = await createEphemeralKey(customer.data.id);
-    if (!ek.ok) { await rollback(); log("error", "checkout_native_failed", { rental: rental.reference, reason: `ek:${ek.code}` }); return NextResponse.json({ error: "Payment couldn't be started. Please try again." }, { status: 502 }); }
-    // Estimated tax on the hold (mirrors the session path where Stripe computes it):
-    // settlement scales this proportionally to the final charge.
-    let taxCents = 0;
-    const rateId = flatTaxRateId();
-    if (rateId) {
-      const rate = await retrieveTaxRate(rateId);
-      if (rate.ok && !rate.data.inclusive) taxCents = Math.round((hold * rate.data.percentage) / 100);
-    }
-    await db.from("payments").update({ stripe_payment_intent_id: pi.data.id, tax_cents: taxCents }).eq("id", pay.id);
-    log("info", "checkout_completed", { rental: rental.reference, holdCents: hold, mode: "native" });
-    return NextResponse.json({
-      rental_reference: rental.reference, mode: "payment_sheet",
-      publishable_key: publishableKey(), payment_intent_client_secret: pi.data.client_secret,
-      ephemeral_key: ek.data.secret, customer_id: customer.data.id,
-      merchant_display_name: "Zapnivo",
-    }, { status: 201 });
-  }
-
+  // Every rental — app, kiosk web, or site — issues a hosted Checkout Session.
+  // Sessions give each payment an auditable cs_ reference and are the only
+  // rental path Stripe can compute automatic tax on (bare PaymentIntents can't
+  // carry Stripe Tax). The app consumes checkout_url the same way it consumed
+  // the old PaymentSheet fallback: it opens the hosted page in-app.
   const base = SITE.url.replace(/\/$/, "");
   const session = await createCheckoutSession({
     rentalId: rental.id, reference: rental.reference, holdCents: hold, email, stationId: station_id, bankCount: bank_count,
-    successUrl: hasBearer ? `${base}/mobile-return?status=success` : `${base}/r/${encodeURIComponent(station_id)}?status=success`,
-    cancelUrl: hasBearer ? `${base}/mobile-return?status=cancelled` : `${base}/r/${encodeURIComponent(station_id)}?status=cancelled`,
+    successUrl: hasBearer || client === "app" ? `${base}/mobile-return?status=success` : `${base}/r/${encodeURIComponent(station_id)}?status=success`,
+    cancelUrl: hasBearer || client === "app" ? `${base}/mobile-return?status=cancelled` : `${base}/r/${encodeURIComponent(station_id)}?status=cancelled`,
   });
   if (!session.ok || !session.data.url) { await rollback(); log("error", "checkout_session_failed", { rental: rental.reference, reason: session.ok ? "no_url" : session.code }); return NextResponse.json({ error: "Payment couldn't be started. Please try again." }, { status: 502 }); }
 

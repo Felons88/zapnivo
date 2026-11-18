@@ -197,7 +197,7 @@ export default async function RentalDetail({ params }: { params: Promise<{ id: s
                   <Row k="Refunded" v={(p.amount_refunded_cents ?? 0) > 0 ? fmt(p.amount_refunded_cents!) : "—"} />
                   <Row k="Tax" v={fmt(p.tax_cents ?? 0)} />
                   <Row k="Promo discount" v={(p.discount_cents ?? 0) > 0 ? `−${fmt(p.discount_cents!)}` : "—"} />
-                  <Row k="Wallet credit applied" v={(p.credit_cents ?? 0) > 0 ? `−${fmt(p.credit_cents!)}` : "—"} />
+                  <Row k="Wallet credit applied" v={(p.credit_cents ?? 0) > 0 ? `−${fmt(p.credit_cents!)}` : fmt(0)} />
                   {p.failure_code && <Row k="Failure" v={p.failure_code.replace(/_/g, " ")} />}
                 </dl>
                 <dl>

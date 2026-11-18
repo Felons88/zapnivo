@@ -32,6 +32,39 @@ export const mailerConfigured = () => Boolean(
   (process.env.SUPPORT_FROM_EMAIL || defaultFrom().email),
 );
 
+/**
+ * Optional static-IP egress: EMAIL_PROXY_URL=http://user:pass@host:port routes
+ * provider calls through one proxy, so upstreams with IP allowlists (e.g.
+ * Brevo "authorised IPs") see a single source address instead of Vercel's
+ * rotating pool. Undici's ProxyAgent does the CONNECT tunnel.
+ */
+let _outboundFetch: typeof fetch | null = null;
+const outboundFetch = (): typeof fetch => {
+  if (_outboundFetch) return _outboundFetch;
+  const proxy = process.env.EMAIL_PROXY_URL?.trim();
+  if (!proxy) return (_outboundFetch = fetch);
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { ProxyAgent, fetch: undiciFetch } = require("undici") as typeof import("undici");
+    const dispatcher = new ProxyAgent(proxy);
+    _outboundFetch = ((input: RequestInfo | URL, init?: RequestInit) =>
+      undiciFetch(input as Parameters<typeof undiciFetch>[0], { ...(init as object), dispatcher } as Parameters<typeof undiciFetch>[1])) as unknown as typeof fetch;
+  } catch {
+    _outboundFetch = fetch; // proxy module unavailable: fail-open on native fetch rather than break mail
+  }
+  return _outboundFetch;
+};
+
+/** Provider error bodies carry the real reason (e.g. Brevo IP authorization) — keep it for the outbox row. */
+const errDetail = async (res: Response): Promise<string> => {
+  try {
+    const j = (await res.json()) as { message?: string; error?: string; code?: string };
+    return (j.message ?? j.error ?? j.code ?? "provider_error").slice(0, 300);
+  } catch {
+    return "provider_error";
+  }
+};
+
 /** "Name <email>" → { name, email }; bare address → { email }. */
 const parseFrom = (raw: string) => {
   const match = raw.match(/^(.*)<([^>]+)>\s*$/);
@@ -45,12 +78,12 @@ export class ResendMailer implements Mailer {
   async send(m: { to: string; subject: string; body: string; html?: string | null; from?: { name: string; email: string } | null; replyTo?: string | null }) {
     const f = m.from ?? fallbackFrom();
     const from = "name" in f && f.name ? `${f.name} <${f.email}>` : f.email;
-    const res = await fetch("https://api.resend.com/emails", {
+    const res = await outboundFetch()("https://api.resend.com/emails", {
       method: "POST", signal: AbortSignal.timeout(15_000),
       headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, "Content-Type": "application/json" },
       body: JSON.stringify({ from, to: m.to, subject: m.subject, text: m.body, reply_to: m.replyTo ?? undefined, ...(m.html ? { html: m.html } : {}) }),
     });
-    if (!res.ok) throw new Error(`resend_${res.status}`);
+    if (!res.ok) throw new Error(`resend_${res.status}: ${await errDetail(res)}`);
   }
 }
 
@@ -58,7 +91,7 @@ export class ResendMailer implements Mailer {
 export class BrevoMailer implements Mailer {
   async send(m: { to: string; subject: string; body: string; html?: string | null; from?: { name: string; email: string } | null; replyTo?: string | null }) {
     const sender = m.from ?? fallbackFrom();
-    const res = await fetch("https://api.brevo.com/v3/smtp/email", {
+    const res = await outboundFetch()("https://api.brevo.com/v3/smtp/email", {
       method: "POST", signal: AbortSignal.timeout(15_000),
       headers: { "api-key": process.env.BREVO_API_KEY!, "Content-Type": "application/json", accept: "application/json" },
       body: JSON.stringify({
@@ -67,7 +100,7 @@ export class BrevoMailer implements Mailer {
         ...(m.replyTo ? { replyTo: { email: m.replyTo } } : {}),
       }),
     });
-    if (!res.ok) throw new Error(`brevo_${res.status}`);
+    if (!res.ok) throw new Error(`brevo_${res.status}: ${await errDetail(res)}`);
   }
 }
 
