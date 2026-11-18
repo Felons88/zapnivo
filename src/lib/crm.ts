@@ -124,6 +124,10 @@ export async function searchCustomers(db: Db, raw: string): Promise<CustomerIden
   const ds = digits(q);
   const isPhone = ds.length >= 7 && !q.includes("@");
   const last10 = ds.slice(-10);
+  // Multi-word queries match every token somewhere in name or email, so
+  // "james hewitt" finds jameshewitt312@… — stored values rarely contain spaces.
+  const tokens = isPhone ? [] : q.split(/\s+/).map((t) => t.replace(/[,"()]/g, "")).filter((t) => t.length > 0);
+  const multi = tokens.length > 1;
   const found = new Map<string, CustomerIdentity>();
 
   const touch = (email: string | null | undefined, source: string, opts?: { name?: string | null; phone?: string | null; profileId?: string | null; at?: string | null }) => {
@@ -142,21 +146,26 @@ export async function searchCustomers(db: Db, raw: string): Promise<CustomerIden
 
   // 1) Accounts: name/email free text; phone is stored E.164 so a 10-digit substring matches.
   jobs.push((async () => {
-    const or = [`full_name.ilike.%${esc}%`, `email.ilike.%${esc}%`];
-    if (isPhone) or.push(`phone.ilike.%${last10}%`);
-    const { data } = await db.from("profiles").select("id,email,full_name,phone").or(or.join(",")).limit(25);
-    for (const p of (data ?? []) as { id: string; email: string; full_name: string | null; phone: string | null }[])
+    const or = multi
+      ? tokens.flatMap((t) => { const e = likeEscape(t); return [`full_name.ilike.%${e}%`, `email.ilike.%${e}%`]; })
+      : [`full_name.ilike.%${esc}%`, `email.ilike.%${esc}%`, ...(isPhone ? [`phone.ilike.%${last10}%`] : [])];
+    const { data } = await db.from("profiles").select("id,email,full_name,phone").or(or.join(",")).limit(50);
+    for (const p of (data ?? []) as { id: string; email: string; full_name: string | null; phone: string | null }[]) {
+      if (multi && !tokens.every((tk) => `${p.full_name ?? ""} ${p.email}`.toLowerCase().includes(tk.toLowerCase()))) continue;
       touch(p.email, "account", { name: p.full_name, phone: p.phone, profileId: p.id });
+    }
   })());
 
   // 2) Support tickets: name/email ilike + phone last-4 ilike, verified by digit compare
   //    (ticket phone is free text — "(555) 123-4567" won't substring-match "5551234567").
   jobs.push((async () => {
-    const or = [`name.ilike.%${esc}%`, `email.ilike.%${esc}%`];
-    if (isPhone) or.push(`phone.ilike.%${ds.slice(-4)}%`);
+    const or = multi
+      ? tokens.flatMap((t) => { const e = likeEscape(t); return [`name.ilike.%${e}%`, `email.ilike.%${e}%`]; })
+      : [`name.ilike.%${esc}%`, `email.ilike.%${esc}%`, ...(isPhone ? [`phone.ilike.%${ds.slice(-4)}%`] : [])];
     const { data } = await db.from("support_tickets").select("name,email,phone,created_at").or(or.join(",")).order("created_at", { ascending: false }).limit(60);
     for (const t of (data ?? []) as { name: string; email: string; phone: string | null; created_at: string }[]) {
-      const nameHit = t.name.toLowerCase().includes(q.toLowerCase()) || t.email.toLowerCase().includes(q.toLowerCase());
+      const hay = `${t.name} ${t.email}`.toLowerCase();
+      const nameHit = multi ? tokens.every((tk) => hay.includes(tk.toLowerCase())) : hay.includes(q.toLowerCase());
       const phoneHit = isPhone && !!t.phone && digits(t.phone).endsWith(last10);
       if (nameHit || phoneHit) touch(t.email, "ticket", { name: t.name, phone: t.phone, at: t.created_at });
     }
@@ -164,9 +173,12 @@ export async function searchCustomers(db: Db, raw: string): Promise<CustomerIden
 
   // 3) Payment receipts / checkout phones.
   jobs.push((async () => {
-    const { data } = await db.from("payments").select("receipt_email,customer_phone,created_at").ilike("receipt_email", `%${esc}%`).limit(25);
-    for (const p of (data ?? []) as { receipt_email: string | null; customer_phone: string | null; created_at: string }[])
+    const or = multi ? tokens.map((t) => `receipt_email.ilike.%${likeEscape(t)}%`).join(",") : `receipt_email.ilike.%${esc}%`;
+    const { data } = await db.from("payments").select("receipt_email,customer_phone,created_at").or(or).limit(50);
+    for (const p of (data ?? []) as { receipt_email: string | null; customer_phone: string | null; created_at: string }[]) {
+      if (multi && !tokens.every((tk) => (p.receipt_email ?? "").toLowerCase().includes(tk.toLowerCase()))) continue;
       touch(p.receipt_email, "payment", { phone: p.customer_phone, at: p.created_at });
+    }
   })());
   if (isPhone) {
     jobs.push((async () => {

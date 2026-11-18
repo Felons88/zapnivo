@@ -49,6 +49,14 @@ function fakeDb(tables: Record<string, Row[]>) {
       b.eq = (c: string, v: unknown) => { rows = rows.filter((r) => String(r[c]) === String(v)); return b; };
       b.in = (c: string, vals: unknown[]) => { rows = rows.filter((r) => vals.map(String).includes(String(r[c]))); return b; };
       b.or = (expr: string) => { rows = rows.filter((r) => matchOr(r, expr)); return b; };
+      b.and = (expr: string) => {
+        rows = rows.filter((r) => splitOr(expr).every((part) => {
+          const p = part.trim();
+          const inner = p.match(/^or\((.*)\)$/);
+          return inner ? matchOr(r, inner[1]) : matchCond(r, p);
+        }));
+        return b;
+      };
       b.ilike = (c: string, pat: string) => { const re = ilikeToRe(pat); rows = rows.filter((r) => re.test(String(r[c] ?? ""))); return b; };
       b.order = () => b;
       b.limit = (n: number) => { rows = rows.slice(0, n); return b; };
@@ -128,6 +136,24 @@ describe("searchCustomers", () => {
   it("returns nothing for junk queries", async () => {
     expect(await searchCustomers(db, "x")).toEqual([]);
     expect(await searchCustomers(db, "nobody-here-zzz")).toEqual([]);
+  });
+
+  it("matches every word of a multi-word name against name OR email", async () => {
+    // Regression: "james hewitt" only matched the full_name-bearing profile;
+    // emails like jameshewitt312@… (no space) were missed.
+    const tables = {
+      ...TABLES,
+      profiles: [
+        ...TABLES.profiles,
+        { id: "33333333-3333-3333-3333-333333333333", email: "jameshewitt312@example.com", full_name: "James Hewitt", phone: null, role: "admin", notify_sms: false, created_at: "2026-01-01T00:00:00Z" },
+        { id: "44444444-4444-4444-4444-444444444444", email: "jameshewitt312+customer@example.com", full_name: null, phone: null, role: "customer", notify_sms: false, created_at: "2026-01-01T00:00:00Z" },
+      ],
+    };
+    const res = await searchCustomers(fakeDb(tables), "james hewitt");
+    const emails = res.map((r) => r.email);
+    expect(emails).toContain("jameshewitt312@example.com");
+    expect(emails).toContain("jameshewitt312+customer@example.com");
+    expect(emails).not.toContain("ben@example.com"); // only one token matches
   });
 });
 
