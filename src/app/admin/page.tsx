@@ -11,6 +11,7 @@ import { defaultCtx } from "@/lib/helpdesk/service";
 import { humanDue } from "@/lib/helpdesk/sla";
 import { fmt } from "@/lib/pricing";
 import { serviceClient } from "@/lib/supabase";
+import { loadWalletStats } from "@/lib/wallet-admin";
 import { unreconciledPaymentIds, payoutBacklogHit, UNRECONCILED_CAPTURED_HOURS } from "@/lib/system/alert-sweep";
 
 export const metadata: Metadata = { title: "Dashboard", robots: { index: false, follow: false } };
@@ -118,6 +119,7 @@ export default async function AdminDashboard() {
   }
   const cronRes = db ? await db.from("cron_runs").select("job,ok,ran_at,detail").order("ran_at", { ascending: false }).limit(6) : null;
   const crons = (cronRes?.data ?? []) as { job: string; ok: boolean; ran_at: string; detail: unknown }[];
+  const walletStats = db ? await loadWalletStats(db) : null;
   const queues = { support: 0, billing: 0, partner: 0, safety: 0 };
   for (const t of all) if (t.queue in queues) queues[t.queue as keyof typeof queues]++;
 
@@ -296,6 +298,19 @@ export default async function AdminDashboard() {
           <Metric icon={icons.rental} label="Active rentals" value={n(rentalsActive)} sub={`${n(stats?.rentalsToday)} new in last 24h · ${pick(stats?.rentalStates, "unreturned")} unreturned`} />
           <Metric icon={icons.revenue} label="Revenue captured" value={stats?.revenueCents ? fmt(stats.revenueCents.captured) : "—"} sub={stats?.revenueCents ? `${fmt(stats.revenueCents.refunded)} refunded` : "Awaiting payment integration"} />
           <Metric icon={icons.inbox} label="Open tickets" value={m ? m.open : "—"} sub={m ? `${m.needsHuman} need a person · ${m.unassigned} unassigned` : "Helpdesk not connected"} />
+        </section>
+
+        <section aria-label="Prepaid wallet" className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+          <div className="flex flex-wrap items-end justify-between gap-2">
+            <div><p className="eyebrow text-forest">Stored-value wallet</p><h2 className="mt-1 font-display text-lg font-bold">Prepaid card &amp; top-ups</h2></div>
+            <p className="text-xs text-graphite">{walletStats?.lastPaidAt ? `Last Stripe-confirmed top-up ${new Date(walletStats.lastPaidAt).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short", timeZone: "America/Chicago" })}` : "No confirmed top-ups yet"}</p>
+          </div>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <Metric label="Loaded today" value={walletStats ? fmt(walletStats.loadedTodayCents) : "—"} sub={walletStats ? `${fmt(walletStats.loaded30dCents)} in 30 days · ${walletStats.paidTopups30d} top-ups` : "Wallet data unavailable"} />
+            <Metric label="Outstanding credit" value={walletStats ? fmt(walletStats.outstandingCents) : "—"} sub="Unspent stored value across customers" />
+            <Metric label="Active prepaid cards" value={walletStats ? walletStats.activeCards : "—"} sub="Zapnivo machines only" />
+            <Metric label="Top-up exceptions" value={walletStats ? walletStats.failedTopups30d + walletStats.pendingTopups : "—"} sub={walletStats ? `${walletStats.failedTopups30d} failed · ${walletStats.pendingTopups} awaiting webhook (30d)` : undefined} />
+          </div>
         </section>
 
         <section aria-labelledby="work-heading" className="overflow-hidden rounded-2xl border border-mist bg-white shadow-sm">

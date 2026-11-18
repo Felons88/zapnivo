@@ -144,6 +144,16 @@ export function createWalletTopupSession(i: { id: string; profileId: string; ema
   }, `wallet_topup_${i.id}`);
 }
 
+/** In-app top-up: the mobile SDK owns card entry; the webhook alone grants credit. */
+export function createWalletTopupIntent(i: { id: string; profileId: string; email?: string; amountCents: number }) {
+  return stripeCall<{ id: string; client_secret: string }>("POST", "/payment_intents", {
+    amount: i.amountCents, currency: "usd", automatic_payment_methods: { enabled: true },
+    ...(i.email ? { receipt_email: i.email } : {}),
+    description: "Zapnivo charging credit",
+    metadata: { kind: "wallet_topup", topup_id: i.id, profile_id: i.profileId },
+  }, `wallet_topup_pi_${i.id}`);
+}
+
 export const capturePaymentIntent = (pi: string, amountCents: number, idem: string) =>
   stripeCall<{ id: string; status: string; amount_received?: number }>("POST", `/payment_intents/${encodeURIComponent(pi)}/capture`, { amount_to_capture: amountCents }, idem);
 

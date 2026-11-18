@@ -121,7 +121,11 @@ async function handleEvent(db: Db, event: StripeEvent): Promise<boolean> {
       const pi = o as Obj & { amount_received?: number; receipt_email?: string; latest_charge?: unknown };
       const kind = (o.metadata as Record<string, string> | undefined)?.kind;
       if (kind === "ad_campaign") return handleAdPaymentIntent(db, o, "succeeded");
-      if (kind === "wallet_topup") return true; // Checkout completion grants credit; no rental payment row.
+      if (kind === "wallet_topup") {
+        const { fulfillWalletTopupIntent } = await import("@/lib/wallet-topups");
+        await fulfillWalletTopupIntent(db, pi);
+        return true;
+      }
       if (kind === "non_return_fee") {
         // Separate fee PI: reconcile billing_ledger + rental fee flag. Never touches the payments row.
         const chargeId = typeof pi.latest_charge === "string" ? pi.latest_charge : null;
@@ -141,7 +145,11 @@ async function handleEvent(db: Db, event: StripeEvent): Promise<boolean> {
     case "payment_intent.payment_failed": {
       const kind = (o.metadata as Record<string, string> | undefined)?.kind;
       if (kind === "ad_campaign") return handleAdPaymentIntent(db, o, "failed");
-      if (kind === "wallet_topup") return true;
+      if (kind === "wallet_topup") {
+        const { failWalletTopupIntent } = await import("@/lib/wallet-topups");
+        await failWalletTopupIntent(db, o);
+        return true;
+      }
       if (kind === "non_return_fee") {
         // Fee PI declined: mark the ledger attempt failed. The rental's own payment/hold is untouched.
         await requireWrite(db.from("billing_ledger").update({ status: "failed" })

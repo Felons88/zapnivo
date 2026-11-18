@@ -1,6 +1,7 @@
 import { likeEscape } from "./customer";
 import { normalizePhone } from "./sms";
 import { serviceClient } from "./supabase";
+import { walletBalance } from "./wallet";
 
 type Db = NonNullable<ReturnType<typeof serviceClient>>;
 
@@ -80,6 +81,9 @@ export type CrmIncident = { id: string; rental_id: string; kind: string; descrip
 export type CrmNote = { id: string; body: string; author: string | null; author_email: string | null; created_at: string };
 export type CrmPrivacyRequest = { id: string; kind: string; status: string; created_at: string };
 export type CrmSms = { id: string; direction: string; status: string; body: string; created_at: string };
+export type CrmEmail = { id: string; subject: string; status: string; created_at: string };
+export type CrmPrepaidCard = { last4: string; exp_month: number; exp_year: number; status: string; issued_at: string };
+export type CrmWalletTopup = { id: string; amount_cents: number; status: string; stripe_payment_intent_id: string | null; created_at: string; paid_at: string | null };
 
 export type Customer360 = {
   email: string;
@@ -94,6 +98,8 @@ export type Customer360 = {
   notes: CrmNote[];
   privacyRequests: CrmPrivacyRequest[];
   sms: CrmSms[];
+  wallet: { balanceCents: number | null; topups: CrmWalletTopup[]; card: CrmPrepaidCard | null } | null;
+  emails: CrmEmail[];
   totals: { capturedCents: number; refundedCents: number; activeRentals: number; openTickets: number };
 };
 
@@ -242,6 +248,14 @@ export async function loadCustomer360(db: Db, rawEmail: string): Promise<Custome
   ]);
 
   const profile = (profileRes.data ?? null) as Customer360["profile"];
+  const [balanceCents, topupRes, cardRes] = profile ? await Promise.all([
+    walletBalance(db, profile.id),
+    db.from("wallet_topups").select("id,amount_cents,status,stripe_payment_intent_id,created_at,paid_at").eq("profile_id", profile.id).order("created_at", { ascending: false }).limit(100),
+    // Staff see only the last four + expiry — never the full number or security code.
+    db.from("prepaid_cards").select("pan,exp_month,exp_year,status,issued_at").eq("profile_id", profile.id).in("status", ["active", "frozen"]).maybeSingle(),
+  ]) : [null, null, null];
+  const cardRow = (cardRes?.data ?? null) as { pan: string; exp_month: number; exp_year: number; status: string; issued_at: string } | null;
+  const { data: emailRows } = await db.from("email_outbox").select("id,subject,status,created_at").eq("to_email", email).order("created_at", { ascending: false }).limit(25);
   const receiptRentalIds = ((receiptRes.data ?? []) as { rental_id: string }[]).map((r) => r.rental_id);
 
   // Phone-linked rentals: a guest who typed a different/typo'd receipt email at the
@@ -326,6 +340,8 @@ export async function loadCustomer360(db: Db, rawEmail: string): Promise<Custome
     notes,
     privacyRequests: (privacyRes.data ?? []) as unknown as CrmPrivacyRequest[],
     sms: (smsRes.data ?? []) as unknown as CrmSms[],
+    wallet: profile ? { balanceCents, topups: (topupRes?.data ?? []) as CrmWalletTopup[], card: cardRow ? { last4: cardRow.pan.slice(-4), exp_month: cardRow.exp_month, exp_year: cardRow.exp_year, status: cardRow.status, issued_at: cardRow.issued_at } : null } : null,
+    emails: (emailRows ?? []) as CrmEmail[],
     totals: {
       capturedCents,
       refundedCents,

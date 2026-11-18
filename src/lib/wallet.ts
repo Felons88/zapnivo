@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { stripeCall, stripeConfigured } from "./stripe";
+import { nativePaymentsConfigured, stripeCall, stripeConfigured } from "./stripe";
 import { giftLaunchStatus } from "./gift-launch";
 
 export type WalletTransaction = {
@@ -71,4 +71,4 @@ export async function linkedCards(email: string): Promise<LinkedCard[] | null> {
   }));
 }
 
-export const walletTopupsReady = () => process.env.WALLET_TOPUPS_ENABLED === "1" && giftLaunchStatus().status === "enabled" && stripeConfigured();
+export const walletTopupsReady = () => process.env.WALLET_TOPUPS_ENABLED === "1" && giftLaunchStatus().status === "enabled" && nativePaymentsConfigured();

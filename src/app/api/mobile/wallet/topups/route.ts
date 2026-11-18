@@ -2,8 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { isResponse, mobileCustomer } from "@/lib/mobile";
 import { rateLimit } from "@/lib/rate-limit";
-import { createWalletTopupSession } from "@/lib/stripe";
-import { SITE } from "@/lib/site";
+import { createWalletTopupIntent, publishableKey } from "@/lib/stripe";
 import { walletTopupsReady } from "@/lib/wallet";
 
 export const dynamic = "force-dynamic";
@@ -19,15 +18,14 @@ export async function POST(req: Request) {
 
   const { data: topup, error } = await c.db.from("wallet_topups").insert({ profile_id: c.user.id, amount_cents: parsed.data.amount_cents }).select("id").single();
   if (error || !topup) return NextResponse.json({ error: "Could not start a secure checkout." }, { status: 503 });
-  const checkout = await createWalletTopupSession({
+  const intent = await createWalletTopupIntent({
     id: topup.id, profileId: c.user.id, email: c.email.endsWith("@mobile.zapnivo.com") ? undefined : c.email, amountCents: parsed.data.amount_cents,
-    successUrl: `${SITE.url}/account/charging?wallet=success`, cancelUrl: `${SITE.url}/account/charging?wallet=cancelled`,
   });
-  if (!checkout.ok || !checkout.data.url) {
+  if (!intent.ok || !intent.data.client_secret) {
     await c.db.from("wallet_topups").update({ status: "failed" }).eq("id", topup.id).eq("status", "pending");
-    return NextResponse.json({ error: "Payment checkout is unavailable. Nothing was charged." }, { status: 503 });
+    return NextResponse.json({ error: "In-app payment is unavailable. Nothing was charged." }, { status: 503 });
   }
-  const saved = await c.db.from("wallet_topups").update({ stripe_checkout_session_id: checkout.data.id }).eq("id", topup.id).eq("status", "pending");
-  if (saved.error) return NextResponse.json({ error: "Could not confirm checkout setup. Nothing was charged." }, { status: 503 });
-  return NextResponse.json({ checkout_url: checkout.data.url }, { status: 201, headers: { "Cache-Control": "no-store" } });
+  const saved = await c.db.from("wallet_topups").update({ stripe_payment_intent_id: intent.data.id }).eq("id", topup.id).eq("status", "pending");
+  if (saved.error) return NextResponse.json({ error: "Could not confirm payment setup. Nothing was charged." }, { status: 503 });
+  return NextResponse.json({ payment_intent_client_secret: intent.data.client_secret, publishable_key: publishableKey(), topup_id: topup.id }, { status: 201, headers: { "Cache-Control": "no-store" } });
 }

@@ -49,6 +49,7 @@ export default async function Customer360({ params, searchParams }: { params: Pr
     ...c.rentals.map((r) => ({ id: `rental-${r.id}`, at: r.created_at, title: `Rental ${r.reference}`, detail: `${r.state.replace(/_/g, " ")} · ${r.kiosks?.venues?.name ?? r.kiosks?.station_id ?? "Station unknown"}`, href: "#customer-rentals" })),
     ...c.notes.map((n) => ({ id: `note-${n.id}`, at: n.created_at, title: "Staff note added", detail: n.author_email ?? "Staff", href: "#customer-actions" })),
     ...c.refundRequests.map((r) => ({ id: `refund-${r.id}`, at: r.created_at, title: `Refund request for ${r.rental_ref}`, detail: `${fmt(r.amount_cents)} · ${r.status}`, href: "#customer-support" })),
+    ...(c.wallet?.topups ?? []).map((t) => ({ id: `topup-${t.id}`, at: t.created_at, title: `Wallet top-up ${t.status}`, detail: fmt(t.amount_cents), href: "#customer-wallet" })),
   ].sort((a, b) => b.at.localeCompare(a.at)).slice(0, 12) : [];
 
   return (
@@ -67,7 +68,7 @@ export default async function Customer360({ params, searchParams }: { params: Pr
 
           <p><Link href="/admin/customers" className="text-sm font-bold text-graphite hover:text-ink">← New search</Link></p>
           <nav aria-label="Customer record sections" className="flex gap-2 overflow-x-auto pb-1">
-            {[["Overview", "customer-overview"], ["Activity", "customer-activity"], ["Actions", "customer-actions"], ["Rentals", "customer-rentals"], ["Support", "customer-support"], ["Communications", "customer-comms"]].map(([label, target]) =>
+            {[["Overview", "customer-overview"], ["Wallet", "customer-wallet"], ["Activity", "customer-activity"], ["Actions", "customer-actions"], ["Rentals", "customer-rentals"], ["Support", "customer-support"], ["Communications", "customer-comms"]].map(([label, target]) =>
               <a key={target} href={`#${target}`} className="shrink-0 rounded-lg border border-mist bg-white px-4 py-2 text-xs font-bold text-forest hover:bg-lime/20">{label}</a>)}
           </nav>
 
@@ -107,6 +108,39 @@ export default async function Customer360({ params, searchParams }: { params: Pr
             {activity.length === 0 ? <p className="mt-4 text-sm text-graphite">No activity on this record yet.</p> : <ol className="mt-4 divide-y divide-mist">
               {activity.map((item) => <li key={item.id}><Link href={item.href} className="flex gap-4 py-3 hover:text-forest"><span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-forest" aria-hidden /><span className="min-w-0 flex-1"><span className="block text-sm font-bold">{item.title}</span><span className="block truncate text-xs text-graphite">{item.detail}</span></span><span className="shrink-0 text-xs text-graphite">{when(item.at)}</span></Link></li>)}
             </ol>}
+          </section>
+
+          <section id="customer-wallet" aria-label="Customer wallet" className="scroll-mt-40 rounded-2xl border border-mist bg-white p-6 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div><p className="eyebrow text-forest">Stored charging credit</p><h2 className="mt-1 font-display text-xl font-bold">Wallet & top-ups</h2></div>
+              <p className="text-2xl font-black">{c.wallet?.balanceCents == null ? "—" : fmt(c.wallet.balanceCents)}</p>
+            </div>
+            {!c.profile ? <p className="mt-3 text-sm text-graphite">No signed-in wallet for this guest.</p> : (
+              <>
+                <div className="mt-4 flex flex-wrap items-center gap-4 rounded-xl bg-mist/50 px-4 py-3 text-sm">
+                  <span className="font-bold">Prepaid card</span>
+                  {c.wallet?.card ? (
+                    <>
+                      <span className="font-mono">•••• •••• •••• {c.wallet.card.last4}</span>
+                      <span className="text-graphite">Expires {String(c.wallet.card.exp_month).padStart(2, "0")}/{String(c.wallet.card.exp_year % 100).padStart(2, "0")}</span>
+                      <Pill tone={c.wallet.card.status === "active" ? "lime" : "gold"}>{c.wallet.card.status}</Pill>
+                      <span className="text-xs text-graphite">Issued {when(c.wallet.card.issued_at)} · Zapnivo machines only · full number and code are never shown to staff</span>
+                    </>
+                  ) : <span className="text-graphite">Not issued yet — created the first time the customer opens their wallet.</span>}
+                </div>
+                {c.wallet?.topups.length === 0 ? <p className="mt-3 text-sm text-graphite">No top-up attempts recorded.</p> : (
+                  <ul className="mt-2 divide-y divide-mist">
+                    {c.wallet?.topups.map((t) => <li key={t.id} className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm">
+                      <div>
+                        <p className="font-bold">{fmt(t.amount_cents)} · <Pill tone={t.status === "paid" ? "lime" : t.status === "failed" ? "red" : "gold"}>{t.status}</Pill></p>
+                        <p className="text-xs text-graphite">Started {when(t.created_at)}{t.paid_at ? ` · Stripe webhook confirmed ${when(t.paid_at)}` : t.status === "pending" ? " · awaiting Stripe confirmation" : ""}</p>
+                      </div>
+                      {t.stripe_payment_intent_id && <span className="font-mono text-xs text-graphite" title="Stripe reference (last 8)">…{t.stripe_payment_intent_id.slice(-8)}</span>}
+                    </li>)}
+                  </ul>
+                )}
+              </>
+            )}
           </section>
 
           {/* ── Actions ──────────────────────────────────────────── */}
@@ -345,6 +379,20 @@ export default async function Customer360({ params, searchParams }: { params: Pr
                     <li key={m.id} className="rounded-xl bg-mist/50 px-4 py-3 text-sm">
                       <p className="whitespace-pre-wrap">{m.direction === "inbound" ? "← " : "→ "}{m.body}</p>
                       <p className="mt-1 text-xs text-graphite">{m.direction} · {m.status} · {when(m.created_at)}</p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+
+            <section aria-label="Emails" className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+              <h2 className="font-display text-lg font-bold">Emails sent ({c.emails.length})</h2>
+              {c.emails.length === 0 ? <p className="mt-3 text-sm text-graphite">No emails sent to this address yet.</p> : (
+                <ul className="mt-3 space-y-2">
+                  {c.emails.map((m) => (
+                    <li key={m.id} className="flex items-center justify-between gap-3 rounded-xl bg-mist/50 px-4 py-3 text-sm">
+                      <div className="min-w-0"><p className="truncate font-bold">{m.subject}</p><p className="text-xs text-graphite">{when(m.created_at)}</p></div>
+                      <Pill tone={m.status === "sent" ? "lime" : m.status === "failed" ? "red" : "gold"}>{m.status}</Pill>
                     </li>
                   ))}
                 </ul>
