@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { anonClient, serviceClient } from "./supabase";
 
 export type Role = "admin" | "staff" | "partner" | "customer";
@@ -92,6 +92,7 @@ type SessionRow = { session_key: string; user_id: string; created_at: string; ex
 async function enforceSession(
   db: NonNullable<ReturnType<typeof serviceClient>>,
   key: string, userId: string, authMethod: string | null, nowMs: number,
+  onFirstSeen?: (() => void) | null,
 ): Promise<SessionRow | null> {
   const { data } = await db.from("auth_sessions")
     .select("session_key,user_id,created_at,expires_at,revoked_at,last_seen_at")
@@ -112,7 +113,30 @@ async function enforceSession(
     .insert({ session_key: key, user_id: userId, auth_method: authMethod, created_at: created, last_seen_at: created, expires_at: expires })
     .select("session_key,user_id,created_at,expires_at,revoked_at,last_seen_at").single();
   if (error || !ins) return null; // registry unavailable → fail closed for protected routes
+  if (onFirstSeen) { try { onFirstSeen(); } catch { /* security alert must never break auth */ } }
   return ins as SessionRow;
+}
+
+/** Approximate location from edge geo headers — " near Chicago, US" or "". Never presented as exact. */
+function geoHint(h: Headers | null): string {
+  if (!h) return "";
+  try {
+    const city = h.get("x-vercel-ip-city"), country = h.get("x-vercel-ip-country");
+    const where = [city ? decodeURIComponent(city) : null, country].filter(Boolean).join(", ");
+    return where ? ` near ${where}` : "";
+  } catch { return ""; }
+}
+
+/** Emits the new-device sign-in alert for a first-seen session. Best-effort. */
+export function alertNewSignIn(
+  db: NonNullable<ReturnType<typeof serviceClient>>,
+  userId: string, sessionKey: string, device: string, h: Headers | null,
+): void {
+  void import("./notify").then(({ emit }) => emit(db, {
+    profileId: userId, kind: "new_signin",
+    vars: { device, location: geoHint(h) }, deepLink: "account",
+    dedupeKey: `signin:${sessionKey}`,
+  })).catch(() => undefined);
 }
 
 /** Session context for AI tools / audit: which registry row backs this request. */
@@ -142,7 +166,8 @@ export async function getSessionUser(nowMs = Date.now()): Promise<SessionUser | 
   // 1) Registry path — Supabase session_id claim is refresh-stable.
   const sid = jwtSessionId(token);
   if (sid) {
-    const row = await enforceSession(svc, `sso:${sid}`, userId, "supabase", nowMs).catch(() => null);
+    const hdrs = await Promise.resolve().then(() => headers()).catch(() => null) as Headers | null;
+    const row = await enforceSession(svc, `sso:${sid}`, userId, "supabase", nowMs, () => alertNewSignIn(svc, userId, `sso:${sid}`, "browser", hdrs)).catch(() => null);
     if (!row) return null;
     const { data: profile } = await svc.from("profiles").select("role, organization_id").eq("id", userId).single();
     if (!profile) return null;
@@ -174,7 +199,7 @@ export async function getBearerUser(req: Request, nowMs = Date.now()): Promise<S
   if (error || !data.user) return null;
   const sid = jwtSessionId(match[1]);
   if (!sid) return null;
-  const active = await enforceSession(svc, `sso:${sid}`, data.user.id, "mobile", nowMs).catch(() => null);
+  const active = await enforceSession(svc, `sso:${sid}`, data.user.id, "mobile", nowMs, () => alertNewSignIn(svc, data.user.id, `sso:${sid}`, "mobile app", req.headers)).catch(() => null);
   if (!active) return null;
   const { data: profile } = await svc.from("profiles")
     .select("role,organization_id,email").eq("id", data.user.id).maybeSingle();

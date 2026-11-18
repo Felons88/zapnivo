@@ -115,6 +115,22 @@ export async function alertStaff(alert: StaffAlert, db: SupabaseClient | null = 
 
 export const emailFor = (r: RentalRow) => r.payments?.[0]?.receipt_email ?? null;
 export const rentalUrl = () => subUrl("support", "/#find-rental");
+
+/** Persistent in-app record for a rental lifecycle event (registered renters only — guests keep email/SMS). */
+async function inAppRental(rentalId: string, input: { kind: string; title: string; body: string; ref: string; pushed: number }) {
+  const db = serviceClient();
+  if (!db) return;
+  const { data: r } = await db.from("rentals").select("customer_id,renter_profile").eq("id", rentalId).maybeSingle();
+  const pid = ((r as { customer_id?: string | null; renter_profile?: string | null } | null)?.customer_id
+    ?? (r as { renter_profile?: string | null } | null)?.renter_profile) ?? null;
+  if (!pid) return;
+  const { recordInApp } = await import("./notify");
+  await recordInApp(db, {
+    profileId: pid, category: "rental", kind: input.kind, title: input.title, body: input.body,
+    data: { kind: input.kind, deep_link: `rental:${input.ref}` }, dedupeKey: `${input.kind}:${rentalId}`,
+    deliveries: [{ channel: "push", status: input.pushed > 0 ? "sent" : "failed", detail: input.pushed > 0 ? "fcm" : "no_devices" }],
+  }).catch(() => null);
+}
 const phoneFor = (r: RentalRow) => r.payments?.[0]?.customer_phone ?? null;
 export const smsFor = async (r: RentalRow, body: string) => { const phone = phoneFor(r); if (!phone) return; const db = serviceClient(); if (db) await sendSms(db, { to: phone, body, rentalId: r.id }); };
 
@@ -124,7 +140,8 @@ export async function triggerRentalStarted(rentalId: string) {
   if (!r) return false;
   const db0 = serviceClient();
   if (db0) await scheduleRentalSms(db0, rentalId, new Date(r.dispensed_at ?? r.started_at ?? Date.now()));
-  void pushToRentalCustomer(rentalId, { title: "Rental started", body: `Your charger is ready${r.kiosks?.venues ? ` at ${r.kiosks.venues.name}` : ""}. Return it to any live station.`, data: { type: "rental", reference: r.reference } });
+  const startPush = await pushToRentalCustomer(rentalId, { title: "Rental started", body: `Your charger is ready${r.kiosks?.venues ? ` at ${r.kiosks.venues.name}` : ""}. Return it to any live station.`, data: { type: "rental", reference: r.reference } }).catch(() => 0);
+  void inAppRental(rentalId, { kind: "rental_started", title: "Rental started", ref: r.reference, pushed: startPush, body: `Your charger is ready${r.kiosks?.venues ? ` at ${r.kiosks.venues.name}` : ""}. Return it to any live station.` });
   if (!to) return false;
   return sendToCustomer(to, "Your Zapnivo rental is active",
     `Your rental ${r.reference} is active${r.kiosks?.venues ? ` from ${r.kiosks.venues.name}` : ""}. Keep the power bank with you — return it to any eligible station when you're done.`,
@@ -141,7 +158,8 @@ export async function triggerRentalReturned(rentalId: string) {
   if (!r) return false;
   const db0 = serviceClient();
   if (db0) await cancelRentalSms(db0, rentalId);
-  void pushToRentalCustomer(rentalId, { title: "Return confirmed", body: `Rental ${r.reference} is returned. Total ${fmt(r.payments?.[0]?.amount_captured_cents ?? 0)}.`, data: { type: "rental", reference: r.reference } });
+  const retPush = await pushToRentalCustomer(rentalId, { title: "Return confirmed", body: `Rental ${r.reference} is returned. Total ${fmt(r.payments?.[0]?.amount_captured_cents ?? 0)}.`, data: { type: "rental", reference: r.reference } }).catch(() => 0);
+  void inAppRental(rentalId, { kind: "rental_returned", title: "Return confirmed", ref: r.reference, pushed: retPush, body: `Rental ${r.reference} is returned. Total ${fmt(r.payments?.[0]?.amount_captured_cents ?? 0)}.` });
   if (!to) return false;
   return sendToCustomer(to, "Your Zapnivo return is confirmed",
     `Rental ${r.reference} is returned. Thanks for using Zapnivo.`,
@@ -181,11 +199,12 @@ export async function triggerPaymentReceipt(stripePaymentIntentId: string) {
   const p = r.payments[0];
   const paid = fmt(p.amount_captured_cents ?? 0);
   // Push receipt — fires even when no receipt email exists (phone-only renters).
-  void pushToRentalCustomer(r.id, {
+  const capPush = await pushToRentalCustomer(r.id, {
     title: "Payment captured",
     body: `${paid} was charged for rental ${r.reference}. Your receipt is in the app.`,
     data: { type: "rental", reference: r.reference },
-  });
+  }).catch(() => 0);
+  void inAppRental(r.id, { kind: "charge_captured", title: "Payment captured", ref: r.reference, pushed: capPush, body: `${paid} was charged for rental ${r.reference}. Your receipt is in the app.` });
   if (!to) return false;
   return sendToCustomer(to, "Your Zapnivo payment receipt",
     `Receipt for rental ${r.reference}: ${paid} captured on ${stamp(null)}.`,

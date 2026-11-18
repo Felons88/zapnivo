@@ -2,12 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import 'animations.dart';
-import 'api.dart';
 import 'app_state.dart';
+import 'notifications.dart';
 import 'rental_flow.dart';
 import 'stations.dart';
 import 'success.dart';
-import 'support.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
@@ -31,7 +30,8 @@ class HomeTab extends StatelessWidget {
               const Logo(size: 30),
               const Spacer(),
               Badge(
-                isLabelVisible: app.updater.available != null,
+                isLabelVisible: app.unreadNotifications > 0 || app.updater.available != null,
+                label: app.unreadNotifications > 0 ? Text('${app.unreadNotifications > 99 ? "99+" : app.unreadNotifications}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Colors.black)) : null,
                 smallSize: 10,
                 backgroundColor: lime,
                 child: Glass(radius: 16, padding: const EdgeInsets.all(10), onTap: () => _push(context, const NotificationsScreen()), child: const Icon(Icons.notifications_none_rounded, size: 22)),
@@ -253,52 +253,6 @@ class _HistoryListState extends State<HistoryList> {
                 ),
               ),
           ]),
-      ],
-    );
-  }
-}
-
-class NotificationsScreen extends StatelessWidget {
-  const NotificationsScreen({super.key});
-  @override
-  Widget build(BuildContext context) {
-    final app = AppScope.of(context);
-    final items = <(DateTime?, IconData, String, String, VoidCallback?)>[];
-    final update = app.updater.available;
-    for (final r in app.rentals ?? const <Rental>[]) {
-      if (r.isCompleted) {
-        items.add((r.endedAt ?? r.startedAt, Icons.check_circle_outline, 'Return completed', 'Rental ${r.reference} was returned at ${r.venue}.${r.amountCents != null ? ' Total ${money(r.amountCents!)}.' : ''}', () => _push(context, ReceiptScreen(rental: r))));
-      } else if (r.isActive) {
-        items.add((r.startedAt, Icons.battery_charging_full, r.isOverdue ? 'Rental overdue' : 'Rental in progress', 'Rental ${r.reference} is ${r.stateLabel.toLowerCase()}. Return it to any live station.', () => app.setTab(2)));
-      }
-    }
-    for (final t in app.tickets ?? const <TicketSummary>[]) {
-      if (t.state == 'pending_customer') items.add((t.createdAt, Icons.chat_bubble_outline_rounded, 'Support replied', '${t.category}: the team is waiting on you.', () => _push(context, TicketThreadScreen(number: t.number))));
-    }
-    items.sort((a, b) => (b.$1 ?? DateTime(0)).compareTo(a.$1 ?? DateTime(0)));
-    final denied = app.notificationStatus != null && !app.notificationStatus!.isGranted;
-    return TitledPage(
-      title: 'Notifications',
-      children: [
-        if (update != null)
-          Glass(tint: lime, radius: 20, onTap: app.updater.install, child: Row(children: [const Icon(Icons.system_update_alt_rounded, color: lime), const SizedBox(width: 12), Expanded(child: Text('Version ${update.version} is available. Tap to update.', style: const TextStyle(fontWeight: FontWeight.w700)))])),
-        if (denied)
-          Padding(
-            padding: const EdgeInsets.only(top: 10),
-            child: Glass(
-              radius: 20,
-              onTap: () async {
-                final status = await Permission.notification.request();
-                if (status.isPermanentlyDenied) await openAppSettings();
-                await app.refreshNotificationStatus();
-              },
-              child: const Row(children: [Icon(Icons.notifications_off_outlined, color: lime), SizedBox(width: 12), Expanded(child: Text('Notifications are off. Tap to turn on rental updates and return reminders.', style: TextStyle(fontSize: 13)))]),
-            ),
-          ),
-        if (items.isEmpty && update == null)
-          const EmptyState(icon: Icons.notifications_none_rounded, title: 'All caught up', body: 'Rental updates and support replies will appear here.')
-        else
-          for (final n in items) SettingsRow(icon: n.$2, label: n.$3, subtitle: n.$4, onTap: n.$5),
       ],
     );
   }

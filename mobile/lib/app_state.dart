@@ -29,6 +29,10 @@ class AppState extends ChangeNotifier {
   final ticketTick = ValueNotifier<int>(0);
   final walletTick = ValueNotifier<int>(0);
 
+  /// Notification-center state: badge count + a tick that reloads open screens.
+  final notifTick = ValueNotifier<int>(0);
+  int unreadNotifications = 0;
+
   Map<String, dynamic>? profile;
 
   Position? position;
@@ -62,9 +66,12 @@ class AppState extends ChangeNotifier {
     updater.start();
     PushService.register(api);
     PushService.onOpen = (data) {
+      final link = data['deep_link'] as String?;
+      if (link != null) return routeDeepLink(link);
       if (data['type'] == 'ticket') setTab(3);
       if (data['type'] == 'rental') setTab(2);
     };
+    refreshNotificationCount();
     _subscribe();
     _poll ??= Timer.periodic(const Duration(seconds: 30), (_) {
       refreshRentals();
@@ -96,6 +103,16 @@ class AppState extends ChangeNotifier {
           // real time without a pull-to-refresh.
           .onPostgresChanges(event: PostgresChangeEvent.all, schema: 'public', table: 'wallet_topups', callback: (_) => walletTick.value++)
           .onPostgresChanges(event: PostgresChangeEvent.all, schema: 'public', table: 'entitlement_grants', callback: (_) => walletTick.value++)
+          // New notification-center rows → live badge + reload any open inbox.
+          .onPostgresChanges(
+            event: PostgresChangeEvent.insert,
+            schema: 'public',
+            table: 'notifications',
+            callback: (_) {
+              notifTick.value++;
+              refreshNotificationCount();
+            },
+          )
           .subscribe();
     } catch (_) {}
   }
@@ -205,6 +222,37 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     final active = activeRental;
     syncHomeWidget(rental: active == null ? 'No active rental' : 'Active · ${active.reference}');
+  }
+
+  Future<void> refreshNotificationCount() async {
+    try {
+      final r = await api.notifications(unreadOnly: true, limit: 1);
+      unreadNotifications = r.unread;
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  /// Full-screen routes a notification can target (wallet, inbox). Tabs handle
+  /// the rest internally — HomeShell registers this from main.dart where the
+  /// navigator lives.
+  void Function(String deepLink)? onOpenLink;
+
+  /// Routes a notification deep link. Links come only from server-rendered
+  /// payloads — the shape is allowlisted server-side, and every destination
+  /// stays behind the signed-in gate.
+  void routeDeepLink(String link) {
+    if (link.startsWith('ticket:')) {
+      setTab(3);
+      onOpenLink?.call(link);
+    } else if (link.startsWith('rental:')) {
+      setTab(2);
+    } else if (link == 'account') {
+      setTab(4);
+    } else if (link == 'support') {
+      setTab(3);
+    } else {
+      onOpenLink?.call(link); // wallet, notifications
+    }
   }
 
   Future<void> refreshTickets() async {

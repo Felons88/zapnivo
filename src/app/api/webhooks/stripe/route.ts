@@ -67,6 +67,22 @@ const metaRental = (o: Obj) => ((o.metadata as Record<string, string> | undefine
 const iso = (unix: unknown) => (typeof unix === "number" ? new Date(unix * 1000).toISOString() : null);
 const CLOSED_DISPUTE = new Set(["won", "lost", "warning_closed"]);
 
+/** Emits a customer notification to a rental's registered renter. Best-effort: never throws. */
+async function emitToRenter(db: Db, rentalId: string, input: Omit<import("@/lib/notify").EmitInput, "profileId" | "vars"> & { vars?: Record<string, string | number> }) {
+  try {
+    const { data: r } = await db.from("rentals").select("customer_id,renter_profile,reference").eq("id", rentalId).maybeSingle();
+    const row = r as { customer_id: string | null; renter_profile: string | null; reference: string } | null;
+    const pid = row?.customer_id ?? row?.renter_profile;
+    if (!pid) return;
+    const { emit } = await import("@/lib/notify");
+    await emit(db, {
+      ...input, profileId: pid,
+      deepLink: input.deepLink === "auto" ? `rental:${row?.reference ?? ""}` : input.deepLink,
+      vars: { rental_ref: row?.reference ?? "", ...(input.vars ?? {}) },
+    });
+  } catch { /* notification is best-effort; the ledger truth is already recorded */ }
+}
+
 async function handleEvent(db: Db, event: StripeEvent): Promise<boolean> {
   const o = event.data.object;
   // Monetization products (membership/gift/package/event pass + subscription lifecycle).
@@ -133,6 +149,11 @@ async function handleEvent(db: Db, event: StripeEvent): Promise<boolean> {
           .eq("stripe_payment_intent_id", pi.id).in("status", ["pending", "failed"]));
         const rentalId = metaRental(o);
         if (rentalId) await requireWrite(db.from("rentals").update({ non_return_fee_status: "charged" }).eq("id", rentalId));
+        if (rentalId) await emitToRenter(db, rentalId, {
+          kind: "rental_fee", actor: "webhook", correlationId: `pi:${pi.id}`, deepLink: "auto",
+          vars: { amount: pi.amount_received ?? 0, fee: "non-return" },
+          dedupeKey: `fee:${pi.id}`,
+        });
         return true;
       }
       await requireWrite(db.from("payments").update({
@@ -196,6 +217,11 @@ async function handleEvent(db: Db, event: StripeEvent): Promise<boolean> {
           pay.rental_id ? db.from("rentals").select("reference").eq("id", pay.rental_id).maybeSingle() : Promise.resolve({ data: null }),
           db.from("payments").select("receipt_email").eq("id", pay.id).maybeSingle(),
         ]);
+        if (pay.rental_id) await emitToRenter(db, pay.rental_id, {
+          kind: "dispute_opened", actor: "webhook", correlationId: `dispute:${o.id}`, deepLink: "account",
+          vars: { amount: typeof o.amount === "number" ? ` of ${fmt(o.amount)}` : "" },
+          dedupeKey: `dispute:${o.id}`,
+        });
         const fields = {
           disputeId: String(o.id ?? ""),
           amount: typeof o.amount === "number" ? fmt(o.amount) : "unknown",
@@ -228,6 +254,17 @@ async function handleEvent(db: Db, event: StripeEvent): Promise<boolean> {
       // Rental payments get ledger delta + credit release + external-refund
       // flagging — Stripe-dashboard refunds no longer bypass reconciliation.
       if (rentalPay) await reconcileRentalPaymentRefund(db, rentalPay as { id: string; rental_id: string; state?: string }, o, piId);
+      if (rentalPay?.rental_id && refunded > 0) {
+        const card = (o.payment_method_details as { card?: { brand?: string; last4?: string } } | undefined)?.card;
+        await emitToRenter(db, rentalPay.rental_id, {
+          kind: "refund_issued", actor: "webhook", correlationId: `refund:${piId}:${refunded}`, deepLink: "account",
+          vars: {
+            amount: refunded,
+            card_ref: card?.brand && card?.last4 ? ` to your ${card.brand[0].toUpperCase()}${card.brand.slice(1)} •••• ${card.last4}` : " to your original payment method",
+          },
+          dedupeKey: `refund:${piId}:${refunded}`,
+        });
+      }
       return true;
     }
     default:

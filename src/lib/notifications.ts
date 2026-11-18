@@ -203,6 +203,16 @@ async function markCancelled(db: SupabaseClient, job: JobRow, error: string) {
   await db.from("notification_jobs").update({ status: "cancelled", last_error: error }).eq("id", job.id);
 }
 
+/** In-app center titles for job kinds pushForJob doesn't cover (activation, ticket). */
+const INAPP_JOB_TITLES: Record<string, string> = {
+  activation: "Your rental is active", reminder_1h: "Rental update", reminder_3h: "Rental update",
+  reminder_6h: "Rental update", reminder_12h: "12 hours left to return", warning_20h: "4 hours left to return",
+  warning_23h: "Final reminder: 1 hour left", deadline_24h: "Return deadline passed",
+  return_failed: "Return not confirmed", non_return_fee_charged: "Non-return fee charged",
+  payment_failed: "Payment didn't go through", ticket_received: "We received your request",
+  rental_paused: "Rental paused", rental_resumed: "Rental resumed", rental_extended: "Extra time added",
+};
+
 /** Support-ticket confirmation job: phone comes from the ticket, link is the signed thread URL. */
 async function sweepTicketJob(db: SupabaseClient, job: JobRow, now: Date, channels: { smsEnabled: boolean; pushEnabled: boolean }): Promise<"sent" | "failed" | "cancelled" | "retried"> {
   const { data: t } = await db.from("support_tickets")
@@ -221,7 +231,7 @@ async function sweepTicketJob(db: SupabaseClient, job: JobRow, now: Date, channe
   }
   const phone = normalizePhone(ticket.phone);
   if (!channels.smsEnabled) {
-    if (pushed > 0) { await markSent(db, job, now); return "sent"; }
+    if (pushed > 0) { await markSent(db, job, now); await recordTicketInApp(db, job, ticket, pushed, "skipped", "sms_disabled"); return "sent"; }
     return markRetry(db, job, now, "sms_disabled_no_push");
   }
   if (!phone) { await markRetry(db, job, now, "no_phone"); return "failed"; }
@@ -234,8 +244,34 @@ async function sweepTicketJob(db: SupabaseClient, job: JobRow, now: Date, channe
   const tpl = await templateFor(db, job.kind);
   const body = tpl ? interpolate(tpl, vars) : null;
   const res: SmsSendResult = body ? await sendSms(db, { to: phone, body, ticketId: ticket.id, kind: job.kind }) : { sent: false };
-  if (res.sent) { await markSent(db, job, now); return "sent"; }
+  if (res.sent) {
+    await markSent(db, job, now);
+    await recordTicketInApp(db, job, ticket, pushed, "sent", "twilio");
+    return "sent";
+  }
   return markRetry(db, job, now, res.reason === "opted_out" ? "opted_out" : phone ? "send_failed" : "no_phone");
+}
+
+/** In-app center copy for registered customers (guests get SMS/email only). */
+async function recordTicketInApp(
+  db: SupabaseClient, job: JobRow,
+  ticket: { ticket_number: string; email: string },
+  pushed: number, smsStatus: "sent" | "skipped", smsDetail: string,
+) {
+  const { data: prof } = await db.from("profiles").select("id").ilike("email", ticket.email).maybeSingle();
+  const pid = (prof as { id: string } | null)?.id;
+  if (!pid) return;
+  const { recordInApp } = await import("./notify");
+  await recordInApp(db, {
+    profileId: pid, category: "support", kind: job.kind,
+    title: "We received your request", body: `Support request ${ticket.ticket_number} is open — we'll reply in the app and by email.`,
+    data: { kind: job.kind, deep_link: `ticket:${ticket.ticket_number}` },
+    dedupeKey: `job:${job.id}`,
+    deliveries: [
+      { channel: "sms", status: smsStatus, detail: smsDetail },
+      { channel: "push", status: pushed > 0 ? "sent" : "skipped", detail: pushed > 0 ? "fcm" : "no_devices" },
+    ],
+  }).catch(() => null);
 }
 
 /**
@@ -312,15 +348,16 @@ export async function runSmsSweep(db: SupabaseClient, now = new Date()) {
     // PUSH — first attempt only, and NOT gated on sms_consent/opt-out: the app's
     // OS notification permission is the push opt-in (SMS consent wording covers
     // texts only). A delivered push satisfies the job on its own.
+    const pushMsg = pushForJob(job.kind, vars);
     let pushed = 0;
-    if (pushEnabled && job.attempts === 0) {
-      const msg = pushForJob(job.kind, vars);
-      if (msg) pushed = await pushToRentalCustomer(rental.id, msg).catch(() => 0);
+    if (pushEnabled && job.attempts === 0 && pushMsg) {
+      pushed = await pushToRentalCustomer(rental.id, pushMsg).catch(() => 0);
     }
 
     // SMS channel — consent gates apply here only.
     let smsSent = false;
     let smsErr = "no_phone";
+    let smsBody: string | null = null;
     if (smsEnabled) {
       // Consent gate: scheduled nudges need checkout sms_consent; transactional confirmations don't.
       if (!transactional && rental && !rental.sms_consent) {
@@ -333,8 +370,8 @@ export async function runSmsSweep(db: SupabaseClient, now = new Date()) {
         continue;
       }
       const tpl = await templateFor(db, job.kind);
-      const body = tpl ? interpolate(tpl, vars) : null;
-      const res: SmsSendResult = phone && body ? await sendSms(db, { to: phone, body, rentalId: job.rental_id, kind: job.kind }) : { sent: false };
+      smsBody = tpl ? interpolate(tpl, vars) : null;
+      const res: SmsSendResult = phone && smsBody ? await sendSms(db, { to: phone, body: smsBody, rentalId: job.rental_id, kind: job.kind }) : { sent: false };
       smsSent = res.sent;
       smsErr = !phone ? "no_phone" : res.errorCode ? `send_failed:${res.errorCode}` : "send_failed";
     }
@@ -342,6 +379,22 @@ export async function runSmsSweep(db: SupabaseClient, now = new Date()) {
     if (pushed > 0 || smsSent) {
       await markSent(db, job, now);
       sent++;
+      // Mirror the delivered nudge into the persistent in-app center (dedupe on
+      // the job row — retries/replays can never duplicate the record).
+      const renterId = rental.customer_id ?? rental.renter_profile;
+      if (renterId) {
+        const body = pushMsg?.body ?? smsBody ?? vars.charges;
+        const title = pushMsg?.title ?? INAPP_JOB_TITLES[job.kind] ?? "Zapnivo update";
+        void import("./notify").then(({ recordInApp }) => recordInApp(db, {
+          profileId: renterId, category: "rental", kind: job.kind, title, body,
+          data: { kind: job.kind, deep_link: `rental:${rental.reference}` },
+          dedupeKey: `job:${job.id}`,
+          deliveries: [
+            { channel: "push", status: pushed > 0 ? "sent" : "skipped", detail: pushed > 0 ? "fcm" : pushEnabled ? (job.attempts > 0 ? "retry_no_reping" : "no_message") : "push_disabled" },
+            ...(smsEnabled ? [{ channel: "sms" as const, status: smsSent ? "sent" as const : "failed" as const, detail: smsSent ? "twilio" : smsErr }] : []),
+          ],
+        })).catch(() => null);
+      }
     } else {
       const outcome = await markRetry(db, job, now, smsEnabled ? smsErr : "no_channel_delivered");
       if (outcome === "failed") failed++;

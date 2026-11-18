@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'animations.dart';
 import 'api.dart';
 import 'app_state.dart';
+import 'notifications.dart';
 import 'support.dart';
 import 'tabs.dart';
 import 'theme.dart';

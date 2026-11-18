@@ -60,6 +60,7 @@ const NAV_ITEMS = {
   inquiries: { href: "/admin/inquiries", label: "Inquiries", icon: icons.mail, group: "Customer care" },
   receptionist: { href: "/admin/receptionist", label: "AI receptionist", icon: icons.chat, group: "Customer care" },
   sms: { href: "/admin/sms", label: "SMS log", icon: icons.chat, group: "Customer care" },
+  notifications: { href: "/admin/notifications", label: "Notifications", icon: icons.alert, group: "Customer care" },
   emailStudio: { href: "/admin/email-studio", label: "Email studio", icon: icons.mail, group: "Customer care" },
   fleet: { href: "/admin/fleet", label: "Fleet", icon: icons.battery, group: "Network" },
   profitability: { href: "/admin/profitability", label: "Profitability", icon: icons.coins, group: "Network" },

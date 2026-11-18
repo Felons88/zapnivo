@@ -45,6 +45,23 @@ const label = (a: Actor) => (a.kind === "staff" || a.kind === "partner" ? `${a.k
 
 const audit = (c: Ctx, ticketId: string, actor: Actor, type: string, detail?: Record<string, unknown>) => c.repo.addEvent({ ticketId, actor: label(actor), type, detail: detail ?? null });
 
+/** Persistent in-app copy of a support notification for registered customers. Best-effort, never throws. */
+async function inAppSupport(email: string, input: { kind: string; title: string; body: string; ticketNumber: string; dedupeKey: string; pushed: number }) {
+  try {
+    const db = serviceClient();
+    if (!db) return;
+    const { data: prof } = await db.from("profiles").select("id").ilike("email", email).maybeSingle();
+    const pid = (prof as { id: string } | null)?.id;
+    if (!pid) return;
+    const { recordInApp } = await import("../notify");
+    await recordInApp(db, {
+      profileId: pid, category: "support", kind: input.kind, title: input.title, body: input.body,
+      data: { kind: input.kind, deep_link: `ticket:${input.ticketNumber}` }, dedupeKey: input.dedupeKey,
+      deliveries: [{ channel: "push", status: input.pushed > 0 ? "sent" : "failed", detail: input.pushed > 0 ? "fcm" : "no_devices" }],
+    });
+  } catch { /* best-effort */ }
+}
+
 /** Boundary telemetry — ids, states and counts only, never message bodies or requester PII. */
 const hdLog = (message: string, attrs?: Record<string, unknown>) =>
   recordLog("info", message, { service: "helpdesk", attrs });
@@ -172,7 +189,15 @@ export async function agentReply(c: Ctx, actor: Actor, number: string, body: str
   await audit(c, t.id, actor, "agent_reply", { state });
   hdLog("agent_reply", { ticket: t.number, state });
   await notify(c, u, state === "resolved" ? "Your request has been resolved" : "A reply to your request", text);
-  if (t.requesterType === "customer") void pushToEmail(t.email, { title: state === "resolved" ? "Request resolved" : "New reply from Zapnivo Support", body: text.slice(0, 140), data: { type: "ticket", number: t.number } });
+  if (t.requesterType === "customer") {
+    const pushed = await pushToEmail(t.email, { title: state === "resolved" ? "Request resolved" : "New reply from Zapnivo Support", body: text.slice(0, 140), data: { type: "ticket", number: t.number } }).catch(() => 0);
+    void inAppSupport(t.email, {
+      kind: state === "resolved" ? "ticket_resolved" : "support_reply",
+      title: state === "resolved" ? `${t.number} resolved` : `New reply on ${t.number}`,
+      body: state === "resolved" ? "Your support request was marked resolved. Reply inside the thread if anything's still wrong." : text.slice(0, 300),
+      ticketNumber: t.number, dedupeKey: `reply:${u.id}:${now}`, pushed,
+    });
+  }
   return u;
 }
 

@@ -42,7 +42,7 @@ let _outboundFetch: typeof fetch | null = null;
 const outboundFetch = (): typeof fetch => {
   if (_outboundFetch) return _outboundFetch;
   const proxy = process.env.EMAIL_PROXY_URL?.trim();
-  if (!proxy) return (_outboundFetch = fetch);
+  if (!proxy) return fetch; // don't cache — callers/tests may swap the global per send
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { ProxyAgent, fetch: undiciFetch } = require("undici") as typeof import("undici");

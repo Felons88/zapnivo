@@ -3,12 +3,11 @@ import { z } from "zod";
 import { auditLog } from "@/lib/audit";
 import { getSessionUser, isStaff } from "@/lib/auth";
 import { searchCustomers } from "@/lib/crm";
-import { sendToCustomer } from "@/lib/email-triggers";
 import { createTicket, defaultCtx, internalNote, requestRefund } from "@/lib/helpdesk/service";
 import { HelpdeskError, REFUND_REASONS, type Actor } from "@/lib/helpdesk/types";
+import { emit, emitByEmail } from "@/lib/notify";
 import { fmt } from "@/lib/pricing";
 import { getOrIssueCard } from "@/lib/prepaid-card";
-import { pushToEmail } from "@/lib/push";
 import { serviceClient } from "@/lib/supabase";
 import { TICKET_CATEGORIES } from "@/lib/validation";
 
@@ -141,9 +140,13 @@ export async function POST(req: Request) {
     await auditLog(user!.id, "customer_credit_granted", "customer", email, { unit: p.data.unit, amount: units, note: p.data.note ?? null });
     const label = p.data.unit === "cent" ? fmt(units) : `${units} ${p.data.unit === "minute" ? "minutes" : "free rental"}`;
     try {
-      await sendToCustomer(email, "A credit was added to your Zapnivo account", `We've added ${label} to your Zapnivo account as a service credit${p.data.note ? ` (${p.data.note})` : ""}. It applies automatically on your next rental.`, null, null, { sender: "support" });
+      await emit(db, {
+        profileId: pid, kind: "credit_granted", actor: `staff:${user!.id}`, correlationId: `grant:${(grant as { id: string } | null)?.id ?? email}`,
+        vars: { amount: label, reason: p.data.note ? ` (${p.data.note})` : "" }, deepLink: "wallet",
+        dedupeKey: `credit:${(grant as { id: string } | null)?.id ?? `${email}:${units}`}`,
+      });
     } catch { /* notification is best-effort; the credit itself is recorded */ }
-    return back(req, email, "ok", `Granted ${label} of credit — customer notified by email.`);
+    return back(req, email, "ok", `Granted ${label} of credit — customer notified.`);
   }
 
   /* ── Admin-only actions: identity edits, manual wallet funds, card reissue.
@@ -175,7 +178,22 @@ export async function POST(req: Request) {
       if (error) return back(req, email, "error", `Name/phone saved, but the email change failed (${error.message.slice(0, 80)}).`);
       await db.from("profiles").update({ email: nextEmail }).eq("id", pid);
       emailNote = ` Email changed to ${nextEmail} — the customer should sign in with it next time.`;
-      try { await sendToCustomer(nextEmail, "Your Zapnivo sign-in email changed", `Support updated the email on your Zapnivo account to this address. If you didn't request this, contact support.`, null, null, { sender: "support" }); } catch { /* best-effort */ }
+      try {
+        await emit(db, {
+          profileId: pid, kind: "email_changed", actor: `staff:${user!.id}`,
+          vars: { email: nextEmail }, deepLink: "account",
+          dedupeKey: `email_change:${pid}:${nextEmail}`,
+        });
+      } catch { /* best-effort — the change itself is audited */ }
+    }
+    if (Object.keys(updates).length) {
+      try {
+        await emit(db, {
+          profileId: pid, kind: "profile_updated", actor: `staff:${user!.id}`,
+          vars: { reason: ` (${Object.keys(updates).map((k) => k === "full_name" ? "name" : k).join(", ")})` }, deepLink: "account",
+          dedupeKey: `profile_update:${pid}:${Object.keys(updates).join(",")}:${JSON.stringify(updates)}`,
+        });
+      } catch { /* best-effort */ }
     }
     await auditLog(user!.id, "customer_profile_updated", "customer", email, { fields: Object.keys(updates), email_changed: !!nextEmail && nextEmail !== email });
     return back(req, nextEmail || email, "ok", `Profile updated.${emailNote}`);
@@ -202,8 +220,13 @@ export async function POST(req: Request) {
     // Top-up ledger row so the activity feed shows where the balance came from.
     if (cents >= 500) await db.from("wallet_topups").insert({ profile_id: pid, amount_cents: cents, status: "paid", paid_at: new Date().toISOString(), entitlement_grant_id: grantId }).then(() => undefined, () => undefined);
     await auditLog(user!.id, "customer_funds_added", "customer", email, { amount_cents: cents, reason: p.data.reason });
-    try { await sendToCustomer(email, `${fmt(cents)} was added to your Zapnivo wallet`, `Support added ${fmt(cents)} to your Zapnivo wallet (${p.data.reason}). It's ready to use on your next rental.`, null, null, { sender: "support" }); } catch { /* best-effort */ }
-    void pushToEmail(email, { title: `${fmt(cents)} added to your wallet`, body: `${p.data.reason} — ready for your next rental.`, data: { type: "wallet" } }).catch(() => 0);
+    try {
+      await emit(db, {
+        profileId: pid, kind: "funds_added", actor: `staff:${user!.id}`, correlationId: `grant:${grantId ?? "none"}`,
+        vars: { amount: cents, reason: ` (${p.data.reason})` }, deepLink: "wallet",
+        dedupeKey: `funds:${grantId ?? `${pid}:${cents}:${p.data.reason}`}`,
+      });
+    } catch { /* notification is best-effort; the grant is already recorded */ }
     return back(req, email, "ok", `Added ${fmt(cents)} to the wallet — customer notified.`);
   }
 
@@ -212,6 +235,12 @@ export async function POST(req: Request) {
     const { error } = await db.auth.resetPasswordForEmail(email);
     if (error) return back(req, email, "error", `Couldn't send the reset email (${error.message.slice(0, 80)}).`);
     await auditLog(user!.id, "customer_password_reset_sent", "customer", email);
+    try {
+      await emitByEmail(db, email, {
+        kind: "password_reset", actor: `staff:${user!.id}`, deepLink: "account",
+        dedupeKey: `pwreset:${email}:${new Date().toISOString().slice(0, 16)}`,
+      });
+    } catch { /* best-effort */ }
     return back(req, email, "ok", "Password reset email sent.");
   }
 
@@ -223,6 +252,13 @@ export async function POST(req: Request) {
     await db.auth.admin.signOut(pid).then(() => undefined, () => undefined);
     await db.from("auth_sessions").delete().eq("user_id", pid).then(() => undefined, () => undefined);
     await auditLog(user!.id, "customer_signed_out", "customer", email);
+    try {
+      await emit(db, {
+        profileId: pid, kind: "sessions_revoked", actor: `staff:${user!.id}`,
+        vars: { reason: " by support" }, deepLink: "account",
+        dedupeKey: `signout:${pid}:${new Date().toISOString().slice(0, 16)}`,
+      });
+    } catch { /* best-effort */ }
     return back(req, email, "ok", "Every session for this customer was revoked — they'll sign in again.");
   }
 
@@ -238,8 +274,13 @@ export async function POST(req: Request) {
     const card = await getOrIssueCard(db, pid, now);
     if (!card) return back(req, email, "error", "Couldn't issue the replacement card.");
     await auditLog(user!.id, "prepaid_card_reissued", "customer", email, { card_id: card.id, last4: card.pan.slice(-4), reason });
-    try { await sendToCustomer(email, "Your Zapnivo prepaid card was replaced", `Support issued you a new Zapnivo prepaid card (${reason}). Open the app — your new card number and code are in the wallet. Your balance carried over.`, null, null, { sender: "support" }); } catch { /* best-effort */ }
-    void pushToEmail(email, { title: "New Zapnivo card issued", body: `Your replacement prepaid card is ready in the app — balance carried over.`, data: { type: "wallet" } }).catch(() => 0);
+    try {
+      await emit(db, {
+        profileId: pid, kind: "card_reissued", actor: `staff:${user!.id}`, correlationId: `card:${card.id}`,
+        vars: { last4: card.pan.slice(-4), reason }, deepLink: "wallet",
+        dedupeKey: `card_reissue:${card.id}`,
+      });
+    } catch { /* best-effort */ }
     return back(req, email, "ok", `New card •••• ${card.pan.slice(-4)} issued (${reason}). The old number is retired.`);
   }
 

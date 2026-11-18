@@ -321,6 +321,30 @@ class StationSnapshot {
   final RentalPricing? pricing;
 }
 
+/// A persistent notification-center entry (server is the source of truth —
+/// read state syncs across devices through the same API).
+class AppNotification {
+  const AppNotification({required this.id, required this.category, required this.kind, required this.title, required this.body, this.deepLink, required this.read, this.createdAt});
+  final String id;
+  final String category;
+  final String kind;
+  final String title;
+  final String body;
+  final String? deepLink;
+  final bool read;
+  final DateTime? createdAt;
+  factory AppNotification.fromJson(Map<String, dynamic> j) => AppNotification(
+    id: j['id'] as String,
+    category: j['category'] as String? ?? 'account',
+    kind: j['kind'] as String? ?? '',
+    title: j['title'] as String? ?? '',
+    body: j['body'] as String? ?? '',
+    deepLink: j['deepLink'] as String?,
+    read: j['read'] == true,
+    createdAt: DateTime.tryParse(j['createdAt'] as String? ?? '')?.toLocal(),
+  );
+}
+
 /// Server-issued checkout quote. All amounts are authoritative cents computed
 /// on the server — the app renders them verbatim and never derives prices.
 class RentalQuote {
@@ -461,6 +485,36 @@ class ZapnivoApi {
   Future<TicketThread> ticketAction(String number, String action, {String? body}) async => TicketThread.fromJson(
     await _protected('POST', '/api/mobile/tickets/${Uri.encodeComponent(number)}', body: {'action': action, 'body': ?body}),
   );
+
+  /// Paginated notification-center feed — newest first. `before` is the
+  /// created_at cursor from the previous page's `nextBefore`.
+  Future<({List<AppNotification> items, int unread, String? nextBefore})> notifications({
+    String? category, bool unreadOnly = false, String? before, int limit = 25,
+  }) async {
+    final q = Uri(queryParameters: {
+      if (category != null) 'category': category,
+      if (unreadOnly) 'unread': '1',
+      if (before != null) 'before': before,
+      'limit': '$limit',
+    }).query;
+    final b = await _protected('GET', '/api/mobile/notifications?$q');
+    return (
+      items: ((b['items'] as List<dynamic>?) ?? const []).map((e) => AppNotification.fromJson(e as Map<String, dynamic>)).toList(),
+      unread: (b['unread'] as num?)?.toInt() ?? 0,
+      nextBefore: b['nextBefore'] as String?,
+    );
+  }
+
+  Future<void> markNotification(String id, {bool unread = false}) =>
+      _protected('PATCH', '/api/mobile/notifications', body: {'id': id, 'unread': unread});
+
+  Future<void> markAllNotificationsRead() =>
+      _protected('PATCH', '/api/mobile/notifications', body: {'all': true});
+
+  Future<Map<String, dynamic>> notificationPrefs() => _protected('GET', '/api/mobile/notifications/prefs');
+
+  Future<void> updateNotificationPrefs(Map<String, dynamic> prefs) =>
+      _protected('PUT', '/api/mobile/notifications/prefs', body: prefs);
 
   Future<void> registerDevice(String token, String version) =>
       _protected('POST', '/api/mobile/devices', body: {'token': token, 'platform': 'android', 'app_version': version});

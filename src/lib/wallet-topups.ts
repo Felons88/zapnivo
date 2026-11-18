@@ -60,29 +60,19 @@ async function creditVerifiedTopup(db: SupabaseClient, payment: VerifiedTopup): 
   if (saved.error) throw new Error("wallet_topup_status_failed");
   await auditLog(row.profile_id, "wallet_topup_paid", "wallet_topup", id, { amount_cents: row.amount_cents });
   // Only the delivery that actually flipped pending -> paid sends the receipt (replays stay silent).
-  if (saved.data?.length) await notifyTopupPaid(db, row.profile_id, row.amount_cents).catch(() => undefined);
+  if (saved.data?.length) await notifyTopupPaid(db, row.profile_id, row.amount_cents, id).catch(() => undefined);
 }
 
-/** Makes sure the customer's prepaid card exists and emails + pushes the receipt. Best-effort: credit is already granted. */
-async function notifyTopupPaid(db: SupabaseClient, profileId: string, amountCents: number) {
-  const { getOrIssueCard, formatExpiry } = await import("./prepaid-card");
+/** Notification engine fan-out: in-app record + push + email, deduped on the top-up id. Best-effort: credit is already granted. */
+async function notifyTopupPaid(db: SupabaseClient, profileId: string, amountCents: number, topupId: string) {
+  const { getOrIssueCard } = await import("./prepaid-card");
   const card = await getOrIssueCard(db, profileId);
-  const { data: profile } = await db.from("profiles").select("email,full_name").eq("id", profileId).maybeSingle();
-  const p = profile as { email: string; full_name: string | null } | null;
-  const { fmt } = await import("./pricing");
-  const first = p?.full_name?.trim().split(/\s+/)[0];
-  const { pushToUser } = await import("./push");
-  await pushToUser(profileId, {
-    title: `${fmt(amountCents)} added to your wallet`,
-    body: `${first ? `${first}, your` : "Your"} balance is topped up${card ? ` — card •••• ${card.pan.slice(-4)}` : ""} and ready at any Zapnivo machine.`,
-    data: { type: "wallet" },
-  }).catch(() => 0);
-  const email = p?.email;
-  if (!email || email.endsWith("@mobile.zapnivo.com")) return;
-  const { sendToCustomer } = await import("./email-triggers");
-  await sendToCustomer(email, `${fmt(amountCents)} added to your Zapnivo card`,
-    `Your top-up of ${fmt(amountCents)} was received and is on your Zapnivo prepaid card${card ? ` ending ${card.pan.slice(-4)} (expires ${formatExpiry(card)})` : ""}. It works at Zapnivo machines and machines we service. Open the app to see your balance and add the card to your phone wallet.`,
-    null, null, { sender: "support", event: "wallet_topup_paid" });
+  const { emit } = await import("./notify");
+  await emit(db, {
+    profileId, kind: "wallet_topup_paid", actor: "webhook", correlationId: `topup:${topupId}`,
+    vars: { amount: amountCents, card_ref: card ? ` on your card •••• ${card.pan.slice(-4)}` : "" },
+    deepLink: "wallet", dedupeKey: `topup:${topupId}`,
+  });
 }
 
 /** payment_intent.payment_failed for an in-app top-up: the row is closed out; no credit was ever granted. */
