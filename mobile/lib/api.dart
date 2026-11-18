@@ -420,6 +420,12 @@ class ZapnivoApi {
   Future<List<dynamic>> rentals() async =>
       (await _protected('GET', '/api/mobile/rentals'))['rentals'] as List<dynamic>;
 
+  /// Tells the server which dock the customer scanned. On test-mode kiosks the
+  /// server runs a simulated dock sequence through the real pipeline; physical
+  /// kiosks ignore it (their dock sensor is the source of truth).
+  Future<Map<String, dynamic>> returnScan(String stationId) =>
+      _protected('POST', '/api/mobile/rentals/return', body: {'station_id': stationId});
+
   Future<List<Rental>> rentalList() async => (await rentals())
       .map((e) => Rental.fromJson(e as Map<String, dynamic>))
       .where((r) => r.isVisible)

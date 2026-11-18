@@ -331,7 +331,11 @@ class _ReturnProgressScreenState extends State<ReturnProgressScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      activeRef = AppScope.of(context).activeRental?.reference;
+      final app = AppScope.of(context);
+      activeRef = app.activeRental?.reference;
+      // Fire once: on a test-mode dock this schedules the simulated return;
+      // on real hardware it's a no-op and the dock sensor reports the return.
+      app.api.returnScan(widget.dockId).catchError((_) => <String, dynamic>{});
       check();
       timer = Timer.periodic(const Duration(seconds: 3), (_) => check());
     });

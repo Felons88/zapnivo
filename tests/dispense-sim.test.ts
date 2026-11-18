@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
-  advanceSimDispenses, dispenseStatusFor, issueDispenseCommand, runDispenseSweep,
+  advanceSimDispenses, dispenseStatusFor, issueDispenseCommand, issueReturnCommand, runDispenseSweep,
 } from "@/lib/kiosk/dispatch";
 
 /**
@@ -236,6 +236,68 @@ describe("dispenseStatusFor — normalized customer stage", () => {
     expect((await dispenseStatusFor(db, { id: "r1", state: "dispense_pending" })).stage).toBe("verifying");
     expect((await dispenseStatusFor(db, { id: "r1", state: "authorized" })).stage).toBe("connecting");
     expect((await dispenseStatusFor(db, { id: "r1", state: "active" })).stage).toBe("ready");
+  });
+});
+
+describe("issueReturnCommand — test-kiosk return simulation", () => {
+  it("completes the full cycle: sim dispense → dock scan → simulated return → returned", async () => {
+    const { db, tables } = seed({ testMode: true });
+    await issueDispenseCommand(db, "r1", { now: NOW });
+    for (const t of [1_500, 6_000, 12_500, 22_000]) await advanceSimDispenses(db, at(t));
+    expect(tables.rentals[0].state).toBe("active");
+    // The simulated release recorded which bank the hardware handed out.
+    expect(tables.rentals[0].power_bank_id).toBeTruthy();
+
+    const scan = await issueReturnCommand(db, "r1", "SIM-0001", { now: at(30_000) });
+    expect(scan).toMatchObject({ ok: true, simulated: true, queued: true });
+    expect(tables.device_commands.some((c) => c.command === "return_slot")).toBe(true);
+
+    await advanceSimDispenses(db, at(33_000)); // return_detected — physical-truth dock
+    expect(tables.rentals[0].state).toBe("returned");
+    expect(tables.rentals[0].returned_at).toBeTruthy();
+
+    await advanceSimDispenses(db, at(40_000)); // return_acknowledged — resolves the command
+    const retCmd = tables.device_commands.find((c) => c.command === "return_slot");
+    expect(retCmd?.status).toBe("acknowledged");
+
+    const simEvents = tables.device_events.filter((e) =>
+      ["return_detected", "return_acknowledged"].includes(e.event_type as string));
+    expect(simEvents.length).toBeGreaterThanOrEqual(2);
+    for (const e of simEvents) expect((e.payload as Row).simulated).toBe(true);
+  });
+
+  it("physical docks get nothing — the kiosk's own sensor reports the return", async () => {
+    const { db, tables } = seed({ testMode: false, rentalState: "active" });
+    tables.rentals[0].power_bank_id = "b1";
+    const res = await issueReturnCommand(db, "r1", "SIM-0001", { now: NOW });
+    expect(res).toMatchObject({ ok: true, simulated: false, queued: false });
+    expect(tables.device_commands).toHaveLength(0);
+  });
+
+  it("a re-scan is a safe no-op — one durable return command per rental", async () => {
+    const { db, tables } = seed({ testMode: true, rentalState: "active" });
+    tables.power_banks.push({ id: "b1", serial: "SIM-BANK-1" });
+    tables.rentals[0].power_bank_id = "b1";
+    const first = await issueReturnCommand(db, "r1", "SIM-0001", { now: NOW });
+    const second = await issueReturnCommand(db, "r1", "SIM-0001", { now: NOW });
+    expect(first.queued).toBe(true);
+    expect(second.queued).toBe(false);
+    expect(tables.device_commands.filter((c) => c.command === "return_slot")).toHaveLength(1);
+  });
+
+  it("refuses rentals that are not returnable or have no bank", async () => {
+    const { db, tables } = seed({ testMode: true, rentalState: "dispense_pending" });
+    expect((await issueReturnCommand(db, "r1", "SIM-0001", { now: NOW })).reason).toBe("state_dispense_pending");
+    tables.rentals[0].state = "active"; // no power_bank_id yet
+    expect((await issueReturnCommand(db, "r1", "SIM-0001", { now: NOW })).reason).toBe("no_bank_assigned");
+    expect(tables.device_commands).toHaveLength(0);
+  });
+
+  it("an unknown station queues nothing", async () => {
+    const { db, tables } = seed({ testMode: true, rentalState: "active" });
+    tables.rentals[0].power_bank_id = "b1";
+    expect((await issueReturnCommand(db, "r1", "NOPE-1", { now: NOW })).reason).toBe("station_not_found");
+    expect(tables.device_commands).toHaveLength(0);
   });
 });
 

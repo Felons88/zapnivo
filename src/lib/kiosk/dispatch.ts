@@ -4,6 +4,7 @@ import {
 } from "./commands";
 import {
   DISPENSE_CONFIRM_TYPES, DISPENSE_FAIL_TYPES, DISPENSE_REQUEST_TYPES, FAULT_TYPES,
+  RETURN_EVENT_TYPES, RETURN_FAIL_TYPES, RETURNABLE_STATES,
 } from "./lifecycle";
 import { ingestKioskEvents, type IngestBody } from "./ingest";
 import { recordLog } from "../observability";
@@ -55,7 +56,7 @@ type SimStageEvent = {
 };
 
 type SimPlan = {
-  scenario: SimScenario;
+  scenario: SimScenario | "return";
   slot: number;
   next_index: number;
   next_at: string;
@@ -166,6 +167,79 @@ export async function issueDispenseCommand(
 }
 
 /**
+ * Simulated dock sequence for a test-kiosk return — mirrors the physical
+ * contract: the slot sensor reports the insertion (`return_detected`, which
+ * lifecycle treats as physical truth and completes the rental through the
+ * bank-correlated return path), then the dock confirms the queued command
+ * (`return_acknowledged` → already_returned + command acknowledged).
+ */
+function buildReturnSimPlan(now: Date, bankSerial: string): SimPlan {
+  const stages: SimStageEvent[] = [
+    { offset_ms: 2500, type: "return_detected", outcome: "detected", slot_state: "charging" },
+    { offset_ms: 6000, type: "return_acknowledged", outcome: "acknowledged", slot_state: "charging" },
+  ];
+  return { scenario: "return", slot: 2, next_index: 0, next_at: new Date(now.getTime() + stages[0].offset_ms).toISOString(), bank_serial: bankSerial, stages };
+}
+
+/**
+ * The customer scanned a return dock. For a TEST-MODE kiosk this queues a
+ * durable `return_slot` command whose sim plan walks the dock sequence through
+ * the real ingest pipeline (the same code a physical dock event hits — bank
+ * serial correlation, rental completion, settlement triggers, notifications).
+ * Physical kiosks get nothing: their own dock sensor emits the return event,
+ * so this is an honest no-op there. Idempotent on `return:{rental.id}`.
+ */
+export async function issueReturnCommand(
+  db: SupabaseClient,
+  rentalId: string,
+  stationId: string,
+  opts: { now?: Date } = {},
+): Promise<{ ok: boolean; simulated?: boolean; queued?: boolean; reason?: string }> {
+  const now = opts.now ?? new Date();
+  const { data: rental } = await db.from("rentals")
+    .select("id,reference,state,power_bank_id")
+    .eq("id", rentalId).maybeSingle();
+  if (!rental) return { ok: false, reason: "rental_not_found" };
+  if (!(RETURNABLE_STATES as readonly string[]).includes(rental.state)) {
+    return { ok: false, reason: `state_${rental.state}` };
+  }
+  if (!rental.power_bank_id) return { ok: false, reason: "no_bank_assigned" };
+
+  const { data: kiosk } = await db.from("kiosks")
+    .select("id,station_id,state,test_mode").eq("station_id", stationId).maybeSingle();
+  if (!kiosk) return { ok: false, reason: "station_not_found" };
+  if (kiosk.test_mode !== true) {
+    // Real dock — its sensor emits the return event itself; nothing to queue.
+    return { ok: true, simulated: false, queued: false };
+  }
+
+  const { data: bank } = await db.from("power_banks")
+    .select("serial").eq("id", rental.power_bank_id).maybeSingle();
+  if (!bank?.serial) return { ok: false, reason: "bank_serial_unknown" };
+
+  const res = await queueCommand(db, {
+    kioskId: kiosk.id as string,
+    command: "return_slot",
+    issuedBy: null,
+    key: `return:${rental.id}`,
+    payload: {
+      rental_id: rental.id, rental_ref: rental.reference,
+      station_id: stationId, sim: buildReturnSimPlan(now, String(bank.serial)),
+    },
+    expectedResponseTypes: [...RETURN_EVENT_TYPES, ...RETURN_FAIL_TYPES],
+    now,
+  });
+  if (res.duplicate) return { ok: true, simulated: true, queued: false };
+  await kioskAudit(db, "kiosk.return_command_issued", kiosk.id as string, {
+    command_id: res.id, rental_id: rental.id, rental_ref: rental.reference, test_mode: true,
+  });
+  recordLog("info", "return_command_issued", {
+    service: "rentals", attrs: { commandId: res.id, rentalId: rental.id, testMode: true },
+  });
+  return { ok: true, simulated: true, queued: true };
+}
+
+/**
  * Advances due stages of test-kiosk sim plans through the REAL ingest pipeline.
  * Each due stage becomes a signed-shape ingest event (simulated: true) so the
  * lifecycle's ack handling, slot projection, exceptions and audit all exercise
@@ -181,7 +255,7 @@ export async function advanceSimDispenses(
   // behaviour is identical against real Supabase and the in-memory test harness.
   const { data: cmds } = await db.from("device_commands")
     .select(COMMAND_SELECT)
-    .eq("command", "dispense")
+    .in("command", ["dispense", "return_slot"])
     .in("status", [...OPEN_COMMAND_STATES])
     .limit(50);
   let advanced = 0, emitted = 0;
@@ -195,17 +269,21 @@ export async function advanceSimDispenses(
     const { data: kiosk } = await db.from("kiosks").select("id,station_id,state").eq("id", cmd.kiosk_id).maybeSingle();
     if (!kiosk) continue;
 
+    const isReturnCmd = cmd.command === "return_slot";
     const body: IngestBody = {
       station_id: String(kiosk.station_id ?? payload.station_id ?? ""),
       events: [{
         type: stage.type,
         slot: sim.slot,
         slot_state: stage.slot_state,
-        power_bank_serial: stage.type === "bank_released" ? sim.bank_serial : undefined,
+        power_bank_serial: stage.type === "bank_released" || RETURN_EVENT_TYPES.has(stage.type) ? sim.bank_serial : undefined,
         // Wire-level correlation id is the idempotency key — the same key a
         // physical kiosk echoes back on its acks.
         command_id: cmd.idempotency_key,
-        rental_ref: (payload.rental_ref as string) ?? undefined,
+        // Dispense acks carry the rental ref; dock events correlate by bank
+        // serial only — that is what the physical sensor reports, and it
+        // exercises the bank→rental resolution path end to end.
+        rental_ref: isReturnCmd ? undefined : (payload.rental_ref as string) ?? undefined,
         outcome: stage.outcome,
         error_code: stage.error_code,
         hw_timestamp: now.toISOString(),
