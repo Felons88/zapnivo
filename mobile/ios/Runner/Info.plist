@@ -19,6 +19,8 @@
 	<string>Zapnivo</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Scan the QR code on a Zapnivo charging station to start a rental.</string>
+	<key>NFCReaderUsageDescription</key>
+	<string>Hold your phone near the tag on a Zapnivo station to start a rental or return a charger.</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>

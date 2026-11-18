@@ -8,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'api.dart';
 import 'services.dart';
+import 'widget_sync.dart';
 
 class AppState extends ChangeNotifier {
   AppState({ZapnivoApi? api}) : api = api ?? ZapnivoApi();
@@ -195,6 +196,8 @@ class AppState extends ChangeNotifier {
       rentalsError = 'Rentals could not be read. Pull to try again.';
     }
     notifyListeners();
+    final active = activeRental;
+    syncHomeWidget(rental: active == null ? 'No active rental' : 'Active · ${active.reference}');
   }
 
   Future<void> refreshTickets() async {

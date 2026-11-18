@@ -10,6 +10,7 @@ import 'api.dart';
 import 'app_state.dart';
 import 'prepaid_card.dart';
 import 'theme.dart';
+import 'widget_sync.dart';
 import 'widgets.dart';
 
 String _expiryLabel(Map<String, dynamic>? card) {
@@ -63,6 +64,8 @@ class _WalletScreenState extends State<WalletScreen> {
     try {
       final result = await AppScope.of(context).api.wallet();
       if (mounted) setState(() => data = result);
+      final cents = (result['balance_cents'] as num?)?.toInt();
+      syncHomeWidget(balance: cents == null ? '—' : '\$${(cents / 100).toStringAsFixed(2)}');
     } on ApiException catch (e) {
       if (mounted) setState(() => error = e.message);
     } finally {

@@ -5,6 +5,10 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Station tags: app reads NDEF station links. Optional — NFC-less phones
+         keep the camera + typed-code paths, so install stays allowed. -->
+    <uses-permission android:name="android.permission.NFC" />
+    <uses-feature android:name="android.hardware.nfc" android:required="false" />
     <application
         android:label="Zapnivo"
         android:name="${applicationName}"
@@ -67,6 +71,13 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/filepaths" />
         </provider>
+        <!-- Home-screen widget: balance + rent/return/wallet shortcuts -->
+        <receiver android:name=".ZapnivoWidgetProvider" android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/zapnivo_widget" />
+        </receiver>
         <receiver android:name="sk.fourq.otaupdate.InstallResultReceiver" android:exported="false">
             <intent-filter>
                 <action android:name="${applicationId}.ACTION_INSTALL_COMPLETE"/>

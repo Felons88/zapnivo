@@ -6,6 +6,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'api.dart';
 import 'app_state.dart';
 import 'checkout.dart';
+import 'nfc.dart';
 import 'qr_parser.dart';
 import 'stations.dart';
 import 'success.dart';
@@ -28,7 +29,31 @@ class ScanScreen extends StatefulWidget {
 
 class _ScanScreenState extends State<ScanScreen> {
   bool handled = false;
+  bool nfcReady = false;
   String? error;
+
+  @override
+  void initState() {
+    super.initState();
+    // NFC runs alongside the camera — a station tag read lands in the same
+    // handle() path as a QR scan or typed code, whichever comes first.
+    StationNfc.isAvailable.then((yes) {
+      if (!yes || !mounted) return;
+      setState(() => nfcReady = true);
+      StationNfc.listen((raw) async {
+        if (handled || !mounted) return;
+        handled = true;
+        await handle(raw);
+        if (mounted) setState(() => handled = false);
+      }).catchError((_) {});
+    });
+  }
+
+  @override
+  void dispose() {
+    StationNfc.stop();
+    super.dispose();
+  }
 
   Future<void> manual() async {
     final c = TextEditingController();
@@ -62,6 +87,8 @@ class _ScanScreenState extends State<ScanScreen> {
       setState(() => error = 'This is not a Zapnivo station code.');
       return;
     }
+    await StationNfc.stop();
+    if (!mounted) return;
     final navigator = Navigator.of(context);
     setState(() => error = null);
     if (widget.mode == ScanMode.returnDock) {
@@ -86,7 +113,9 @@ class _ScanScreenState extends State<ScanScreen> {
           child: Column(
             children: [
               Text(
-                returning ? 'Scan the return dock QR code or station code to complete your return.' : 'Scan the QR code on the station to start your rental.',
+                returning
+                    ? (nfcReady ? 'Scan the return dock code or hold your phone near its NFC tag to complete your return.' : 'Scan the return dock QR code or station code to complete your return.')
+                    : (nfcReady ? 'Scan the station code or hold your phone near its NFC tag to start your rental.' : 'Scan the QR code on the station to start your rental.'),
                 textAlign: TextAlign.center,
                 style: const TextStyle(color: muted, height: 1.4),
               ),

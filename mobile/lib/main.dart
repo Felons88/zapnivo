@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:home_widget/home_widget.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -7,6 +8,7 @@ import 'api.dart';
 import 'app_state.dart';
 import 'auth.dart';
 import 'onboarding.dart';
+import 'rental_flow.dart';
 import 'services.dart';
 import 'settings.dart';
 import 'sign_in.dart';
@@ -14,6 +16,9 @@ import 'support.dart';
 import 'stations.dart';
 import 'tabs.dart';
 import 'theme.dart';
+import 'wallet.dart';
+
+final navigatorKey = GlobalKey<NavigatorState>();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -31,9 +36,32 @@ class _ZapnivoAppState extends State<ZapnivoApp> {
   final state = AppState();
 
   @override
+  void initState() {
+    super.initState();
+    HomeWidget.initiallyLaunchedFromHomeWidget().then(_openWidgetLink);
+    HomeWidget.widgetClicked.listen(_openWidgetLink);
+  }
+
+  @override
   void dispose() {
     state.dispose();
     super.dispose();
+  }
+
+  /// Home-screen widget shortcuts → straight into the matching screen. Only
+  /// honored while signed in; logged-out taps just land on the normal gate.
+  void _openWidgetLink(Uri? uri) {
+    if (uri == null || Supabase.instance.client.auth.currentSession == null) return;
+    final nav = navigatorKey.currentState;
+    if (nav == null) return;
+    switch (uri.host) {
+      case 'rent':
+        nav.push(MaterialPageRoute<void>(builder: (_) => const ScanScreen.rental()));
+      case 'return':
+        nav.push(MaterialPageRoute<void>(builder: (_) => const ScanScreen.returnDock()));
+      case 'wallet':
+        nav.push(MaterialPageRoute<void>(builder: (_) => const WalletScreen()));
+    }
   }
 
   @override
@@ -42,6 +70,7 @@ class _ZapnivoAppState extends State<ZapnivoApp> {
     return MaterialApp(
       title: 'Zapnivo',
       debugShowCheckedModeBanner: false,
+      navigatorKey: navigatorKey,
       theme: buildTheme(),
       builder: (context, child) => AppScope(state: state, child: AppBackdrop(child: child!)),
       home: const AppGate(),

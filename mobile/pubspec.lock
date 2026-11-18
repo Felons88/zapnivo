@@ -485,6 +485,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.2.8"
+  home_widget:
+    dependency: "direct main"
+    description:
+      name: home_widget
+      sha256: "1dbfdfbb3b47de24639adfba352050d85d66af112b9cc3ec5bf7627a7813abcb"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.10.0"
   hooks:
     dependency: transitive
     description:
@@ -653,6 +661,22 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "7.5.0"
+  ndef_record:
+    dependency: transitive
+    description:
+      name: ndef_record
+      sha256: fc889b2e0c362aad8129596669cc62e401e14493f64718d4883f7f11bed01798
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.5.0"
+  nfc_manager:
+    dependency: "direct main"
+    description:
+      name: nfc_manager
+      sha256: "72a331ea179d1dbe16533aa3fe7f7d2d43600386e39fbbf9592e4c254b3822ce"
+      url: "https://pub.dev"
+    source: hosted
+    version: "4.4.0"
   objective_c:
     dependency: transitive
     description:
