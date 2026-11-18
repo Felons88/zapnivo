@@ -44,6 +44,19 @@ export default async function Customer360({ params, searchParams }: { params: Pr
   const isAdmin = user.role === "admin";
   const db = serviceClient();
   const c = db ? await loadCustomer360(db, email) : null;
+  const openTickets = c?.tickets.filter((t) => !["resolved", "closed"].includes(t.state)) ?? [];
+  const rentalsOut = c?.rentals.filter((r) => isOpen(r)) ?? [];
+  const pendingRefunds = c?.refundRequests.filter((r) => ["requested", "approved", "failed"].includes(r.status)) ?? [];
+  const openDisputes = c?.disputes.filter((d) => !d.resolved_at) ?? [];
+  const latestTicket = openTickets[0];
+  const latestRental = rentalsOut[0];
+  const nextStep = latestTicket
+    ? { title: "Continue the open conversation", detail: `${latestTicket.ticket_number} · ${latestTicket.category} · ${latestTicket.state.replace(/_/g, " ")}`, href: `/admin/support/${latestTicket.ticket_number}`, action: "Open ticket" }
+    : latestRental
+      ? { title: "Review the rental still in progress", detail: `${latestRental.reference} · ${latestRental.state.replace(/_/g, " ")}`, href: "#customer-rentals", action: "Review rental" }
+      : pendingRefunds[0]
+        ? { title: "Review the refund request", detail: `${pendingRefunds[0].rental_ref} · ${pendingRefunds[0].status}`, href: "#customer-support", action: "Review request" }
+        : { title: "No active case on this record", detail: "Review recent activity or open a new ticket to document a customer issue.", href: "#customer-actions", action: "Open a ticket" };
   const activity = c ? [
     ...c.tickets.map((t) => ({ id: `ticket-${t.id}`, at: t.created_at, title: `Ticket ${t.ticket_number} opened`, detail: `${t.category} · ${t.state.replace(/_/g, " ")}`, href: `/admin/support/${t.ticket_number}` })),
     ...c.rentals.map((r) => ({ id: `rental-${r.id}`, at: r.created_at, title: `Rental ${r.reference}`, detail: `${r.state.replace(/_/g, " ")} · ${r.kiosks?.venues?.name ?? r.kiosks?.station_id ?? "Station unknown"}`, href: "#customer-rentals" })),
@@ -66,23 +79,28 @@ export default async function Customer360({ params, searchParams }: { params: Pr
             </div>
           )}
 
-          <p><Link href="/admin/customers" className="text-sm font-bold text-graphite hover:text-ink">← New search</Link></p>
-          <nav aria-label="Customer record sections" className="flex gap-2 overflow-x-auto pb-1">
-            {[["Overview", "customer-overview"], ["Wallet", "customer-wallet"], ["Activity", "customer-activity"], ["Actions", "customer-actions"], ["Rentals", "customer-rentals"], ["Support", "customer-support"], ["Communications", "customer-comms"]].map(([label, target]) =>
-              <a key={target} href={`#${target}`} className="shrink-0 rounded-lg border border-mist bg-white px-4 py-2 text-xs font-bold text-forest hover:bg-lime/20">{label}</a>)}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <Link href="/admin/customers" className="text-sm font-bold text-graphite hover:text-ink">← Customer directory</Link>
+            <span className="text-xs font-bold uppercase tracking-widest text-graphite">Staff only · live customer record</span>
+          </div>
+          <nav aria-label="Customer record sections" className="sticky top-16 z-20 flex gap-1 overflow-x-auto rounded-xl border border-mist bg-white/95 p-1.5 shadow-sm backdrop-blur">
+            {[["Overview", "customer-overview"], ["Resolve", "customer-resolution"], ["Activity", "customer-activity"], ["Rentals", "customer-rentals"], ["Support", "customer-support"], ["Wallet", "customer-wallet"], ["Notes & actions", "customer-actions"], ["Messages", "customer-comms"]].map(([label, target]) =>
+              <a key={target} href={`#${target}`} className="shrink-0 rounded-lg px-4 py-2 text-xs font-bold text-forest hover:bg-lime/50 focus-visible:bg-lime">{label}</a>)}
           </nav>
 
           {/* ── Identity ─────────────────────────────────────────── */}
-          <section id="customer-overview" className="scroll-mt-40 rounded-2xl border border-mist bg-white p-6 shadow-sm">
+          <section id="customer-overview" className="scroll-mt-40 overflow-hidden rounded-2xl bg-[#142126] text-white shadow-sm">
+            <div className="border-b border-white/10 px-6 py-4 text-[10px] font-extrabold uppercase tracking-[.18em] text-lime">Customer intelligence / Unified record</div>
+            <div className="p-6 md:p-8">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
-                <p className="eyebrow text-forest">Customer 360</p>
-                <h2 className="mt-1 font-display text-2xl font-bold">{c.names[0] ?? c.email}</h2>
-                <p className="mt-1 text-sm font-semibold">{c.email}</p>
-                {c.phones.length > 0 && <p className="mt-0.5 text-sm text-graphite">{c.phones.join(" · ")}</p>}
-                {c.names.length > 1 && <p className="mt-0.5 text-xs text-graphite">Also seen as: {c.names.slice(1).join(", ")}</p>}
+                <p className="eyebrow text-lime">Customer profile</p>
+                <h2 className="mt-2 font-display text-3xl font-bold tracking-tight md:text-4xl">{c.names[0] ?? c.email}</h2>
+                <p className="mt-3 text-sm font-semibold text-[#dbe7e3]">{c.email}</p>
+                {c.phones.length > 0 && <p className="mt-0.5 text-sm text-[#b7c8c2]">{c.phones.join(" · ")}</p>}
+                {c.names.length > 1 && <p className="mt-2 text-xs text-[#b7c8c2]">Also seen as: {c.names.slice(1).join(", ")}</p>}
               </div>
-              <div className="text-right text-xs text-graphite">
+              <div className="text-right text-xs text-[#b7c8c2]">
                 {c.profile ? (
                   <>
                     <Pill tone="lime">account · {c.profile.role}</Pill>
@@ -93,6 +111,34 @@ export default async function Customer360({ params, searchParams }: { params: Pr
                   <><Pill tone="mist">guest — no account</Pill><p className="mt-2 max-w-[220px]">No login on file; history comes from receipts, tickets and payment records.</p></>
                 )}
               </div>
+            </div>
+            <div className="mt-7 flex flex-wrap gap-2 border-t border-white/10 pt-5 text-xs font-bold">
+              <span className="rounded-full bg-white/10 px-3 py-1.5">{c.rentals.length} rentals</span>
+              <span className="rounded-full bg-white/10 px-3 py-1.5">{c.tickets.length} conversations</span>
+              <span className="rounded-full bg-white/10 px-3 py-1.5">{c.notes.length} internal notes</span>
+              {c.incidents.length > 0 && <span className="rounded-full bg-gold/20 px-3 py-1.5 text-gold">{c.incidents.length} incident reports</span>}
+            </div>
+            </div>
+          </section>
+
+          <section id="customer-resolution" aria-label="Issue resolution" className="scroll-mt-40 grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(280px,.65fr)]">
+            <div className="rounded-2xl border border-[#cddbcf] bg-[#eaf2e9] p-6 md:p-7">
+              <p className="eyebrow text-forest">Resolution desk</p>
+              <h2 className="mt-2 text-2xl font-bold tracking-tight">{nextStep.title}</h2>
+              <p className="mt-2 text-sm text-graphite">{nextStep.detail}</p>
+              <div className="mt-5 flex flex-wrap gap-2">
+                <Link href={nextStep.href} className="inline-flex min-h-10 items-center rounded-lg bg-ink px-4 text-sm font-bold text-white hover:bg-forest">{nextStep.action} →</Link>
+                <a href="#customer-activity" className="inline-flex min-h-10 items-center rounded-lg border border-[#b9c9ba] bg-white px-4 text-sm font-bold text-ink hover:bg-lime/30">Review timeline</a>
+              </div>
+            </div>
+            <div className="rounded-2xl border border-mist bg-white p-6 md:p-7">
+              <p className="eyebrow text-forest">Case signals</p>
+              <dl className="mt-4 space-y-3 text-sm">
+                <div className="flex justify-between gap-3 border-b border-mist pb-2"><dt>Open tickets</dt><dd className="font-bold">{openTickets.length}</dd></div>
+                <div className="flex justify-between gap-3 border-b border-mist pb-2"><dt>Rentals in progress</dt><dd className="font-bold">{rentalsOut.length}</dd></div>
+                <div className="flex justify-between gap-3 border-b border-mist pb-2"><dt>Refunds needing review</dt><dd className="font-bold">{pendingRefunds.length}</dd></div>
+                <div className="flex justify-between gap-3"><dt>Open disputes</dt><dd className="font-bold">{openDisputes.length}</dd></div>
+              </dl>
             </div>
           </section>
 

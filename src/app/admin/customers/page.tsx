@@ -31,12 +31,13 @@ export default async function Customers({ searchParams }: { searchParams: Promis
         <EmptyCard title="Customer data not connected">Connect Supabase to search customer accounts.</EmptyCard>
       ) : (
         <div className="space-y-6">
-          <section className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
-            <h2 className="font-display text-lg font-bold">Find a customer</h2>
-            <p className="mt-1 text-sm text-graphite">Search by name, email, phone number, or rental reference (e.g. ZR-1A2B3C4D). Phone numbers match in any format.</p>
-            <form method="get" action="/admin/customers" className="mt-4 flex gap-3">
+          <section className="rounded-2xl bg-[#142126] p-6 text-white shadow-sm md:p-8">
+            <p className="eyebrow text-lime">Customer intelligence</p>
+            <h2 className="mt-2 font-display text-3xl font-bold tracking-tight">Find the whole story.</h2>
+            <p className="mt-2 max-w-2xl text-sm text-[#b7c8c2]">Search by name, email, phone number, or rental reference. Guest records appear alongside customer accounts.</p>
+            <form method="get" action="/admin/customers" className="mt-6 flex flex-wrap gap-3 rounded-xl bg-white p-2 text-ink sm:flex-nowrap">
               <CustomerSearchBox initial={q} autoFocus />
-              <button className="min-h-11 rounded-full bg-ink px-6 text-sm font-bold text-white">Search</button>
+              <button className="min-h-11 rounded-lg bg-lime px-6 text-sm font-bold text-ink">Search</button>
             </form>
           </section>
 

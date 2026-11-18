@@ -113,6 +113,17 @@ main section :is(.rounded-xl,.rounded-lg).bg-white:hover { box-shadow: 0 28px 65
 .prose-z p { margin: .75rem 0; }
 .prose-z ul { list-style: disc; padding-left: 1.25rem; margin: .75rem 0; }
 
+/* Internal workspace surfaces and dense data views. */
+.admin-console { font-feature-settings: "tnum"; }
+.admin-console main > * { min-width: 0; }
+.admin-console main table { border-collapse: separate; border-spacing: 0; }
+.admin-console main th { white-space: nowrap; }
+.admin-console main tbody tr { transition: background-color .16s ease; }
+.admin-console main :is(input, select, textarea) { accent-color: #142126; }
+.admin-console main :is(input, select, textarea):focus-visible { outline: 2px solid #557665; outline-offset: 2px; }
+.admin-console aside nav::-webkit-scrollbar { width: 6px; }
+.admin-console aside nav::-webkit-scrollbar-thumb { background: #3c5359; border-radius: 10px; }
+
 /* System console: shared treatment for every /system view. */
 .system-console {
   --radius-xl: 14px;

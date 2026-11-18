@@ -3,7 +3,6 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { authConfigured, devAuth, getSessionUser, isStaff, SESSION_COOKIE } from "@/lib/auth";
-import { Logo } from "./Logo";
 import { LogoutButton } from "./LogoutButton";
 import { LiveSync } from "./LiveSync";
 import { Notice } from "./ui";
@@ -97,18 +96,18 @@ const NAV_ITEMS = {
 export const ADMIN_TOOL_INDEX = Object.values(NAV_ITEMS).map(({ group, label, href }) => ({ group, label, href }));
 
 const GROUPS = ["Customer care", "Network", "Partners", "Commerce", "Growth", "Finance", "Intelligence", "System"] as const;
-const PINNED: AdminNavKey[] = ["dashboard", "search", "inbox", "customers", "fleet", "partners", "finance"];
+const PINNED: AdminNavKey[] = ["dashboard", "inbox", "customers", "search"];
 
-function NavLink({ item, active }: { item: (typeof NAV_ITEMS)[AdminNavKey]; active: boolean }) {
+function NavLink({ item, active, mobile = false }: { item: (typeof NAV_ITEMS)[AdminNavKey]; active: boolean; mobile?: boolean }) {
   return (
     <Link
       href={item.href}
       aria-current={active ? "page" : undefined}
-      className={`flex min-h-10 items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-semibold transition-colors ${
-        active ? "bg-lime text-ink" : "text-graphite hover:bg-mist hover:text-ink"
+      className={`flex min-h-10 items-center gap-3 rounded-xl px-3 py-2 text-[13px] font-semibold transition-colors ${
+        active ? "bg-lime text-ink shadow-sm" : mobile ? "text-graphite hover:bg-mist hover:text-ink" : "text-[#a7b4ba] hover:bg-white/10 hover:text-white"
       }`}
     >
-      <span className={active ? "text-ink" : "text-silver"}>{item.icon}</span>
+      <span className={active ? "text-ink" : mobile ? "text-graphite" : "text-[#7f929c]"}>{item.icon}</span>
       {item.label}
     </Link>
   );
@@ -146,7 +145,7 @@ export async function AdminGate({ title, nav, children }: { title: string; nav: 
     ? { text: cmsText(cms, "announcement_text", ""), href: cmsText(cms, "announcement_href", "") || undefined }
     : null;
   return (
-    <div className="min-h-screen bg-[#f2f1fa] text-ink">
+    <div className="admin-console min-h-screen bg-[#f3f5f2] text-ink">
       <LiveSync channel="admin-live" tables={LIVE_TABLES} intervalMs={30000} accessToken={accessToken} />
       {devAuth() && (
         <div className="relative z-50 bg-gold px-4 py-2 text-center text-xs font-bold text-ink">
@@ -156,25 +155,25 @@ export async function AdminGate({ title, nav, children }: { title: string; nav: 
       )}
 
       {/* Sidebar (desktop) */}
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 flex-col border-r border-mist bg-white lg:flex">
-        <div className="flex items-center justify-between border-b border-mist px-6 py-4">
-          <Link href="/admin" aria-label="Zapnivo internal"><Logo className="text-[1.25rem]!" /></Link>
-          <span className="rounded-full bg-forest px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-widest text-lime">Internal</span>
+      <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 flex-col bg-[#142126] text-white lg:flex">
+        <div className="flex items-center justify-between border-b border-white/10 px-6 py-5">
+          <Link href="/admin" aria-label="Zapnivo internal"><span className="text-xl font-black tracking-tight text-white">zapnivo<span className="text-lime">.</span></span></Link>
+          <span className="rounded-md border border-lime/30 px-2 py-1 text-[9px] font-extrabold uppercase tracking-widest text-lime">Ops</span>
         </div>
-        <nav aria-label="Console" className="min-h-0 flex-1 overflow-y-auto px-3 py-4">
-          <p className="eyebrow px-3 pb-2 text-[10px] text-silver">Workspace</p>
+        <nav aria-label="Console" className="min-h-0 flex-1 overflow-y-auto px-3 py-5">
+          <p className="eyebrow px-3 pb-3 text-[10px] text-[#778e97]">Workspaces</p>
           <div className="space-y-0.5">
             {PINNED.map((key) => <NavLink key={key} item={NAV_ITEMS[key]} active={nav === key} />)}
           </div>
-          <div className="my-5 border-t border-mist" />
-          <p className="eyebrow px-3 pb-2 text-[10px] text-silver">Programs & tools</p>
+          <div className="my-5 border-t border-white/10" />
+          <p className="eyebrow px-3 pb-2 text-[10px] text-[#778e97]">Programs &amp; tools</p>
           <div className="space-y-1">
             {GROUPS.map((g) => {
               const items = all.filter(([key, item]) => item.group === g && !PINNED.includes(key));
               return (
-                <details key={g} open={items.some(([key]) => key === nav)} className="group rounded-lg open:bg-paper">
-                  <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between rounded-lg px-3 text-sm font-bold text-forest hover:bg-mist/60 [&::-webkit-details-marker]:hidden">
-                    {g}<span aria-hidden className="text-lg leading-none text-silver transition-transform group-open:rotate-90">›</span>
+                <details key={g} open={items.some(([key]) => key === nav)} className="group rounded-xl open:bg-white/5">
+                  <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between rounded-lg px-3 text-xs font-bold uppercase tracking-wider text-[#9eb0b6] hover:bg-white/10 hover:text-white [&::-webkit-details-marker]:hidden">
+                    {g}<span aria-hidden className="text-lg leading-none text-[#77909a] transition-transform group-open:rotate-90">›</span>
                   </summary>
                   <div className="space-y-0.5 px-1 pb-2">{items.map(([key, item]) => <NavLink key={key} item={item} active={nav === key} />)}</div>
                 </details>
@@ -182,16 +181,16 @@ export async function AdminGate({ title, nav, children }: { title: string; nav: 
             })}
           </div>
         </nav>
-        <div className="border-t border-mist p-3">
-          <div className="rounded-xl bg-mist/60 p-3">
-            <p className="truncate text-sm font-bold">{user.email}</p>
+        <div className="border-t border-white/10 p-3">
+          <div className="rounded-xl bg-white/5 p-3">
+            <p className="truncate text-sm font-bold text-white">{user.email}</p>
             <div className="mt-1.5 flex items-center justify-between gap-2">
-              <p className="text-xs font-bold uppercase tracking-wider text-graphite">{user.role}</p>
-              <LogoutButton light />
+              <p className="text-xs font-bold uppercase tracking-wider text-[#9eb0b6]">{user.role}</p>
+              <LogoutButton />
             </div>
           </div>
-          <Link href={SITE.url} className="mt-2 flex items-center justify-center gap-1.5 py-1 text-xs font-bold text-graphite hover:text-ink">View public site ↗</Link>
-          {user.role === "admin" && <Link href="/system" className="mt-1 flex items-center justify-center gap-1.5 py-1 text-xs font-bold text-graphite hover:text-ink">System console ↗</Link>}
+          <Link href={SITE.url} className="mt-2 flex items-center justify-center gap-1.5 py-1 text-xs font-bold text-[#9eb0b6] hover:text-white">View public site ↗</Link>
+          {user.role === "admin" && <Link href="/system" className="mt-1 flex items-center justify-center gap-1.5 py-1 text-xs font-bold text-[#9eb0b6] hover:text-white">System console ↗</Link>}
         </div>
       </aside>
 
@@ -203,9 +202,9 @@ export async function AdminGate({ title, nav, children }: { title: string; nav: 
           </div>
         ) : null}
         {/* Topbar */}
-        <header className="sticky top-0 z-30 border-b border-mist bg-[#f2f1fa]/85 backdrop-blur">
+        <header className="sticky top-0 z-30 border-b border-[#e1e7e2] bg-[#f9faf8]/95 backdrop-blur">
           <div className="flex h-16 items-center justify-between gap-4 px-5 md:px-8">
-            <h1 className="truncate font-display text-xl font-bold tracking-tight">{title}</h1>
+            <div className="min-w-0"><p className="text-[10px] font-extrabold uppercase tracking-[.16em] text-[#72837b]">Zapnivo / Internal</p><h1 className="truncate font-display text-xl font-bold tracking-tight">{title}</h1></div>
             <div className="flex items-center gap-3">
               <form action="/admin/search" className="hidden items-center gap-2 rounded-lg border border-mist bg-white px-3 shadow-sm sm:flex">
                 <span className="text-silver">{icons.search}</span>
@@ -225,12 +224,12 @@ export async function AdminGate({ title, nav, children }: { title: string; nav: 
                 Browse programs <span aria-hidden className="text-xl transition-transform group-open:rotate-90">›</span>
               </summary>
               <div className="max-h-[65vh] space-y-3 overflow-y-auto pb-4">
-                <div className="grid grid-cols-2 gap-1">{PINNED.map((key) => <NavLink key={key} item={NAV_ITEMS[key]} active={nav === key} />)}</div>
+                <div className="grid grid-cols-2 gap-1">{PINNED.map((key) => <NavLink key={key} item={NAV_ITEMS[key]} active={nav === key} mobile />)}</div>
                 {GROUPS.map((g) => {
                   const items = all.filter(([key, item]) => item.group === g && !PINNED.includes(key));
                   return <details key={g} open={items.some(([key]) => key === nav)} className="rounded-lg bg-white p-2">
                     <summary className="cursor-pointer px-2 py-1 text-xs font-extrabold uppercase tracking-wider text-graphite">{g}</summary>
-                    <div className="grid grid-cols-2 gap-1 pt-1">{items.map(([key, item]) => <NavLink key={key} item={item} active={nav === key} />)}</div>
+                    <div className="grid grid-cols-2 gap-1 pt-1">{items.map(([key, item]) => <NavLink key={key} item={item} active={nav === key} mobile />)}</div>
                   </details>;
                 })}
               </div>
@@ -242,7 +241,7 @@ export async function AdminGate({ title, nav, children }: { title: string; nav: 
           </form>
         </header>
 
-        <main className="mx-auto max-w-[1440px] px-5 py-8 md:px-8">{children}</main>
+        <main className="mx-auto max-w-[1600px] px-5 py-7 md:px-8 xl:px-10">{children}</main>
       </div>
     </div>
   );
