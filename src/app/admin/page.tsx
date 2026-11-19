@@ -17,6 +17,25 @@ import { StatTile, FunnelChart, LeaderboardChart } from "@/components/Charts";
 
 export const metadata: Metadata = { title: "Operations workspace", robots: { index: false, follow: false } };
 
+const FLOWS = [
+  {
+    n: "01", title: "Resolve a case", href: "/admin/support?view=person", cta: "Open the queue",
+    steps: ["Triage the priority queue", "Read the customer 360", "Reply, escalate, or resolve"],
+  },
+  {
+    n: "02", title: "Find a customer", href: "/admin/customers", cta: "Search a person",
+    steps: ["Name, phone, or reference", "Open the full record", "Act: credit, rental, or ticket"],
+  },
+  {
+    n: "03", title: "Check the network", href: "/admin/fleet?state=attention", cta: "Review attention",
+    steps: ["Stations needing attention", "Open the station timeline", "Run a fleet command"],
+  },
+  {
+    n: "04", title: "Move the money", href: "/admin/finance", cta: "Open finance",
+    steps: ["Payouts scheduled", "Disputes and refunds", "Revenue assurance"],
+  },
+] as const;
+
 function PriorityBadge({ p }: { p: Ticket["priority"] }) {
   const c = p === "urgent" ? "bg-red-500" : p === "high" ? "bg-orange-500" : p === "normal" ? "bg-gold" : "bg-silver";
   return <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${c}`} aria-hidden />;
@@ -118,6 +137,28 @@ export default async function AdminDashboard() {
           </Link>
         </section>
 
+        {/* ── User flows — the four jobs this console exists for ───────────── */}
+        <section aria-label="Workflows" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {FLOWS.map((f) => (
+            <Link key={f.href} href={f.href} className="group flex flex-col rounded-xl border border-[#dfe6df] bg-white p-4 transition hover:-translate-y-0.5 hover:border-forest/40 hover:shadow">
+              <span className="flex items-center justify-between">
+                <span className="text-[10px] font-extrabold uppercase tracking-widest text-forest">{f.n}</span>
+                <span className="text-sm font-bold text-forest transition group-hover:translate-x-0.5" aria-hidden>↗</span>
+              </span>
+              <span className="mt-2 block text-base font-bold leading-tight">{f.title}</span>
+              <ol className="mt-3 flex-1 space-y-1.5">
+                {f.steps.map((s, i) => (
+                  <li key={s} className="flex items-start gap-2 text-xs text-graphite">
+                    <span className="mt-px grid h-4 w-4 shrink-0 place-items-center rounded-full bg-mist text-[9px] font-extrabold text-graphite">{i + 1}</span>
+                    {s}
+                  </li>
+                ))}
+              </ol>
+              <span className="mt-3 inline-flex min-h-9 items-center justify-center rounded-lg bg-ink px-3 text-xs font-bold text-white group-hover:bg-forest">{f.cta}</span>
+            </Link>
+          ))}
+        </section>
+
         {/* ── KPI overview — two rows on wide screens ────────────────────── */}
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-8">
           {/* Customer care */}
@@ -210,30 +251,6 @@ export default async function AdminDashboard() {
           />
         </div>
 
-        {/* ── Daily actions (kept from original) ──────────────────────────── */}
-        <section aria-label="Workflows" className="grid gap-2 sm:grid-cols-2 2xl:grid-cols-4">
-          {[
-            { title: "Resolve a customer issue", detail: "Priority queue and case history", href: "/admin/support?view=person" },
-            { title: "Find a customer", detail: "Person, rental, ticket, or reference", href: "/admin/search" },
-            { title: "Investigate a station", detail: "Fleet health and slot readiness", href: "/admin/fleet?state=attention" },
-            { title: "Handle incoming contact", detail: "Email and SMS conversations", href: "/admin/receptionist" },
-          ].map((route, i) => (
-            <Link
-              key={route.href}
-              href={route.href}
-              className="group flex items-center gap-3 rounded-xl border border-[#dfe6df] bg-white px-4 py-3 transition hover:-translate-y-px hover:shadow"
-            >
-              <span className="text-xs font-extrabold tracking-wider text-forest">{"0" + (i + 1)}</span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-bold">{route.title}</span>
-                <span className="block truncate text-xs text-graphite">{route.detail}</span>
-              </span>
-              <span className="text-forest transition group-hover:translate-x-0.5" aria-hidden>
-                ↗
-              </span>
-            </Link>
-          ))}
-        </section>
       </div>
     </AdminGate>
   );
