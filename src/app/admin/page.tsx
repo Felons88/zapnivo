@@ -8,12 +8,12 @@ import { computeMetrics } from "@/lib/helpdesk/metrics";
 import { defaultCtx } from "@/lib/helpdesk/service";
 import { slaStatus } from "@/lib/helpdesk/sla";
 import type { Ticket } from "@/lib/helpdesk/types";
-import { loadAdminInsights, journeyFunnel } from "@/lib/admin-insights";
+import { loadAdminInsights } from "@/lib/admin-insights";
 import { serviceClient } from "@/lib/supabase";
 import { fetchFinanceData, periodWindow, computeSummary } from "@/lib/admin-finance";
 import { fmt } from "@/lib/pricing";
 import TrendChart from "@/components/TrendChart";
-import { StatTile, Panel, Rows, FunnelChart, LeaderboardChart } from "@/components/Charts";
+import { StatTile, FunnelChart, LeaderboardChart } from "@/components/Charts";
 
 export const metadata: Metadata = { title: "Operations workspace", robots: { index: false, follow: false } };
 
@@ -61,10 +61,7 @@ export default async function AdminDashboard() {
   const today = new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric" }).format(now);
 
   // Rental journey funnel from insights (last 30 days) — counts from business_events
-  const funnel = insights?.funnel ?? journeyFunnel(
-    new Map(events.map((e) => [e.name, 0])), // empty
-  );
-  const funnelSteps = funnel.map((f) => ({ label: f.label, count: f.count, convPct: f.convPct }));
+  const funnelSteps = (insights?.funnel ?? []).map((f) => ({ label: f.label, count: f.count, convPct: f.convPct }));
 
   // Station leaderboard (top 10 + flagged bottom decile)
   const stations = insights?.stations ?? null;
@@ -90,8 +87,9 @@ export default async function AdminDashboard() {
 
   const capturedToday = stats?.revenueTodayCents;
   const capturedTodayCount = stats?.revenueTodayCount;
-  const refundsAwaiting = metrics?.refunds.requested ?? 0;
+  const refundsAwaiting = metrics?.refunds.requested ?? null;
   const disputesOpen = stats?.disputesOpen;
+  const money = (v: number | null | undefined) => (v == null ? "—" : fmt(v));
 
   return (
     <AdminGate title="Operations workspace" nav="dashboard">
@@ -120,8 +118,8 @@ export default async function AdminDashboard() {
           </Link>
         </section>
 
-        {/* ── KPI overview — four domain groups ──────────────────────────── */}
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {/* ── KPI overview — two rows on wide screens ────────────────────── */}
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-8">
           {/* Customer care */}
           <StatTile label="Needs a person" value={metrics?.needsHuman ?? "—"} href="/admin/support?view=person" tone="urgent" />
           <StatTile label="Unassigned" value={metrics?.unassigned ?? "—"} href="/admin/support?view=unassigned" />
@@ -136,120 +134,68 @@ export default async function AdminDashboard() {
 
           {/* Commerce */}
           <StatTile label="Rentals today" value={stats?.rentalsToday ?? "—"} href="/admin/rentals" />
-          <StatTile label="Revenue captured today" value={capturedToday == null ? "—" : fmt(capturedToday)} sub={capturedTodayCount == null ? "" : `${capturedTodayCount} txn`} href="/admin/finance" />
-          <StatTile label="Payouts scheduled" value={financeSummary?.payouts.scheduledCents ? fmt(financeSummary.payouts.scheduledCents) : "—"} sub={financeSummary?.payouts.scheduledCount ? `${financeSummary.payouts.scheduledCount} pending` : ""} href="/admin/payouts" />
-          <StatTile label="Refunds awaiting decision" value={refundsAwaiting} href="/admin/support/refunds" tone={refundsAwaiting > 0 ? "urgent" : "default"} />
+          <StatTile label="Revenue captured today" value={money(capturedToday)} sub={capturedTodayCount == null ? "" : `${capturedTodayCount} txn`} href="/admin/finance" />
+          <StatTile label="Payouts scheduled" value={money(financeSummary?.payouts.scheduledCents)} sub={financeSummary?.payouts.scheduledCount ? `${financeSummary.payouts.scheduledCount} pending` : ""} href="/admin/payouts" />
+          <StatTile label="Refunds awaiting decision" value={refundsAwaiting ?? "—"} href="/admin/support/refunds" tone={(refundsAwaiting ?? 0) > 0 ? "urgent" : "default"} />
 
           {/* Partners & finance */}
-          <StatTile label="Applications pending" value={pick(stats?.applicationStates, "pending") ?? "—"} href="/admin/partners" />
-          <StatTile label="Active venues" value={pick(stats?.venues, "true") ?? "—"} href="/admin/partners/manage" />
+          <StatTile label="Applications pending" value={stats?.applicationStates == null ? "—" : pick(stats.applicationStates, "pending")} href="/admin/partners" />
+          <StatTile label="Active venues" value={stats?.venues == null ? "—" : pick(stats.venues, "true")} href="/admin/partners/manage" />
           <StatTile label="Maintenance visits" value={stats?.maintenanceVisits ?? "—"} href="/admin/vending-ops" />
-          <StatTile label="Disputes open" value={disputesOpen ?? "—"} href="/admin/disputes" tone={disputesOpen && disputesOpen > 0 ? "urgent" : "default"} />
+          <StatTile label="Disputes open" value={disputesOpen ?? "—"} href="/admin/disputes" tone={(disputesOpen ?? 0) > 0 ? "urgent" : "default"} />
         </div>
 
-        {/* ── Main grid: trend + queue on left, panels on right ─────────────── */}
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
-          <div className="space-y-4">
-            {/* Trend chart */}
-            {days.length > 0 ? (
-              <TrendChart
-                title="Last 14 days — rentals & tickets"
-                subtitle="Rentals started (blue) vs support tickets created (orange)"
-                days={days}
-                series={series}
-              />
-            ) : (
-              <section aria-label="Activity trend" className="rounded-xl border border-[#dfe6df] bg-white px-4 py-6 text-center text-graphite">
-                <p>No rental data yet — the chart renders when rentals begin.</p>
-              </section>
-            )}
-
-            {/* Priority queue */}
-            <section aria-labelledby="queue-title" className="overflow-hidden rounded-xl border border-[#dfe6df] bg-white">
-              <div className="flex items-center justify-between gap-3 border-b border-mist px-4 py-3">
-                <h2 id="queue-title" className="text-sm font-extrabold uppercase tracking-wider text-ink">
-                  Priority case queue
-                </h2>
-                <Link href="/admin/support?view=person" className="text-xs font-bold text-forest hover:underline">
-                  Full inbox →
-                </Link>
-              </div>
-              {!ctx ? (
-                <p className="px-4 py-8 text-sm text-graphite">Support data is unavailable in this environment.</p>
-              ) : queue.length === 0 ? (
-                <p className="px-4 py-8 text-sm text-graphite">No unassigned, urgent, or breached cases in the current queue.</p>
-              ) : (
-                <ul className="divide-y divide-mist">
-                  {queue.map((t) => (
-                    <li key={t.id}>
-                      <Link href={"/admin/support/" + t.number} className="group flex items-center gap-3 px-4 py-2.5 hover:bg-[#f4f8ef]">
-                        <PriorityBadge p={t.priority} />
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-sm font-bold">{t.subject || t.category}</span>
-                          <span className="block truncate text-xs text-graphite">{t.number} · {t.name} · {t.queue}</span>
-                        </span>
-                        <span className="hidden rounded-full bg-mist px-2 py-0.5 text-[11px] font-bold capitalize text-graphite sm:block">
-                          {t.state.replace(/_/g, " ")}
-                        </span>
-                        <span className="text-sm font-bold text-forest transition group-hover:translate-x-1" aria-hidden>
-                          →
-                        </span>
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              )}
+        {/* ── Main grid: trend + queue side by side ─────────────────────────── */}
+        <div className="grid gap-4 xl:grid-cols-2">
+          {days.length > 0 ? (
+            <TrendChart
+              title="Last 14 days — rentals & tickets"
+              subtitle="Rentals started (blue) vs support tickets created (orange)"
+              days={days}
+              series={series}
+            />
+          ) : (
+            <section aria-label="Activity trend" className="rounded-xl border border-[#dfe6df] bg-white px-4 py-6 text-center text-graphite">
+              <p>No rental data yet — the chart renders when rentals begin.</p>
             </section>
-          </div>
+          )}
 
-          {/* Right column — domain panels */}
-          <div className="grid gap-4">
-            <Panel title="Network care" action={{ href: "/admin/fleet", label: "All stations" }}>
-              <Rows
-                items={[
-                  { label: "Online", value: online, href: "/admin/fleet" },
-                  { label: "Slots ready", value: slots, href: "/admin/fleet" },
-                  { label: "Power banks", value: stats?.powerBanks ?? "—", href: "/admin/inventory" },
-                  { label: "Rentals live", value: openRentals, href: "/admin/rentals" },
-                  { label: "Fleet attention", value: stats?.kioskStates ? String(pick(stats.kioskStates, "offline") + pick(stats.kioskStates, "stale")) : "—", href: "/admin/fleet?state=attention" },
-                ]}
-              />
-            </Panel>
-
-            <Panel title="Commerce" action={{ href: "/admin/finance", label: "Full ledger" }}>
-              <Rows
-                items={[
-                  { label: "Rentals today", value: stats?.rentalsToday ?? "—", href: "/admin/rentals" },
-                  { label: "Captured today", value: capturedToday == null ? "—" : fmt(capturedToday), href: "/admin/finance" },
-                  { label: "Refunds awaiting decision", value: refundsAwaiting, href: "/admin/support/refunds", tone: refundsAwaiting > 0 ? "urgent" : undefined },
-                  { label: "Payouts scheduled", value: financeSummary?.payouts.scheduledCents ? fmt(financeSummary.payouts.scheduledCents) : "—", href: "/admin/payouts" },
-                ]}
-              />
-            </Panel>
-
-            <Panel title="Partners" action={{ href: "/admin/partners", label: "Partner workspace" }}>
-              <Rows
-                items={[
-                  { label: "Applications pending", value: pick(stats?.applicationStates, "pending") ?? "—", href: "/admin/partners" },
-                  { label: "Active venues", value: pick(stats?.venues, "true") ?? "—", href: "/admin/partners/manage" },
-                  { label: "Agreements active", value: pick(stats?.applicationStates, "active") ?? "—", href: "/admin/agreements" },
-                  { label: "Maintenance visits", value: stats?.maintenanceVisits ?? "—", href: "/admin/vending-ops" },
-                ]}
-              />
-            </Panel>
-
-            <Panel title="Finance & risk" action={{ href: "/admin/finance", label: "Revenue overview" }}>
-              <Rows
-                items={[
-                  { label: "Captured (30 d)", value: financeSummary?.grossCapturedCents ? fmt(financeSummary.grossCapturedCents) : "—", href: "/admin/finance" },
-                  { label: "Net platform (30 d)", value: financeSummary?.netPlatformCents ? fmt(financeSummary.netPlatformCents) : "—", href: "/admin/finance" },
-                  { label: "Refunds issued (30 d)", value: financeSummary?.refundsCents ? fmt(financeSummary.refundsCents) : "—", href: "/admin/support/refunds" },
-                  { label: "Disputes open", value: disputesOpen ?? "—", href: "/admin/disputes", tone: disputesOpen && disputesOpen > 0 ? "urgent" : undefined },
-                  { label: "Investigations", value: "—", href: "/admin/finance/investigations" },
-                ]}
-              />
-            </Panel>
-          </div>
+          {/* Priority queue */}
+          <section aria-labelledby="queue-title" className="overflow-hidden rounded-xl border border-[#dfe6df] bg-white">
+            <div className="flex items-center justify-between gap-3 border-b border-mist px-4 py-3">
+              <h2 id="queue-title" className="text-sm font-extrabold uppercase tracking-wider text-ink">
+                Priority case queue
+              </h2>
+              <Link href="/admin/support?view=person" className="text-xs font-bold text-forest hover:underline">
+                Full inbox →
+              </Link>
+            </div>
+            {!ctx ? (
+              <p className="px-4 py-8 text-sm text-graphite">Support data is unavailable in this environment.</p>
+            ) : queue.length === 0 ? (
+              <p className="px-4 py-8 text-sm text-graphite">No unassigned, urgent, or breached cases in the current queue.</p>
+            ) : (
+              <ul className="divide-y divide-mist">
+                {queue.map((t) => (
+                  <li key={t.id}>
+                    <Link href={"/admin/support/" + t.number} className="group flex items-center gap-3 px-4 py-2.5 hover:bg-[#f4f8ef]">
+                      <PriorityBadge p={t.priority} />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-bold">{t.subject || t.category}</span>
+                        <span className="block truncate text-xs text-graphite">{t.number} · {t.name} · {t.queue}</span>
+                      </span>
+                      <span className="hidden rounded-full bg-mist px-2 py-0.5 text-[11px] font-bold capitalize text-graphite sm:block">
+                        {t.state.replace(/_/g, " ")}
+                      </span>
+                      <span className="text-sm font-bold text-forest transition group-hover:translate-x-1" aria-hidden>
+                        →
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
         </div>
 
         {/* ── Full-width: funnel + leaderboard ────────────────────────────── */}
