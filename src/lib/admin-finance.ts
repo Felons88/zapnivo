@@ -54,8 +54,8 @@ const num = (v: unknown): number => (typeof v === "number" && Number.isFinite(v)
 
 const PAYMENT_SELECT =
   "id,rental_id,state,amount_captured_cents,amount_refunded_cents,captured_at," +
-  "rentals!inner(id,state,kiosks!inner(id,venues(id,name,organization_id)))";
-const VENUE_SELECT = "id,rental_id,rentals!inner(kiosks!inner(venues(id,name,organization_id)))";
+  "rentals!inner(id,state,kiosks!kiosk_id(id,venues(id,name,organization_id)))";
+const VENUE_SELECT = "id,rental_id,rentals!inner(kiosks!kiosk_id(venues(id,name,organization_id)))";
 
 type RawPayment = {
   id: string; rental_id: string | null; state: string | null;

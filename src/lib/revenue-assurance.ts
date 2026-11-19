@@ -450,7 +450,7 @@ export function computeAssurance(input: AssuranceComputationInput): { metrics: A
 
 const PAYMENT_SELECT =
   "id,rental_id,state,amount_captured_cents,amount_refunded_cents,captured_at," +
-  "rentals!inner(id,state,kiosks!inner(id,venues(id,name,organization_id)))";
+  "rentals!inner(id,state,kiosks!kiosk_id(id,venues(id,name,organization_id)))";
 
 export type AssuranceWindow = ReturnType<typeof periodWindow>;
 
