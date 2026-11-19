@@ -40,7 +40,7 @@ export function PassLookup() {
   const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" }) : "—");
 
   return (
-    <div className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+    <div className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
       <h2 className="font-display text-lg font-bold">Pass lookup</h2>
       <p className="mt-1 text-xs text-graphite">Enter the full pass code — it's hashed before lookup; codes are never stored in plain text.</p>
       <form onSubmit={lookup} className="mt-4 flex flex-wrap gap-3">

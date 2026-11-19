@@ -20,13 +20,13 @@ export default async function Onboarding({ searchParams }: { searchParams: Promi
   return (
     <AdminGate title="Partner onboarding" nav="onboarding">
       {!db ? <EmptyCard title="Onboarding data not connected">Connect Supabase.</EmptyCard> : (
-        <div className="space-y-6">
+        <div className="space-y-4">
           {sp.result === "error" ? <p role="alert" className="rounded-xl bg-red-50 px-4 py-2.5 text-sm font-bold text-red-800">{sp.detail ?? "That did not work."}</p>
             : sp.result && OK[sp.result] ? <p className="rounded-xl bg-lime px-4 py-2.5 text-sm font-bold text-ink">{OK[sp.result]}</p> : null}
           <p className="text-xs text-graphite">Pipeline stages come from real records (applications matched by business name, agreements, venues, kiosk installation, published venues). Checklist steps are ticked manually. <Link href="/admin/sla" className="font-bold underline">Partner support SLA</Link> · <Link href="/admin/payouts" className="font-bold underline">Payouts</Link></p>
           {orgs.length === 0 && <EmptyCard title="No organizations yet">Organizations appear once a partner is set up.</EmptyCard>}
           {orgs.map((o) => (
-            <section key={o.id} className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+            <section key={o.id} className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h2 className="font-display text-lg font-bold">{o.name}</h2>
                 <Pill tone={o.pipeline.next ? "gold" : "lime"}>{o.pipeline.next ? `Next: ${o.pipeline.next}` : "Fully onboarded"}</Pill>

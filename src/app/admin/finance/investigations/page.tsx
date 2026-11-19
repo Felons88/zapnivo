@@ -53,7 +53,7 @@ export default async function InvestigationsPage({ searchParams }: { searchParam
       ) : !db ? (
         <EmptyCard title="Not connected">Connect Supabase to use financial investigations.</EmptyCard>
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-4">
           <p className="max-w-3xl text-sm text-graphite">
             Case-based review of disputed charges, failed dispenses, missing telemetry and credit issues.
             Recommendations are advisory — every refund still goes through the staff refund route after a human decision.

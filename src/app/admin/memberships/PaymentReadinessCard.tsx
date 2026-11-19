@@ -48,14 +48,14 @@ export function PaymentReadinessCard({ readiness: r }: { readiness: PaymentReadi
 
   return (
     <section className="rounded-2xl border border-mist bg-white shadow-sm">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-mist px-6 py-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-mist px-4 py-4">
         <div>
           <h2 className="font-display text-lg font-bold">Payment readiness</h2>
           <p className="text-xs text-graphite">Configuration checklist — statuses only, no secrets are shown.</p>
         </div>
         <Pill tone={overallTone}>{r.overall.replace("_", " ")}</Pill>
       </div>
-      <ul className="px-6 py-2">
+      <ul className="px-4 py-2">
         <Row label="Stripe secret key" hint="STRIPE_SECRET_KEY present" tone={secret.tone} value={secret.value} />
         <Row label="Stripe webhook secret" hint="STRIPE_WEBHOOK_SECRET present — endpoint can verify signatures" tone={webhook.tone} value={webhook.value} />
         <Row label="Stripe mode" hint="Derived from the key prefix" tone={modeTone} value={r.stripe.mode} />

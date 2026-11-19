@@ -115,7 +115,7 @@ export function EmailStudio({ staffRecipients, mailerConfigured }: { staffRecipi
   const varKeys = Array.from(new Set([...(preview?.vars ?? []), ...Object.keys(spec.sampleVars)])).sort();
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* ── Studio section nav ── */}
       <div className="flex flex-wrap gap-2" role="tablist" aria-label="Email studio sections">
         {VIEWS.map((v) => (
@@ -140,7 +140,7 @@ export function EmailStudio({ staffRecipients, mailerConfigured }: { staffRecipi
       {view === "inbound" && <InboundPanel />}
 
       {view === "templates" && (
-    <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
+    <div className="grid gap-4 lg:grid-cols-[280px_1fr]">
       {/* ── Template library ── */}
       <aside className="space-y-5">
         {groups.map((g) => (
@@ -172,7 +172,7 @@ export function EmailStudio({ staffRecipients, mailerConfigured }: { staffRecipi
 
       {/* ── Main pane ── */}
       <div className="min-w-0 space-y-5">
-        <section className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+        <section className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <h2 className="font-display text-xl font-bold">{spec.displayName}</h2>
@@ -244,7 +244,7 @@ export function EmailStudio({ staffRecipients, mailerConfigured }: { staffRecipi
 
         {/* ── Variables + test send ── */}
         <div className="grid gap-5 lg:grid-cols-2">
-          <section className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+          <section className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
             <h3 className="font-display text-lg font-bold">Variables</h3>
             <p className="mt-1 text-xs text-graphite">Edit sample values — the preview re-renders automatically.</p>
             <div className="mt-4 max-h-[26rem] space-y-3 overflow-y-auto pr-1">
@@ -266,7 +266,7 @@ export function EmailStudio({ staffRecipients, mailerConfigured }: { staffRecipi
             </div>
           </section>
 
-          <section className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+          <section className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
             <h3 className="font-display text-lg font-bold">Test send</h3>
             <p className="mt-1 text-xs text-graphite">
               Sends “[TEST] {preview?.subject ?? spec.subject}” to a staff address only — customer emails are rejected.

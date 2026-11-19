@@ -116,7 +116,7 @@ export default async function AdminRestock({ searchParams }: { searchParams: Pro
   return (
     <AdminGate title="Restocking" nav="restock">
       {!db || !data ? <EmptyCard title="Restock data not connected">{board && "error" in board ? `Could not load restock board (${board.error}).` : "Connect Supabase to manage restock visits."}</EmptyCard> : (
-        <div className="space-y-8">
+        <div className="space-y-4">
           {sp.result === "error" ? (
             <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-bold text-red-700">{sp.detail ?? "Action failed."}</p>
           ) : sp.result === "saved" ? (
@@ -159,7 +159,7 @@ export default async function AdminRestock({ searchParams }: { searchParams: Pro
 
           <section className="space-y-4">
             <h2 className="font-display text-lg font-bold">Open visits ({open.length})</h2>
-            {open.length === 0 ? <p className="rounded-2xl border border-mist bg-white p-6 text-sm text-graphite">Nothing planned or in progress.</p> : open.map((v) => <VisitCard key={v.id} v={v} skus={data.skus} />)}
+            {open.length === 0 ? <p className="rounded-2xl border border-mist bg-white p-4 text-sm text-graphite">Nothing planned or in progress.</p> : open.map((v) => <VisitCard key={v.id} v={v} skus={data.skus} />)}
           </section>
 
           {closed.length ? (

@@ -38,7 +38,7 @@ export default async function AiOps() {
       {!db ? (
         <EmptyCard title="Agent registry not connected">Connect Supabase to manage the AI agent registry.</EmptyCard>
       ) : (
-        <div className="space-y-8">
+        <div className="space-y-4">
           <section aria-label="Agent summary" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
             <Metric label="Agents" value={directory.length} sub={`${enabled} enabled`} />
             <Metric label="Runs (30d)" value={totalRuns} sub={`${runs.length} most recent loaded`} />
@@ -58,9 +58,9 @@ export default async function AiOps() {
           <ApprovalQueue approvals={approvals} />
 
           <section aria-label="Activity" className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
-            <div className="border-b border-mist px-6 py-4"><h2 className="font-display text-lg font-bold">Activity log</h2></div>
+            <div className="border-b border-mist px-4 py-4"><h2 className="font-display text-lg font-bold">Activity log</h2></div>
             {runs.length === 0 ? (
-              <p className="px-6 py-10 text-sm text-graphite">No agent runs recorded yet.</p>
+              <p className="px-4 py-8 text-sm text-graphite">No agent runs recorded yet.</p>
             ) : (
               <table className="w-full min-w-[900px] text-left text-sm">
                 <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite">

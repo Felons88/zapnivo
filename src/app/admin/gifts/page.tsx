@@ -43,7 +43,7 @@ export default async function AdminGifts({ searchParams }: { searchParams: Promi
   return (
     <AdminGate title="Gift credits" nav="payouts">
       {!db ? <EmptyCard title="Gift data not connected">Connect Supabase to manage gift credits.</EmptyCard> : (
-        <div className="space-y-6">
+        <div className="space-y-4">
           {sp.result && (
             <div role="status" className={`rounded-xl px-5 py-3 text-sm font-bold ${sp.result === "error" ? "bg-red-100 text-red-900" : "bg-lime text-ink"}`}>
               {sp.result === "error" ? sp.detail ?? "The action failed." : `Gift ${sp.detail ?? ""} ${sp.result}.`}
@@ -60,7 +60,7 @@ export default async function AdminGifts({ searchParams }: { searchParams: Promi
           </form>
 
           {detail && (
-            <section className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+            <section className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h2 className="text-lg font-bold">Gift {detail.id.slice(0, 8)}</h2>
                 <Pill tone={tone(detail.status)}>{detail.status.replace(/_/g, " ")}</Pill>
@@ -92,7 +92,7 @@ export default async function AdminGifts({ searchParams }: { searchParams: Promi
           )}
 
           <section aria-label="Gift credits" className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
-            {gifts.length === 0 ? <p className="px-6 py-10 text-sm text-graphite">No gift credits{status ? ` with status “${status.replace(/_/g, " ")}”` : ""} yet.</p> : (
+            {gifts.length === 0 ? <p className="px-4 py-8 text-sm text-graphite">No gift credits{status ? ` with status “${status.replace(/_/g, " ")}”` : ""} yet.</p> : (
               <table className="w-full min-w-[860px] text-left text-sm">
                 <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite">
                   <tr>{["Package", "Value", "Purchaser", "Recipient", "Status", "Created", "Redeemed", ""].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr>

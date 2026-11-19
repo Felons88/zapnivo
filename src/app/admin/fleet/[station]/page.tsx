@@ -46,7 +46,7 @@ export default async function StationDetail({ params, searchParams }: { params: 
 
   return (
     <AdminGate title={kiosk.station_id} nav="fleet">
-      <div className="space-y-6">
+      <div className="space-y-4">
         <Link href="/admin/fleet" className="text-sm font-bold underline underline-offset-4">← All stations</Link>
         {fb.result && <div role="status" className={`rounded-xl px-5 py-3 text-sm font-bold ${fb.result === "error" ? "bg-red-100 text-red-900" : "bg-lime text-ink"}`}>{fb.result === "error" ? fb.detail ?? "That action failed." : "Saved."}</div>}
 
@@ -57,8 +57,8 @@ export default async function StationDetail({ params, searchParams }: { params: 
           <Metric label="Model / firmware" value={<span className="text-2xl">{kiosk.model ?? "—"}</span>} sub={kiosk.firmware_version ? `FW ${kiosk.firmware_version}` : "No firmware reported"} />
         </section>
 
-        <div className="grid gap-6 lg:grid-cols-[1fr_auto]">
-          <section aria-label="Slots" className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+        <div className="grid gap-4 lg:grid-cols-[1fr_auto]">
+          <section aria-label="Slots" className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
             <h2 className="font-display text-lg font-bold">Slots &amp; battery health</h2>
             {slots.length === 0 ? <p className="mt-4 text-sm text-graphite">No slot data yet — slots populate when the kiosk reports events.</p> : (
               <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -77,7 +77,7 @@ export default async function StationDetail({ params, searchParams }: { params: 
             )}
           </section>
 
-          <section aria-label="QR code" className="rounded-2xl border border-mist bg-white p-6 text-center shadow-sm">
+          <section aria-label="QR code" className="rounded-2xl border border-mist bg-white p-4 text-center shadow-sm">
             <h2 className="font-display text-lg font-bold">Station QR</h2>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={`/api/admin/qr/${kiosk.station_id}`} alt={`QR code for ${kiosk.station_id}`} width={180} height={180} className="mx-auto mt-4 rounded-lg border border-mist" />
@@ -85,8 +85,8 @@ export default async function StationDetail({ params, searchParams }: { params: 
           </section>
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-2">
-          <section aria-label="Remote control" className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+        <div className="grid gap-4 lg:grid-cols-2">
+          <section aria-label="Remote control" className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
             <h2 className="font-display text-lg font-bold">Remote control</h2>
             <form method="post" action="/api/admin/fleet" className="mt-4 space-y-3">
               <input type="hidden" name="action" value="set_kiosk_state" /><input type="hidden" name="kiosk_id" value={kiosk.id} /><input type="hidden" name="return_to" value={ret} />
@@ -111,7 +111,7 @@ export default async function StationDetail({ params, searchParams }: { params: 
             {cmds.length > 0 && <ul className="mt-4 space-y-1 text-xs">{cmds.map((c) => <li key={c.id} className="flex justify-between"><span className="font-bold">{c.command}</span><span className="text-graphite">{c.status} · {when(c.created_at)}</span></li>)}</ul>}
           </section>
 
-          <section aria-label="Maintenance" className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+          <section aria-label="Maintenance" className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
             <h2 className="font-display text-lg font-bold">Log maintenance</h2>
             <form method="post" action="/api/admin/fleet" className="mt-4 space-y-3">
               <input type="hidden" name="action" value="log_maintenance" /><input type="hidden" name="kiosk_id" value={kiosk.id} /><input type="hidden" name="return_to" value={ret} />
@@ -122,7 +122,7 @@ export default async function StationDetail({ params, searchParams }: { params: 
             {visits.length > 0 && <ul className="mt-4 space-y-2 text-sm">{visits.map((v) => <li key={v.id}><span className="text-xs text-graphite">{when(v.visited_at)}</span><p>{v.notes}</p></li>)}</ul>}
           </section>
 
-          <section aria-label="Notes" className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+          <section aria-label="Notes" className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
             <h2 className="font-display text-lg font-bold">Internal notes</h2>
             <form method="post" action="/api/admin/fleet" className="mt-4 space-y-3">
               <input type="hidden" name="action" value="add_note" /><input type="hidden" name="entity" value="kiosk" /><input type="hidden" name="entity_id" value={kiosk.id} /><input type="hidden" name="return_to" value={ret} />
@@ -132,7 +132,7 @@ export default async function StationDetail({ params, searchParams }: { params: 
             {notes.length > 0 && <ul className="mt-4 space-y-3 text-sm">{notes.map((n) => <li key={n.id}><p>{n.body}</p><p className="text-xs text-graphite">{author(n.profiles)} · {when(n.created_at)}</p></li>)}</ul>}
           </section>
 
-          <section aria-label="Installation files" className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+          <section aria-label="Installation files" className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
             <h2 className="font-display text-lg font-bold">Installation photos &amp; documents</h2>
             <form method="post" action="/api/admin/fleet" encType="multipart/form-data" className="mt-4 space-y-3">
               <input type="hidden" name="action" value="upload_file" /><input type="hidden" name="kiosk_id" value={kiosk.id} /><input type="hidden" name="return_to" value={ret} />

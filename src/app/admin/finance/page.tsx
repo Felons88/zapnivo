@@ -38,7 +38,7 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
       ) : !summary ? (
         <EmptyCard title="Finance data not connected">Connect Supabase to view revenue reporting.</EmptyCard>
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-4">
           {/* Period selector */}
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs font-extrabold uppercase tracking-wider text-graphite">Period</span>
@@ -72,12 +72,12 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
 
           {/* By venue */}
           <section className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
-            <div className="flex items-center justify-between border-b border-mist px-6 py-4">
+            <div className="flex items-center justify-between border-b border-mist px-4 py-4">
               <h2 className="font-display text-lg font-bold">By venue</h2>
               <Link href="/admin/payouts" className="text-xs font-extrabold uppercase tracking-wider text-forest hover:underline">Ledgers &amp; payouts →</Link>
             </div>
             {venues.length === 0 ? (
-              <p className="px-6 py-10 text-sm text-graphite">No captured payments in this period.</p>
+              <p className="px-4 py-8 text-sm text-graphite">No captured payments in this period.</p>
             ) : (
               <table className="w-full min-w-[860px] text-left text-sm">
                 <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite">

@@ -29,14 +29,14 @@ export default async function Agreements({ searchParams }: { searchParams: Promi
       {!db ? (
         <EmptyCard title="Backend not connected">Connect Supabase to manage equipment agreements.</EmptyCard>
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-4">
           {(feedback.result || feedback.detail) && (
             <div role="status" className={`rounded-xl px-5 py-3 text-sm font-bold ${feedback.result === "error" ? "bg-red-100 text-red-900" : "bg-lime text-ink"}`}>
               {feedback.result === "error" ? (feedback.detail ?? "Something went wrong.") : feedback.result === "draft" ? "Agreement draft created." : feedback.result === "approved" ? "Agreement approved — previous active version superseded." : feedback.result === "terminated" ? "Agreement terminated." : "Saved."}
             </div>
           )}
 
-          <section aria-label="New agreement draft" className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+          <section aria-label="New agreement draft" className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
             <h2 className="font-display text-lg font-bold">New agreement draft</h2>
             <p className="mt-1 text-xs text-graphite">Drafts are never active until an admin approves them. Approving supersedes the previous active version for the same venue + category.</p>
             <form method="post" action="/api/admin/agreements" className="mt-4 flex flex-wrap items-end gap-3">
@@ -71,9 +71,9 @@ export default async function Agreements({ searchParams }: { searchParams: Promi
           </section>
 
           <section aria-label="Agreements" className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
-            <div className="border-b border-mist px-6 py-4"><h2 className="font-display text-lg font-bold">Agreement versions</h2></div>
+            <div className="border-b border-mist px-4 py-4"><h2 className="font-display text-lg font-bold">Agreement versions</h2></div>
             {agreements.length === 0 ? (
-              <p className="px-6 py-10 text-sm text-graphite">No equipment agreements yet. Create a draft above, then approve it to make it the active version.</p>
+              <p className="px-4 py-8 text-sm text-graphite">No equipment agreements yet. Create a draft above, then approve it to make it the active version.</p>
             ) : (
               <table className="w-full min-w-[1100px] text-left text-sm">
                 <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite">

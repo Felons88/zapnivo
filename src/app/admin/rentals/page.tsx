@@ -43,7 +43,7 @@ export default async function Rentals({ searchParams }: { searchParams: Promise<
       {!db ? (
         <EmptyCard title="Rental data not connected">Connect Supabase to see live rental records.</EmptyCard>
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-4">
           {feedback.result && (
             <div role="status" className={`rounded-xl px-5 py-3 text-sm font-bold ${feedback.result === "error" || feedback.result === "flagged" ? "bg-red-100 text-red-900" : "bg-lime text-ink"}`}>
               {feedback.detail ?? "Done."}
@@ -62,9 +62,9 @@ export default async function Rentals({ searchParams }: { searchParams: Promise<
           </section>}
 
           <section aria-label="Rental records" className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
-            <div className="border-b border-mist px-6 py-4"><h2 className="font-display text-lg font-bold">{q ? `Rentals matching “${q}”` : "Recent rental records"}</h2></div>
+            <div className="border-b border-mist px-4 py-4"><h2 className="font-display text-lg font-bold">{q ? `Rentals matching “${q}”` : "Recent rental records"}</h2></div>
             {rows.length === 0 ? (
-              <p className="px-6 py-10 text-sm text-graphite">No rentals yet. The first rental appears here the moment a customer dispenses.</p>
+              <p className="px-4 py-8 text-sm text-graphite">No rentals yet. The first rental appears here the moment a customer dispenses.</p>
             ) : (
               <table className="w-full min-w-[880px] text-left text-sm">
                 <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite">

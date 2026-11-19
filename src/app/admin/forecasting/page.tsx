@@ -87,7 +87,7 @@ export default async function ForecastingPage({ searchParams }: { searchParams: 
 
   return (
     <AdminGate title="Demand forecasting" nav="forecasting">
-      <div className="space-y-8">
+      <div className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm text-graphite">
             Estimates from observed rental starts — model output, not a guarantee. Window: last {FORECAST_WINDOW_DAYS} days.
@@ -121,7 +121,7 @@ export default async function ForecastingPage({ searchParams }: { searchParams: 
               <Metric label="30-day avg (latest)" value={a.ma30.filter((m) => m.value !== null).at(-1)?.value ?? "—"} />
             </div>
 
-            <section className="rounded-2xl border border-mist bg-white p-6">
+            <section className="rounded-2xl border border-mist bg-white p-4">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <h2 className="text-lg font-bold">Network demand — history &amp; {horizon}-day estimate</h2>
                 <p className="text-xs font-bold uppercase tracking-wider text-graphite">
@@ -135,7 +135,7 @@ export default async function ForecastingPage({ searchParams }: { searchParams: 
             </section>
 
             {a.status === "ok" && data.networkForecast.length > 0 && (
-              <section className="rounded-2xl border border-mist bg-white p-6">
+              <section className="rounded-2xl border border-mist bg-white p-4">
                 <h2 className="text-lg font-bold">{horizon}-day network forecast</h2>
                 <div className="mt-4 overflow-x-auto">
                   <table className="w-full text-sm">
@@ -166,7 +166,7 @@ export default async function ForecastingPage({ searchParams }: { searchParams: 
               </section>
             )}
 
-            <section className="rounded-2xl border border-mist bg-white p-6">
+            <section className="rounded-2xl border border-mist bg-white p-4">
               <h2 className="text-lg font-bold">Per-station estimates</h2>
               <p className="mt-1 text-xs text-graphite">Top stations by observed starts in the window. Trend arrows are the fitted slope — direction only, not a promise.</p>
               <div className="mt-4 overflow-x-auto">
@@ -205,7 +205,7 @@ export default async function ForecastingPage({ searchParams }: { searchParams: 
 
             {/* ── Forecast validation (rolling-origin backtest) ── */}
             {backtest && (
-              <section className="rounded-2xl border border-mist bg-white p-6">
+              <section className="rounded-2xl border border-mist bg-white p-4">
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
                   <h2 className="text-lg font-bold">Forecast validation</h2>
                   <p className="text-xs font-bold uppercase tracking-wider text-graphite">
@@ -272,7 +272,7 @@ export default async function ForecastingPage({ searchParams }: { searchParams: 
               </section>
             )}
 
-            <section className="rounded-2xl border border-mist bg-paper p-6 text-sm text-graphite">
+            <section className="rounded-2xl border border-mist bg-paper p-4 text-sm text-graphite">
               <h2 className="text-lg font-bold text-ink">How to read this</h2>
               <ul className="mt-2 list-disc space-y-1 pl-5">
                 <li>{a.caveat}</li>

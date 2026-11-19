@@ -20,7 +20,7 @@ export default async function RefundQueue() {
   return (
     <AdminGate title="Refund queue" nav="refunds">
       {!ctx || !user ? <EmptyCard title="Support system not connected">Connect Supabase or enable the dev store.</EmptyCard> : (
-        <div className="space-y-8">
+        <div className="space-y-4">
           <p className="max-w-3xl text-sm text-graphite">Agents approve up to the first-24-hour cap. Larger amounts need an admin who did not request them. Refunds are issued through Stripe once linked; until then approved refunds wait here and can be recorded after issuing manually in Stripe.</p>
           <section aria-label="Open refunds">
             <h2 className="mb-3 font-display text-xl font-bold">Needs action ({open.length})</h2>

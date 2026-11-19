@@ -26,7 +26,7 @@ export default async function PartnerManage({ searchParams }: { searchParams: Pr
 
   return (
     <AdminGate title="Partner operations" nav="partners">
-      <div className="space-y-6">
+      <div className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <Link href="/admin/partners" className="text-sm font-bold text-graphite hover:text-ink">← Partners</Link>
           <span className="text-xs font-bold uppercase tracking-widest text-graphite">Staff only · partner back-office</span>
@@ -35,8 +35,8 @@ export default async function PartnerManage({ searchParams }: { searchParams: Pr
           {feedback.result === "error" ? feedback.detail : feedback.result === "org" ? "Organization created." : feedback.result === "invited" ? "Partner invitation sent and account linked to the organization." : feedback.result === "linked" ? "Existing account linked to the organization." : feedback.result === "venue" ? "Venue owner saved." : feedback.stm === "none" ? "No statements exist for that month." : feedback.stm ? `${feedback.stm} statement email(s) queued.` : "Saved."}
         </div>}
 
-        <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-4">
-          <section aria-label="Invite owner" className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+        <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
+          <section aria-label="Invite owner" className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
             <h2 className="font-display text-lg font-bold">Invite a site owner</h2>
             {isAdmin ? (
               <form method="post" action="/api/admin/partners" className="mt-4 space-y-3">
@@ -51,7 +51,7 @@ export default async function PartnerManage({ searchParams }: { searchParams: Pr
             <p className="mt-3 text-xs text-graphite">Sends a sign-up email. The owner's portal shows earnings for every venue on that org — one owner, many locations.</p>
           </section>
 
-          <section aria-label="New organization" className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+          <section aria-label="New organization" className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
             <h2 className="font-display text-lg font-bold">New organization</h2>
             <form method="post" action="/api/admin/partners" className="mt-4 space-y-3">
               <input type="hidden" name="action" value="create_org" /><input type="hidden" name="back" value="/admin/partners/manage" />
@@ -61,7 +61,7 @@ export default async function PartnerManage({ searchParams }: { searchParams: Pr
             <p className="mt-3 text-xs text-graphite">One organization can own several venues. Assign each venue on its detail page.</p>
           </section>
 
-          <section aria-label="Link existing owner" className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+          <section aria-label="Link existing owner" className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
             <h2 className="font-display text-lg font-bold">Link existing account</h2>
             {isAdmin ? (
               <form method="post" action="/api/admin/partners" className="mt-4 space-y-3">
@@ -74,7 +74,7 @@ export default async function PartnerManage({ searchParams }: { searchParams: Pr
             <p className="mt-3 text-xs text-graphite">For an account that already exists. Staff accounts cannot be converted.</p>
           </section>
 
-          <section id="statements" aria-label="Monthly statements" className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+          <section id="statements" aria-label="Monthly statements" className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
             <h2 className="font-display text-lg font-bold">Monthly statements</h2>
             <form method="post" action="/api/admin/statements" className="mt-4 space-y-3">
               <div><label htmlFor="s-period" className="mb-1 block text-xs font-bold">Period</label><input id="s-period" name="period" required pattern="\d{4}-(0[1-9]|1[0-2])" className={input} placeholder="2026-05" /></div>
@@ -85,7 +85,7 @@ export default async function PartnerManage({ searchParams }: { searchParams: Pr
           </section>
         </div>
 
-        <section aria-label="Agreement terms" className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+        <section aria-label="Agreement terms" className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
           <h2 className="font-display text-lg font-bold">Record agreement terms <span className="ml-2 align-middle text-[10px] font-extrabold uppercase tracking-widest text-silver">admin · private</span></h2>
           {isAdmin ? (
             <form method="post" action="/api/admin/partners" className="mt-4 flex flex-wrap items-end gap-3">

@@ -22,7 +22,7 @@ export default async function MetricsPage() {
   return (
     <AdminGate title="Support metrics" nav="metrics">
       {!m ? <EmptyCard title="Support system not connected">Connect Supabase or enable the dev store.</EmptyCard> : (
-        <div className="space-y-8">
+        <div className="space-y-4">
           <section aria-label="Queue health" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Metric label="Open tickets" value={m.open} sub={`${m.needsHuman} need a person · ${m.unassigned} unassigned`} />
             <Metric label="Urgent" value={m.urgent} sub="Safety and high-impact issues" />
@@ -39,7 +39,7 @@ export default async function MetricsPage() {
             <Metric label="Issued" value={m.refunds.issued} sub={fmt(m.refunds.issuedCents)} />
             <Metric label="Denied / failed" value={`${m.refunds.denied} / ${m.refunds.failed}`} />
           </section>
-          <section aria-label="System status" className="rounded-xl bg-white p-6 shadow-sm">
+          <section aria-label="System status" className="rounded-xl bg-white p-4 shadow-sm">
             <h2 className="font-display text-xl font-bold">System status</h2>
             <ul className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
               {[
@@ -48,7 +48,7 @@ export default async function MetricsPage() {
                 ["Stripe (refunds & live payment data)", stripeLinked(), "Not linked. Refunds are approved here and issued manually"],
               ].map(([k, ok, hint]) => <li key={String(k)} className="flex items-start gap-3 rounded-lg bg-mist/60 p-3"><span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${ok ? "bg-green-500" : "bg-gold"}`} aria-hidden /><span><b>{String(k)}</b><br /><span className="text-graphite">{ok ? "Connected" : String(hint)}</span></span></li>)}
             </ul>
-            <h3 className="mt-6 font-bold">Internal SLA targets (hours)</h3>
+            <h3 className="mt-4 font-bold">Internal SLA targets (hours)</h3>
             <p className="mt-1 text-xs text-graphite">{Object.entries(SLA_HOURS).map(([p, s]) => `${p}: first reply ${s.first}h · resolve ${s.resolve}h`).join("  |  ")}</p>
           </section>
         </div>

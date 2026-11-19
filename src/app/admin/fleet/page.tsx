@@ -56,9 +56,9 @@ export default async function Fleet({ searchParams }: { searchParams: Promise<{ 
       {!db || criticalError ? (
         <EmptyCard title="Fleet data unavailable">{criticalError ? "Station or inventory data could not load. Try again shortly." : "Connect Supabase to see live station, slot and device data."}</EmptyCard>
       ) : (
-        <div className="space-y-6">
-          <section className="flex flex-wrap items-end justify-between gap-4 rounded-2xl bg-[#142126] p-6 text-white md:p-8">
-            <div><p className="eyebrow text-lime">Network operations</p><h2 className="mt-2 text-3xl font-bold tracking-tight">Know what needs attention.</h2><p className="mt-2 max-w-2xl text-sm text-[#b7c8c2]">Monitor live station state, slot readiness and recent device activity. Open a station to investigate and act.</p></div>
+        <div className="space-y-4">
+          <section className="flex flex-wrap items-center justify-between gap-4 rounded-2xl bg-[#142126] p-4 text-white ">
+            <div><p className="eyebrow text-lime">Network operations</p><h2 className="mt-1 text-xl font-bold tracking-tight">Know what needs attention.</h2><p className="mt-1 max-w-2xl text-xs text-[#b7c8c2]">Monitor live station state, slot readiness and recent device activity. Open a station to investigate and act.</p></div>
             <div className="flex gap-2"><a href="#fleet-stations" className="rounded-lg bg-lime px-4 py-2.5 text-sm font-bold text-ink">View stations ↓</a><a href="#fleet-setup" className="rounded-lg border border-white/25 px-4 py-2.5 text-sm font-bold hover:bg-white/10">Setup tools</a></div>
           </section>
           {feedback.result && <div role="status" className={`rounded-xl px-5 py-3 text-sm font-bold ${feedback.result === "error" ? "bg-red-100 text-red-900" : "bg-lime text-ink"}`}>
@@ -72,15 +72,15 @@ export default async function Fleet({ searchParams }: { searchParams: Promise<{ 
           </section>
 
           <section id="fleet-stations" aria-label="Stations" className="scroll-mt-24 overflow-hidden rounded-2xl border border-mist bg-white shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-mist px-6 py-5"><div><p className="eyebrow text-forest">Station directory</p><h2 className="mt-1 font-display text-xl font-bold">Fleet status</h2></div><p className="text-xs text-graphite">Showing {visibleRows.length} of {kioskRows.length}</p></div>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-mist px-4 py-3"><div><p className="eyebrow text-forest">Station directory</p><h2 className="mt-1 font-display text-xl font-bold">Fleet status</h2></div><p className="text-xs text-graphite">Showing {visibleRows.length} of {kioskRows.length}</p></div>
             <div className="space-y-3 border-b border-mist px-5 py-4">
               <form action="/admin/fleet" className="flex max-w-md gap-2"><input type="hidden" name="state" value={state} /><input name="q" defaultValue={feedback.q} aria-label="Search stations" placeholder="Search station, venue or model…" className="min-h-10 min-w-0 flex-1 rounded-lg border border-silver/70 px-3 text-sm" /><button className="rounded-lg bg-ink px-4 text-xs font-bold text-white">Search</button></form>
               <nav aria-label="Station status filters" className="flex gap-2 overflow-x-auto">{FILTERS.map((filter) => <Link key={filter} href={filterHref(filter)} className={"shrink-0 rounded-full px-3 py-1.5 text-xs font-bold " + (state === filter ? "bg-lime text-ink" : "bg-[#f2f5f1] text-graphite hover:bg-mist")}>{filter === "all" ? "All stations" : filter}</Link>)}</nav>
             </div>
             {kioskRows.length === 0 ? (
-              <p className="px-6 py-10 text-sm text-graphite">No stations registered yet. The first kiosk appears here once provisioned.</p>
+              <p className="px-4 py-8 text-sm text-graphite">No stations registered yet. The first kiosk appears here once provisioned.</p>
             ) : visibleRows.length === 0 ? (
-              <p className="px-6 py-10 text-sm text-graphite">No stations match these filters. Search by station ID or choose another status.</p>
+              <p className="px-4 py-8 text-sm text-graphite">No stations match these filters. Search by station ID or choose another status.</p>
             ) : (
               <FleetStationGrid rows={visibleRows} slots={byKiosk} venues={venueRows} />
             )}
@@ -88,8 +88,8 @@ export default async function Fleet({ searchParams }: { searchParams: Promise<{ 
 
           <details id="fleet-setup" className="rounded-2xl border border-mist bg-white p-5">
             <summary className="cursor-pointer text-sm font-bold">Station setup · register kiosk or add venue <span className="float-right text-graphite">⌄</span></summary>
-          <div className="mt-5 grid gap-6 lg:grid-cols-2">
-            <section id="register-kiosk" aria-label="Register kiosk" className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+          <div className="mt-5 grid gap-4 lg:grid-cols-2">
+            <section id="register-kiosk" aria-label="Register kiosk" className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
               <h2 className="font-display text-lg font-bold">Register a kiosk</h2>
               <form method="post" action="/api/admin/fleet" className="mt-4 flex flex-wrap items-end gap-3">
                 <input type="hidden" name="action" value="create_kiosk" />
@@ -101,7 +101,7 @@ export default async function Fleet({ searchParams }: { searchParams: Promise<{ 
               </form>
               <p className="mt-3 text-xs text-graphite">A unique station ID and numbered empty slots are created together. New kiosks stay in <b>provisioning</b> until real hardware is connected.</p>
             </section>
-            <section aria-label="Add venue" className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+            <section aria-label="Add venue" className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
               <h2 className="font-display text-lg font-bold">Add a venue</h2>
               <form method="post" action="/api/admin/fleet" className="mt-4 flex flex-wrap items-end gap-3">
                 <input type="hidden" name="action" value="create_venue" />
@@ -120,8 +120,8 @@ export default async function Fleet({ searchParams }: { searchParams: Promise<{ 
           </div>
           </details>
 
-          <div className="grid gap-6 lg:grid-cols-2">
-            <section aria-label="Recent maintenance" className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+          <div className="grid gap-4 lg:grid-cols-2">
+            <section aria-label="Recent maintenance" className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
               <h2 className="font-display text-lg font-bold">Recent maintenance visits</h2>
               {visitRows.length === 0 ? <p className="mt-4 text-sm text-graphite">None logged yet.</p> : (
                 <ul className="mt-4 space-y-2 text-sm">
@@ -129,7 +129,7 @@ export default async function Fleet({ searchParams }: { searchParams: Promise<{ 
                 </ul>
               )}
             </section>
-            <section aria-label="Device events" className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+            <section aria-label="Device events" className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
               <h2 className="font-display text-lg font-bold">Latest device events</h2>
               {eventRows.length === 0 ? <p className="mt-4 text-sm text-graphite">No hardware events yet — they stream in once kiosks are connected.</p> : (
                 <ul className="mt-4 space-y-2 text-sm">

@@ -17,7 +17,7 @@ export default async function EvalsPage() {
 
   return (
     <AdminGate title="Evaluations" nav="evals">
-      <div className="space-y-6">
+      <div className="space-y-4">
         <div>
           <p className="eyebrow">AI Operations</p>
           <h1 className="display-md mt-1">Evaluation lab</h1>

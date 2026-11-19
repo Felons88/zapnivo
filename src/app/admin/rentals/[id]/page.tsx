@@ -55,7 +55,7 @@ export default async function RentalDetail({ params }: { params: Promise<{ id: s
   const isAdmin = user.role === "admin";
   const { id } = await params;
   const db = serviceClient();
-  if (!db) return <AdminGate title="Rental" nav="rentals"><p className="rounded-2xl border border-mist bg-white p-6 text-sm">Rental data not connected.</p></AdminGate>;
+  if (!db) return <AdminGate title="Rental" nav="rentals"><p className="rounded-2xl border border-mist bg-white p-4 text-sm">Rental data not connected.</p></AdminGate>;
 
   const { data: raw } = await db.from("rentals")
     .select("id,reference,state,customer_id,renter_profile,kiosk_id,return_kiosk_id,power_bank_id,pricing_version,bank_count,promo_code,sms_consent,accrued_charge_cents,non_return_fee_status,return_disputed,paused_at,paused_seconds,started_at,dispensed_at,returned_at,non_return_deadline,created_at,kiosks!rentals_kiosk_id_fkey(station_id,test_mode,venues(name,city,state)),power_banks(serial)")
@@ -114,7 +114,7 @@ export default async function RentalDetail({ params }: { params: Promise<{ id: s
 
   return (
     <AdminGate title={`Rental ${r.reference}`} nav="rentals">
-      <div className="space-y-6">
+      <div className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <Link href="/admin/rentals" className="text-sm font-bold text-graphite hover:text-ink">← All rentals</Link>
           <span className="text-xs font-bold uppercase tracking-widest text-graphite">Staff only · live rental record</span>
@@ -122,12 +122,12 @@ export default async function RentalDetail({ params }: { params: Promise<{ id: s
 
         {/* Identity banner */}
         <section className="overflow-hidden rounded-2xl bg-[#142126] text-white shadow-sm">
-          <div className="border-b border-white/10 px-6 py-4 text-[10px] font-extrabold uppercase tracking-[.18em] text-lime">Rental record</div>
-          <div className="flex flex-wrap items-start justify-between gap-4 p-6 md:p-8">
+          <div className="border-b border-white/10 px-4 py-2 text-[10px] font-extrabold uppercase tracking-[.18em] text-lime">Rental record</div>
+          <div className="flex flex-wrap items-start justify-between gap-4 p-4 ">
             <div>
               <p className="eyebrow text-lime">{kiosk?.venues?.name ?? kiosk?.station_id ?? "Station"}</p>
-              <h2 className="mt-2 font-display text-3xl font-bold tracking-tight">{r.reference as string}</h2>
-              <p className="mt-2 text-sm text-[#b7c8c2]">{kiosk?.venues ? `${kiosk.venues.city}, ${kiosk.venues.state}` : ""}{kiosk?.test_mode ? " · test-mode kiosk" : ""}</p>
+              <h2 className="mt-1 font-display text-xl font-bold tracking-tight">{r.reference as string}</h2>
+              <p className="mt-1 text-sm text-[#b7c8c2]">{kiosk?.venues ? `${kiosk.venues.city}, ${kiosk.venues.state}` : ""}{kiosk?.test_mode ? " · test-mode kiosk" : ""}</p>
             </div>
             <div className="text-right"><Pill tone={overdue ? "red" : (STATE_TONE as Record<string, "cyan" | "gold" | "ink" | "lime" | "mist" | "red">)[r.state as string] ?? "mist"}>{overdue ? "overdue" : (r.state as string).replace(/_/g, " ")}</Pill>
               {(r.return_disputed as boolean) && <div className="mt-2"><Pill tone="gold">return disputed</Pill></div>}
@@ -137,7 +137,7 @@ export default async function RentalDetail({ params }: { params: Promise<{ id: s
 
         <section className="grid gap-4 lg:grid-cols-3">
           {/* Renter */}
-          <div className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+          <div className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
             <h3 className="font-display text-lg font-bold">Renter</h3>
             <dl className="mt-3">
               <Row k="Name" v={profile?.full_name ?? "—"} />
@@ -151,7 +151,7 @@ export default async function RentalDetail({ params }: { params: Promise<{ id: s
           </div>
 
           {/* Hardware + charge */}
-          <div className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+          <div className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
             <h3 className="font-display text-lg font-bold">Rental</h3>
             <dl className="mt-3">
               <Row k="Banks" v={String(r.bank_count)} />
@@ -166,7 +166,7 @@ export default async function RentalDetail({ params }: { params: Promise<{ id: s
           </div>
 
           {/* Timeline */}
-          <div className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+          <div className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
             <h3 className="font-display text-lg font-bold">Timeline</h3>
             <ol className="mt-3 space-y-0.5">
               {timeline.map((t, i) => (
@@ -185,7 +185,7 @@ export default async function RentalDetail({ params }: { params: Promise<{ id: s
           const pRefunds = refunds.filter((x) => x.payment_id === p.id);
           const pDisputes = disputes.filter((x) => x.payment_id === p.id);
           return (
-            <section key={p.id} className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+            <section key={p.id} className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
               <div className="flex items-center justify-between"><h3 className="font-display text-lg font-bold">Payment</h3><Pill tone={p.state === "captured" ? "lime" : p.state === "failed" || p.state === "disputed" ? "red" : "cyan"}>{p.state.replace(/_/g, " ")}</Pill></div>
               <div className="mt-3 grid gap-4 lg:grid-cols-2">
                 <dl>
@@ -219,7 +219,7 @@ export default async function RentalDetail({ params }: { params: Promise<{ id: s
         })}
 
         {refundReqs.length > 0 && (
-          <section className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+          <section className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
             <h3 className="font-display text-lg font-bold">Refund requests</h3>
             <ul className="mt-3 space-y-2 text-sm">
               {refundReqs.map((x) => <li key={x.id} className="flex items-center justify-between gap-3 border-b border-mist/70 py-2 last:border-0"><span>{x.amount_cents != null ? fmt(x.amount_cents) : "—"} · {x.reason.replace(/_/g, " ")}</span><span className="text-xs text-graphite">{x.status} · {when(x.created_at)}</span></li>)}
@@ -228,7 +228,7 @@ export default async function RentalDetail({ params }: { params: Promise<{ id: s
         )}
 
         {/* Staff actions — same guarded forms as the list view */}
-        <section className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+        <section className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
           <h3 className="font-display text-lg font-bold">Actions</h3>
           <div className="mt-4 flex flex-wrap items-center gap-2">
             {(r.state === "authorized" || r.state === "dispense_pending") && (

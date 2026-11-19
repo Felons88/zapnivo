@@ -35,7 +35,7 @@ function ExceptionsCard({ checks }: { checks: AssuranceCheck[] }) {
 
   return (
     <section className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
-      <div className="border-b border-mist px-6 py-4">
+      <div className="border-b border-mist px-4 py-4">
         <h2 className="font-display text-lg font-bold">Reconciliation exception queue</h2>
         <p className="mt-1 text-xs text-graphite">
           {all.length} exception{all.length === 1 ? "" : "s"} across {checks.filter((c) => c.status === "ok").length} completed check{checks.filter((c) => c.status === "ok").length === 1 ? "" : "s"}
@@ -43,14 +43,14 @@ function ExceptionsCard({ checks }: { checks: AssuranceCheck[] }) {
         </p>
       </div>
       {unavailable.length > 0 && (
-        <div className="border-b border-mist bg-gold/20 px-6 py-3 text-xs text-graphite">
+        <div className="border-b border-mist bg-gold/20 px-4 py-3 text-xs text-graphite">
           {unavailable.map((c) => (
             <p key={c.kind}><span className="font-bold">{CHECK_LABEL[c.kind] ?? c.label}:</span> unavailable{c.reason ? ` — ${c.reason}` : ""}.</p>
           ))}
         </div>
       )}
       {shown.length === 0 ? (
-        <p className="px-6 py-10 text-sm text-graphite">
+        <p className="px-4 py-8 text-sm text-graphite">
           {unavailable.length > 0 ? "No exceptions from the checks that could run." : "No reconciliation exceptions found in this window."}
         </p>
       ) : (
@@ -101,7 +101,7 @@ export default async function RevenueAssurancePage({ searchParams }: { searchPar
       ) : !m ? (
         <EmptyCard title="Revenue data not connected">Connect Supabase to run revenue assurance checks.</EmptyCard>
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-4">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs font-extrabold uppercase tracking-wider text-graphite">Period</span>
             {([7, 30, 90] as const).map((d) => (
@@ -124,7 +124,7 @@ export default async function RevenueAssurancePage({ searchParams }: { searchPar
             <Metric label="Commission outstanding" value={money(m.commissionOutstandingCents)} sub={`${m.payoutScheduledCount ?? "—"} payout${m.payoutScheduledCount === 1 ? "" : "s"} scheduled/approved`} />
           </section>
 
-          <section className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+          <section className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
             <h2 className="font-display text-lg font-bold">Definitions</h2>
             <dl className="mt-4 grid gap-4 text-sm sm:grid-cols-2">
               <div><dt className="font-bold">Captured</dt><dd className="text-graphite">A payment with a real captured amount in the window. Authorizations and released holds never count.</dd></div>

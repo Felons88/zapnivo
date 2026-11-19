@@ -52,7 +52,7 @@ export default async function Observability() {
 
   return (
     <AdminGate title="Observability" nav="observability">
-      <div className="space-y-8">
+      <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
           <Metric label="Errors (24h)" value={errors24} />
           <Metric label="Critical issues" value={criticalOpen} />
@@ -61,7 +61,7 @@ export default async function Observability() {
           <Metric label="Failed cron runs" value={cronFails} />
         </div>
 
-        <section className="rounded-2xl border border-mist bg-white p-6">
+        <section className="rounded-2xl border border-mist bg-white p-4">
           <h2 className="text-lg font-bold">Error issues</h2>
           <p className="mt-1 text-sm text-graphite">Grouped by fingerprint — repeated errors update the same issue; resolved issues that recur are marked <em>regressed</em>.</p>
           <div className="mt-4 overflow-x-auto">
@@ -85,8 +85,8 @@ export default async function Observability() {
           </div>
         </section>
 
-        <div className="grid gap-6 lg:grid-cols-2">
-          <section className="rounded-2xl border border-mist bg-white p-6">
+        <div className="grid gap-4 lg:grid-cols-2">
+          <section className="rounded-2xl border border-mist bg-white p-4">
             <h2 className="text-lg font-bold">Recent errors (24h)</h2>
             <ul className="mt-3 space-y-2 text-sm">
               {events.map((e) => (
@@ -99,7 +99,7 @@ export default async function Observability() {
             </ul>
           </section>
 
-          <section className="rounded-2xl border border-mist bg-white p-6">
+          <section className="rounded-2xl border border-mist bg-white p-4">
             <h2 className="text-lg font-bold">Incidents</h2>
             <ul className="mt-3 space-y-2 text-sm">
               {incidents.map((i) => (
@@ -113,8 +113,8 @@ export default async function Observability() {
           </section>
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-2">
-          <section className="rounded-2xl border border-mist bg-white p-6">
+        <div className="grid gap-4 lg:grid-cols-2">
+          <section className="rounded-2xl border border-mist bg-white p-4">
             <h2 className="text-lg font-bold">Uptime monitors</h2>
             <p className="mt-1 text-xs text-graphite">Latest check per target. Sustained failures (3 consecutive) auto-create incidents. Hit <code>/api/cron/uptime</code> with CRON_SECRET from an external scheduler for frequent checks.</p>
             <table className="mt-3 w-full text-sm">
@@ -134,7 +134,7 @@ export default async function Observability() {
             </table>
           </section>
 
-          <section className="rounded-2xl border border-mist bg-white p-6">
+          <section className="rounded-2xl border border-mist bg-white p-4">
             <h2 className="text-lg font-bold">Scheduled jobs</h2>
             <ul className="mt-3 space-y-2 text-sm">
               {crons.map((c, i) => (
@@ -148,7 +148,7 @@ export default async function Observability() {
           </section>
         </div>
 
-        <section className="rounded-2xl border border-mist bg-white p-6">
+        <section className="rounded-2xl border border-mist bg-white p-4">
           <h2 className="text-lg font-bold">Recent logs</h2>
           <ul className="mt-3 max-h-96 space-y-1 overflow-y-auto font-mono text-xs">
             {logs.map((l) => (

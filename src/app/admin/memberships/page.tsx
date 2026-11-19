@@ -62,13 +62,13 @@ export default async function MembershipsAdmin({ searchParams }: { searchParams:
     <AdminGate title="Memberships & packages" nav="payouts">
       <div className="mb-8"><PaymentReadinessCard readiness={readiness} /></div>
       {!db ? <EmptyCard title="Monetization data not connected">Connect Supabase and apply migrations 0027 + 0031.</EmptyCard> : (
-        <div className="space-y-8">
+        <div className="space-y-4">
           {sp.result === "saved" && <p className="rounded-xl bg-lime px-4 py-2.5 text-sm font-bold text-ink">Saved.</p>}
 
           {/* Membership plans */}
           <section className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
-            <div className="border-b border-mist px-6 py-4"><h2 className="font-display text-lg font-bold">Membership plans</h2><p className="text-xs text-graphite">Inactive plans never appear in the customer catalog and can't be checked out.</p></div>
-            {plans.length === 0 ? <p className="px-6 py-10 text-sm text-graphite">No plans yet. Create them via the advertising console or SQL.</p> : (
+            <div className="border-b border-mist px-4 py-4"><h2 className="font-display text-lg font-bold">Membership plans</h2><p className="text-xs text-graphite">Inactive plans never appear in the customer catalog and can't be checked out.</p></div>
+            {plans.length === 0 ? <p className="px-4 py-8 text-sm text-graphite">No plans yet. Create them via the advertising console or SQL.</p> : (
               <table className="w-full min-w-[760px] text-left text-sm">
                 <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite"><tr>{["Plan", "Interval", "Price", "Benefit", "Status", ""].map((h, i) => <th key={i} className="px-4 py-3 font-extrabold">{h}</th>)}</tr></thead>
                 <tbody>
@@ -89,8 +89,8 @@ export default async function MembershipsAdmin({ searchParams }: { searchParams:
 
           {/* Prepaid packages */}
           <section className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
-            <div className="border-b border-mist px-6 py-4"><h2 className="font-display text-lg font-bold">Prepaid packages</h2><p className="text-xs text-graphite">Edit price, units and validity inline; toggle active to control the customer catalog.</p></div>
-            {packages.length === 0 ? <p className="px-6 py-10 text-sm text-graphite">No packages yet.</p> : (
+            <div className="border-b border-mist px-4 py-4"><h2 className="font-display text-lg font-bold">Prepaid packages</h2><p className="text-xs text-graphite">Edit price, units and validity inline; toggle active to control the customer catalog.</p></div>
+            {packages.length === 0 ? <p className="px-4 py-8 text-sm text-graphite">No packages yet.</p> : (
               <table className="w-full min-w-[860px] text-left text-sm">
                 <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite"><tr>{["Package", "Kind", "Price", "Edit", "Status", ""].map((h, i) => <th key={i} className="px-4 py-3 font-extrabold">{h}</th>)}</tr></thead>
                 <tbody>
@@ -111,8 +111,8 @@ export default async function MembershipsAdmin({ searchParams }: { searchParams:
 
           {/* Customer memberships */}
           <section className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
-            <div className="border-b border-mist px-6 py-4"><h2 className="font-display text-lg font-bold">Customer memberships</h2><p className="text-xs text-graphite">Latest 100. Status is driven by Stripe webhooks for subscriptions.</p></div>
-            {memberships.length === 0 ? <p className="px-6 py-10 text-sm text-graphite">No memberships yet.</p> : (
+            <div className="border-b border-mist px-4 py-4"><h2 className="font-display text-lg font-bold">Customer memberships</h2><p className="text-xs text-graphite">Latest 100. Status is driven by Stripe webhooks for subscriptions.</p></div>
+            {memberships.length === 0 ? <p className="px-4 py-8 text-sm text-graphite">No memberships yet.</p> : (
               <table className="w-full min-w-[720px] text-left text-sm">
                 <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite"><tr>{["Customer", "Plan", "Status", "Period end", "Cancel at period end", "Stripe sub", "Started"].map((h, i) => <th key={i} className="px-4 py-3 font-extrabold">{h}</th>)}</tr></thead>
                 <tbody>
@@ -134,7 +134,7 @@ export default async function MembershipsAdmin({ searchParams }: { searchParams:
 
           {/* Entitlement grants */}
           <section className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
-            <div className="border-b border-mist px-6 py-4">
+            <div className="border-b border-mist px-4 py-4">
               <h2 className="font-display text-lg font-bold">Entitlement grants</h2>
               <form method="get" className="mt-3 flex flex-wrap items-end gap-2">
                 <label className="text-xs font-bold text-graphite">Filter by profile
@@ -143,7 +143,7 @@ export default async function MembershipsAdmin({ searchParams }: { searchParams:
                 <button className="min-h-9 rounded-full bg-ink px-4 text-xs font-bold text-white">Filter</button>
               </form>
             </div>
-            {grants.length === 0 ? <p className="px-6 py-10 text-sm text-graphite">{profileFilter ? "No grants for that profile." : "No grants yet."}</p> : (
+            {grants.length === 0 ? <p className="px-4 py-8 text-sm text-graphite">{profileFilter ? "No grants for that profile." : "No grants yet."}</p> : (
               <table className="w-full min-w-[820px] text-left text-sm">
                 <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite"><tr>{["Profile", "Kind", "Unit", "Granted", "Remaining", "Expires", "Status", "Source", "Date"].map((h, i) => <th key={i} className="px-4 py-3 font-extrabold">{h}</th>)}</tr></thead>
                 <tbody>

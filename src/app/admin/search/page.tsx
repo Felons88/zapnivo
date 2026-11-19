@@ -34,14 +34,14 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
   const count = customers.length + ticketHits.length + rentals.length + tools.length;
 
   return <AdminGate title="Search" nav="search">
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="mx-auto max-w-5xl space-y-4">
       <div>
         <p className="eyebrow text-forest">Across internal</p>
-        <h2 className="mt-2 font-display text-3xl font-bold tracking-tight">Find records and tools</h2>
+        <h2 className="mt-2 font-display text-2xl font-bold tracking-tight">Find records and tools</h2>
         <p className="mt-2 text-sm text-graphite">Search customers by name, email, phone or rental reference; find tickets, rentals and program tools in one place.</p>
       </div>
       <form action="/admin/search" className="flex gap-2 rounded-2xl border border-mist bg-white p-3 shadow-sm">
-        <input name="q" defaultValue={q} autoFocus minLength={2} maxLength={100} aria-label="Search everything" placeholder="Name, email, phone, ticket number, rental reference or tool" className="min-h-11 min-w-0 flex-1 px-3 text-sm outline-none" />
+        <input name="q" defaultValue={q} autoFocus minLength={2} maxLength={100} aria-label="Search everything" placeholder="Name, email, phone, ticket number, rental reference or tool" className="min-h-10 min-w-0 flex-1 px-3 text-sm outline-none" />
         <button className="rounded-lg bg-ink px-5 text-sm font-bold text-white">Search</button>
       </form>
       {!ready ? <p className="text-sm text-graphite">Enter at least two characters to search.</p> : <>

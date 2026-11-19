@@ -24,7 +24,7 @@ export default async function OpportunitiesPage() {
 
   return (
     <AdminGate title="Venue opportunities" nav="opportunities">
-      <div className="space-y-8">
+      <div className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm text-graphite">
             Observed window: last {data?.window.days ?? 30} days ({data ? `${data.window.start} → ${data.window.end}` : "—"}).
@@ -68,7 +68,7 @@ export default async function OpportunitiesPage() {
             </p>
 
             {/* ── Existing venues ── */}
-            <section className="rounded-2xl border border-mist bg-white p-6">
+            <section className="rounded-2xl border border-mist bg-white p-4">
               <h2 className="text-lg font-bold">Existing venues</h2>
               <p className="mt-1 text-xs text-graphite">
                 Observed rentals/gross are real. Scenario columns are estimates based on network averages — labelled, not promised.
@@ -137,7 +137,7 @@ export default async function OpportunitiesPage() {
             </section>
 
             {/* ── Prospective applications ── */}
-            <section className="rounded-2xl border border-mist bg-white p-6">
+            <section className="rounded-2xl border border-mist bg-white p-4">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <h2 className="text-lg font-bold">Prospective venues</h2>
                 <Link href="/admin/partners" className="text-xs font-bold text-forest underline">Open partner pipeline →</Link>

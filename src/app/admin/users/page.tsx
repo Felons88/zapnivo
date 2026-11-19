@@ -26,7 +26,7 @@ export default async function Users() {
   return (
     <AdminGate title="Users & roles" nav="users">
       {!db ? <EmptyCard title="User data not connected">Connect Supabase to manage accounts.</EmptyCard> : (
-        <div className="space-y-6">
+        <div className="space-y-4">
           <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <Metric label="Accounts" value={rows.length} />
             <Metric label="Admins" value={rows.filter((r) => r.role === "admin").length} />
@@ -35,7 +35,7 @@ export default async function Users() {
           </section>
 
           {isAdmin ? (
-            <section className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+            <section className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
               <h2 className="font-display text-lg font-bold">Invite a team member</h2>
               <form method="post" action="/api/admin/users" className="mt-4 flex flex-wrap items-end gap-3">
                 <input type="hidden" name="action" value="invite_staff" />
@@ -84,7 +84,7 @@ export default async function Users() {
           </section>
 
           {privacyRows.length > 0 && (
-            <section className="overflow-x-auto rounded-2xl border border-gold/60 bg-gold/10 p-6 shadow-sm">
+            <section className="overflow-x-auto rounded-2xl border border-gold/60 bg-gold/10 p-4 shadow-sm">
               <h2 className="font-display text-lg font-bold">Privacy requests ({privacyRows.length} pending)</h2>
               <table className="mt-4 w-full min-w-[560px] text-left text-sm">
                 <thead className="text-xs uppercase tracking-wider text-graphite"><tr>{["Customer", "Request", "Filed", ""].map((h, i) => <th key={i} className="px-3 py-2 font-extrabold">{h}</th>)}</tr></thead>
@@ -110,7 +110,7 @@ export default async function Users() {
             </section>
           )}
 
-          <section aria-label="My alerts" className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+          <section aria-label="My alerts" className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
             <h2 className="font-display text-lg font-bold">My alert preferences</h2>
             <form method="post" action="/api/admin/prefs" className="mt-4 space-y-3 text-sm">
               {([["offline_alerts", "Station offline alerts"], ["low_battery_alerts", "Low power-bank battery alerts"], ["new_partner_inquiries", "New partner inquiries"]] as const).map(([k, label]) => (

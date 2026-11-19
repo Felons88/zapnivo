@@ -31,7 +31,7 @@ export function ApprovalQueue({ approvals }: { approvals: ApprovalRow[] }) {
       </div>
       {err && <p role="alert" className="rounded-xl bg-red-100 px-4 py-3 text-sm font-bold text-red-900">{err}</p>}
       {approvals.length === 0 ? (
-        <div className="rounded-2xl border border-mist bg-white px-6 py-10 text-sm text-graphite shadow-sm">No pending approvals.</div>
+        <div className="rounded-2xl border border-mist bg-white px-4 py-8 text-sm text-graphite shadow-sm">No pending approvals.</div>
       ) : (
         <ul className="space-y-3">
           {approvals.map((a) => (

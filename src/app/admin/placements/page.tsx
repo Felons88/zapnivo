@@ -122,7 +122,7 @@ export default async function PlacementsPage({ searchParams }: { searchParams: P
 
   return (
     <AdminGate title="Placements" nav="placements">
-      <div className="space-y-6">
+      <div className="space-y-4">
         <Feedback result={params.result} detail={params.detail} />
         <section aria-label="Placement summary" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <Metric label="In pipeline" value={active} sub={`${allCards.length} total`} />
@@ -163,7 +163,7 @@ export default async function PlacementsPage({ searchParams }: { searchParams: P
           </section>
         ) : (
           <section aria-label="Placement table" className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
-            <div className="flex flex-wrap items-center gap-2 border-b border-mist px-6 py-4">
+            <div className="flex flex-wrap items-center gap-2 border-b border-mist px-4 py-4">
               <h2 className="font-display text-lg font-bold">All placements</h2>
               <form method="get" action="/admin/placements" className="ml-auto flex items-center gap-2">
                 <input type="hidden" name="view" value="table" />
@@ -180,7 +180,7 @@ export default async function PlacementsPage({ searchParams }: { searchParams: P
               </form>
             </div>
             {rows.length === 0 ? (
-              <p className="px-6 py-10 text-sm text-graphite">No placements match.</p>
+              <p className="px-4 py-8 text-sm text-graphite">No placements match.</p>
             ) : (
               <table className="w-full min-w-[1000px] text-left text-sm">
                 <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite">

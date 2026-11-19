@@ -16,7 +16,7 @@ import {
 
 /* ── shared bits ────────────────────────────────────────────────────────── */
 
-const card = "rounded-2xl border border-mist bg-white p-6 shadow-sm";
+const card = "rounded-2xl border border-mist bg-white p-4 shadow-sm";
 const th = "px-3 py-2 text-left text-[11px] font-extrabold uppercase tracking-wide text-silver";
 const td = "px-3 py-2.5 text-sm align-top";
 

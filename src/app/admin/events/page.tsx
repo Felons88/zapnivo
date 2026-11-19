@@ -40,7 +40,7 @@ export default async function AdminEvents({ searchParams }: { searchParams: Prom
   return (
     <AdminGate title="Events & groups" nav="fleet">
       {!db ? <EmptyCard title="Data not connected">Connect Supabase.</EmptyCard> : (
-        <div className="space-y-8">
+        <div className="space-y-4">
           {sp.done && <p className="rounded-xl bg-lime px-4 py-2.5 text-sm font-bold text-ink">Done ({sp.done}).</p>}
 
           <section className="grid gap-4 sm:grid-cols-3">
@@ -52,8 +52,8 @@ export default async function AdminEvents({ searchParams }: { searchParams: Prom
           <PassLookup />
 
           <section className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
-            <div className="border-b border-mist px-6 py-4"><h2 className="font-display text-lg font-bold">Event programs</h2></div>
-            {events.length === 0 ? <p className="px-6 py-10 text-sm text-graphite">No events yet.</p> : (
+            <div className="border-b border-mist px-4 py-4"><h2 className="font-display text-lg font-bold">Event programs</h2></div>
+            {events.length === 0 ? <p className="px-4 py-8 text-sm text-graphite">No events yet.</p> : (
               <table className="w-full min-w-[900px] text-left text-sm">
                 <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite">
                   <tr>{["Event", "Organizer", "Window", "Price", "Status", "Actions"].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr>
@@ -97,9 +97,9 @@ export default async function AdminEvents({ searchParams }: { searchParams: Prom
           </section>
 
           <section className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
-            <div className="border-b border-mist px-6 py-4"><h2 className="font-display text-lg font-bold">Rental groups — credit pools</h2></div>
-            <p className="border-b border-mist px-6 py-2 text-xs text-graphite">Self-serve funding isn&apos;t available yet — staff adjustments here are the only funding path and are fully audited.</p>
-            {groups.length === 0 ? <p className="px-6 py-10 text-sm text-graphite">No groups yet.</p> : (
+            <div className="border-b border-mist px-4 py-4"><h2 className="font-display text-lg font-bold">Rental groups — credit pools</h2></div>
+            <p className="border-b border-mist px-4 py-2 text-xs text-graphite">Self-serve funding isn&apos;t available yet — staff adjustments here are the only funding path and are fully audited.</p>
+            {groups.length === 0 ? <p className="px-4 py-8 text-sm text-graphite">No groups yet.</p> : (
               <table className="w-full min-w-[760px] text-left text-sm">
                 <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite">
                   <tr>{["Group", "Status", "Members cap", "Pool", "Adjust (± cents)"].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr>

@@ -12,13 +12,13 @@ import { serviceClient } from "@/lib/supabase";
 export const metadata: Metadata = { title: "Vending operations", robots: { index: false, follow: false } };
 
 const Unavailable = ({ label }: { label: string }) => (
-  <p className="px-6 py-10 text-sm text-graphite">{label} — data unavailable right now.</p>
+  <p className="px-4 py-8 text-sm text-graphite">{label} — data unavailable right now.</p>
 );
 
 function SectionShell({ title, sub, children }: { title: string; sub?: string; children: ReactNode }) {
   return (
     <section className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
-      <div className="border-b border-mist px-6 py-4">
+      <div className="border-b border-mist px-4 py-4">
         <h2 className="font-display text-lg font-bold">{title}</h2>
         {sub && <p className="mt-1 text-xs text-graphite">{sub}</p>}
       </div>
@@ -47,7 +47,7 @@ export default async function VendingOps() {
       {!db || !d ? (
         <EmptyCard title="Backend not connected">Connect Supabase to load vending operations data.</EmptyCard>
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-4">
           <nav aria-label="Vending sections" className="flex flex-wrap gap-2">
             {[
               ["/admin/equipment", "Equipment"], ["/admin/placements", "Placements"], ["/admin/inventory", "Inventory"],
@@ -69,12 +69,12 @@ export default async function VendingOps() {
             <Metric label="Vending revenue" value="—" sub="No vending transaction integration" />
           </section>
 
-          <div className="grid gap-6 lg:grid-cols-2">
+          <div className="grid gap-4 lg:grid-cols-2">
             <SectionShell title="Placement pipeline" sub="partner_applications.placement_stage — all recorded applications">
               {!d.placement ? <Unavailable label="Placement data" /> : Object.keys(d.placement.stageCounts).length === 0 ? (
-                <p className="px-6 py-10 text-sm text-graphite">No placement inquiries yet. New venue applications appear here.</p>
+                <p className="px-4 py-8 text-sm text-graphite">No placement inquiries yet. New venue applications appear here.</p>
               ) : (
-                <div className="space-y-3 px-6 py-5">
+                <div className="space-y-3 px-4 py-3">
                   {Object.entries(d.placement.stageCounts).sort((a, b) => b[1] - a[1]).map(([stage, n]) => <Bar key={stage} label={stage.replace(/_/g, " ")} value={n} max={maxStage} />)}
                   {d.placement.recent.length > 0 && (
                     <ul className="mt-4 space-y-1 border-t border-mist pt-3 text-xs text-graphite">
@@ -87,19 +87,19 @@ export default async function VendingOps() {
 
             <SectionShell title="Equipment units" sub="equipment_units lifecycle">
               {!d.units ? <Unavailable label="Unit data" /> : d.units.total === 0 ? (
-                <p className="px-6 py-10 text-sm text-graphite">No vending machines recorded yet.</p>
+                <p className="px-4 py-8 text-sm text-graphite">No vending machines recorded yet.</p>
               ) : (
                 <table className="w-full text-left text-sm">
-                  <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite"><tr>{["Status", "Units"].map((h) => <th key={h} className="px-6 py-3 font-extrabold">{h}</th>)}</tr></thead>
+                  <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite"><tr>{["Status", "Units"].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr></thead>
                   <tbody>
                     {Object.entries(d.units.byStatus).sort((a, b) => b[1] - a[1]).map(([s, n]) => (
-                      <tr key={s} className="border-b border-mist/70 last:border-0"><td className="px-6 py-2.5 font-semibold">{s.replace(/_/g, " ")}</td><td className="px-6 py-2.5 font-bold">{n}</td></tr>
+                      <tr key={s} className="border-b border-mist/70 last:border-0"><td className="px-4 py-2.5 font-semibold">{s.replace(/_/g, " ")}</td><td className="px-4 py-2.5 font-bold">{n}</td></tr>
                     ))}
                   </tbody>
                 </table>
               )}
               {d.units && d.units.total > 0 && (
-                <p className="border-t border-mist px-6 py-3 text-xs text-graphite">
+                <p className="border-t border-mist px-4 py-3 text-xs text-graphite">
                   By category: {Object.entries(d.units.byCategory).sort((a, b) => b[1] - a[1]).map(([c, n]) => `${c.replace(/_/g, " ")} ${n}`).join(" · ")}
                 </p>
               )}
@@ -107,9 +107,9 @@ export default async function VendingOps() {
 
             <SectionShell title="Sourcing pipeline" sub="Units not yet deployed">
               {!d.sourcing ? <Unavailable label="Sourcing data" /> : d.sourcing.planned + d.sourcing.sourcing + d.sourcing.ordered + d.sourcing.received === 0 ? (
-                <p className="px-6 py-10 text-sm text-graphite">Nothing in the sourcing pipeline.</p>
+                <p className="px-4 py-8 text-sm text-graphite">Nothing in the sourcing pipeline.</p>
               ) : (
-                <div className="space-y-3 px-6 py-5">
+                <div className="space-y-3 px-4 py-3">
                   <Bar label="planned" value={d.sourcing.planned} max={Math.max(1, d.sourcing.planned, d.sourcing.sourcing, d.sourcing.ordered, d.sourcing.received)} />
                   <Bar label="sourcing" value={d.sourcing.sourcing} max={Math.max(1, d.sourcing.planned, d.sourcing.sourcing, d.sourcing.ordered, d.sourcing.received)} />
                   <Bar label="ordered" value={d.sourcing.ordered} max={Math.max(1, d.sourcing.planned, d.sourcing.sourcing, d.sourcing.ordered, d.sourcing.received)} />
@@ -120,9 +120,9 @@ export default async function VendingOps() {
 
             <SectionShell title="Installations" sub="Units assigned or installed at a venue">
               {!d.installations ? <Unavailable label="Installation data" /> : d.installations.assigned + d.installations.installed === 0 ? (
-                <p className="px-6 py-10 text-sm text-graphite">No upcoming installations.</p>
+                <p className="px-4 py-8 text-sm text-graphite">No upcoming installations.</p>
               ) : (
-                <div className="px-6 py-5">
+                <div className="px-4 py-3">
                   <p className="text-sm"><b>{d.installations.assigned}</b> assigned · <b>{d.installations.installed}</b> installed awaiting activation</p>
                   {d.installations.upcoming.length > 0 && (
                     <ul className="mt-3 space-y-1.5 text-xs text-graphite">
@@ -135,11 +135,11 @@ export default async function VendingOps() {
 
             <SectionShell title="Service requests" sub="Partner-filed equipment requests">
               {!d.serviceRequests ? <Unavailable label="Service request data" /> : d.serviceRequests.open === 0 ? (
-                <p className="px-6 py-10 text-sm text-graphite">No open service requests.</p>
+                <p className="px-4 py-8 text-sm text-graphite">No open service requests.</p>
               ) : (
                 <ul className="divide-y divide-mist/70">
                   {d.serviceRequests.recent.map((r) => (
-                    <li key={r.id} className="flex items-center justify-between gap-3 px-6 py-3 text-sm">
+                    <li key={r.id} className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
                       <span className="min-w-0"><span className="font-semibold">{r.category}</span> <span className="text-xs text-graphite">· {r.venueName ?? "venue unknown"}</span></span>
                       <span className="flex shrink-0 items-center gap-2"><Pill tone={r.priority === "urgent" ? "red" : r.priority === "high" ? "gold" : "mist"}>{r.priority}</Pill><Pill tone="cyan">{r.status}</Pill></span>
                     </li>
@@ -149,7 +149,7 @@ export default async function VendingOps() {
             </SectionShell>
 
             <SectionShell title="Revenue" sub="Honest coverage note">
-              <div className="px-6 py-6 text-sm text-graphite">
+              <div className="px-4 py-6 text-sm text-graphite">
                 <p><b className="text-ink">Vending transactions:</b> {d.revenue.reason}. No vending revenue is reported here until a transaction integration exists.</p>
                 <p className="mt-3"><b className="text-ink">Charger line (charging kiosks):</b>{" "}
                   {d.partnerEarnings ? (

@@ -153,5 +153,5 @@ export function AgentDirectory({ agents }: { agents: DirectoryAgent[] }) {
 }
 
 function EmptyNote() {
-  return <p className="rounded-2xl border border-mist bg-white px-6 py-10 text-sm text-graphite shadow-sm">No agents registered yet — the seed runs automatically on first load.</p>;
+  return <p className="rounded-2xl border border-mist bg-white px-4 py-8 text-sm text-graphite shadow-sm">No agents registered yet — the seed runs automatically on first load.</p>;
 }

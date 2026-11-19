@@ -67,11 +67,11 @@ export default async function CasePage({ params }: { params: Promise<{ id: strin
 
   return (
     <AdminGate title={c.subject} nav="investigations">
-      <div className="space-y-6">
+      <div className="space-y-4">
         <p className="text-sm"><Link href="/admin/finance/investigations" className="font-bold text-forest underline">← All investigations</Link></p>
 
         {/* Header */}
-        <section className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+        <section className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
           <div className="flex flex-wrap items-center gap-2">
             <Pill tone={TONE[c.status] ?? "mist"}>{label(c.status)}</Pill>
             <Pill tone={TONE[c.severity] ?? "mist"}>{c.severity} severity</Pill>
@@ -91,48 +91,48 @@ export default async function CasePage({ params }: { params: Promise<{ id: strin
           )}
         </section>
 
-        <div className="grid gap-6 lg:grid-cols-3">
+        <div className="grid gap-4 lg:grid-cols-3">
           {/* Actions */}
           <div className="lg:col-span-1">
             <CaseActions caseId={c.id} status={c.status} decision={c.decision} paymentId={c.payment_id} canDecide={me.role === "admin" || me.role === "staff"} />
           </div>
 
           {/* Evidence dossier */}
-          <div className="space-y-6 lg:col-span-2">
+          <div className="space-y-4 lg:col-span-2">
             {!dossier ? (
               <EmptyCard title="No evidence yet">Run “Re-collect evidence” to build the dossier from live records.</EmptyCard>
             ) : (
               <>
-                <section className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+                <section className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
                   <h3 className="font-display text-lg font-bold">Verified facts</h3>
                   <p className="mb-3 text-xs text-graphite">Pulled from system records — each cites its source row.</p>
                   <FactList facts={dossier.verified_facts} empty="No verified facts collected." />
                 </section>
 
-                <section className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+                <section className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
                   <h3 className="font-display text-lg font-bold">Customer statements</h3>
                   <p className="mb-3 text-xs text-graphite">What the customer said — unverified claims, kept separate from facts.</p>
                   <FactList facts={dossier.customer_statements} empty="No customer statements on file." />
                 </section>
 
-                <section className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+                <section className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
                   <h3 className="font-display text-lg font-bold">System observations</h3>
                   <FactList facts={dossier.system_observations} empty="No observations." />
                 </section>
 
-                <div className="grid gap-6 md:grid-cols-2">
-                  <section className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <section className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
                     <h3 className="font-display text-lg font-bold">Missing records</h3>
                     <p className="mb-3 text-xs text-graphite">Gaps in the data — never counted against the customer.</p>
                     <MissingList items={dossier.missing_records} />
                   </section>
-                  <section className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+                  <section className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
                     <h3 className="font-display text-lg font-bold">Conflicts</h3>
                     <FactList facts={dossier.conflicts} empty="No conflicts detected." />
                   </section>
                 </div>
 
-                <section className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+                <section className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
                   <h3 className="font-display text-lg font-bold">Policy notes</h3>
                   <ul className="list-disc space-y-1 pl-5 text-sm text-graphite">
                     {dossier.policy_notes.map((p, i) => <li key={i}>{p}</li>)}
@@ -144,7 +144,7 @@ export default async function CasePage({ params }: { params: Promise<{ id: strin
 
             {/* Recommendation */}
             {rec && (
-              <section className="rounded-2xl border-2 border-forest/40 bg-white p-6 shadow-sm">
+              <section className="rounded-2xl border-2 border-forest/40 bg-white p-4 shadow-sm">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <h3 className="font-display text-lg font-bold">Recommendation</h3>
                   <div className="flex gap-1.5">
@@ -183,7 +183,7 @@ export default async function CasePage({ params }: { params: Promise<{ id: strin
 
             {/* Risk indicators */}
             {signals.length > 0 && (
-              <section className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+              <section className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
                 <h3 className="font-display text-lg font-bold">Risk indicators</h3>
                 <p className="mb-3 text-xs text-graphite">Pattern signals for human review — not accusations, never auto-applied.</p>
                 <ul className="space-y-3">
@@ -204,7 +204,7 @@ export default async function CasePage({ params }: { params: Promise<{ id: strin
         </div>
 
         {/* Audit timeline */}
-        <section className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+        <section className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
           <h3 className="font-display text-lg font-bold">Case timeline</h3>
           {events.length === 0 ? (
             <p className="mt-2 text-sm text-graphite">No events yet.</p>

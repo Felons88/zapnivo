@@ -62,10 +62,10 @@ export function ExperimentsClient({ experiments }: { experiments: ExperimentRow[
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {error && <div role="alert" className="rounded-xl bg-red-100 px-5 py-3 text-sm font-bold text-red-900">{error}</div>}
 
-      <form onSubmit={create} className="grid gap-4 rounded-2xl border border-mist bg-white p-6 shadow-sm sm:grid-cols-2">
+      <form onSubmit={create} className="grid gap-4 rounded-2xl border border-mist bg-white p-4 shadow-sm sm:grid-cols-2">
         <h2 className="text-base font-extrabold sm:col-span-2">New experiment (created as draft)</h2>
         <label className="text-sm font-semibold">Key<input name="key" required pattern="[a-z0-9][a-z0-9_-]{0,62}" placeholder="hero_cta_copy" className="mt-1 block w-full rounded-lg border border-silver/60 px-3 py-2" /></label>
         <label className="text-sm font-semibold">Name<input name="name" required placeholder="Hero CTA copy test" className="mt-1 block w-full rounded-lg border border-silver/60 px-3 py-2" /></label>
@@ -86,9 +86,9 @@ export function ExperimentsClient({ experiments }: { experiments: ExperimentRow[
       </form>
 
       {experiments.length === 0 ? (
-        <p className="rounded-2xl border border-mist bg-white px-6 py-10 text-sm text-graphite shadow-sm">No experiments yet. Create a draft above — it stays invisible to visitors until approved and running.</p>
+        <p className="rounded-2xl border border-mist bg-white px-4 py-8 text-sm text-graphite shadow-sm">No experiments yet. Create a draft above — it stays invisible to visitors until approved and running.</p>
       ) : experiments.map((e) => (
-        <section key={e.id} className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+        <section key={e.id} className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <div className="flex items-center gap-3">

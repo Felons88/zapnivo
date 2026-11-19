@@ -26,7 +26,7 @@ export default async function AuditLog({ searchParams }: { searchParams: Promise
             {entities.map((e) => <a key={e} href={`/admin/audit?entity=${e}`} className={`rounded-full px-3 py-1.5 text-xs font-bold capitalize ${entity === e ? "bg-ink text-white" : "bg-white hover:bg-mist"}`}>{e}</a>)}
           </div>
           <section className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
-            {rows.length === 0 ? <p className="px-6 py-10 text-sm text-graphite">No audit events yet. Staff actions (fleet, partners, users, exports) are recorded here.</p> : (
+            {rows.length === 0 ? <p className="px-4 py-8 text-sm text-graphite">No audit events yet. Staff actions (fleet, partners, users, exports) are recorded here.</p> : (
               <table className="w-full min-w-[820px] text-left text-sm">
                 <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite"><tr>{["When", "Actor", "Action", "Entity", "Detail"].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr></thead>
                 <tbody>

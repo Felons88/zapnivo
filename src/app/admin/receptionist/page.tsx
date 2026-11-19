@@ -63,8 +63,8 @@ export default async function ReceptionistPage({ searchParams }: { searchParams:
         <EmptyCard title="Receptionist not connected">Connect Supabase and apply migration 0038_receptionist.sql.</EmptyCard>
       ) : (
         <div className="space-y-5">
-          <section className="flex flex-wrap items-end justify-between gap-4 rounded-2xl bg-[#142126] p-6 text-white md:p-8">
-            <div><p className="eyebrow text-lime">Communications desk</p><h2 className="mt-2 text-3xl font-bold tracking-tight">One place to receive and respond.</h2><p className="mt-2 max-w-2xl text-sm text-[#b7c8c2]">Review email drafts, assign correspondence, and respond to inbound texts from the same workspace.</p></div>
+          <section className="flex flex-wrap items-center justify-between gap-4 rounded-2xl bg-[#142126] p-4 text-white ">
+            <div><p className="eyebrow text-lime">Communications desk</p><h2 className="mt-1 text-xl font-bold tracking-tight">One place to receive and respond.</h2><p className="mt-1 max-w-2xl text-xs text-[#b7c8c2]">Review email drafts, assign correspondence, and respond to inbound texts from the same workspace.</p></div>
             <Link href="/admin/support" className="rounded-lg border border-white/25 px-4 py-2.5 text-sm font-bold hover:bg-white/10">Customer support →</Link>
           </section>
           <nav aria-label="Communication channels" className="flex gap-2 border-b border-mist pb-3">

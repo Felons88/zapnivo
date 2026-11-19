@@ -76,14 +76,14 @@ export default async function PlacementDetail({ params, searchParams }: { params
 
   return (
     <AdminGate title={app.business_name} nav="placements">
-      <div className="space-y-6">
+      <div className="space-y-4">
         <Link href="/admin/placements" className="text-sm font-bold underline underline-offset-4">← All placements</Link>
         {msg && <div role="status" className={`rounded-xl px-5 py-3 text-sm font-bold ${fb.result === "error" ? "bg-red-100 text-red-900" : "bg-lime text-ink"}`}>{msg}</div>}
 
-        <div className="grid gap-6 lg:grid-cols-3">
+        <div className="grid gap-4 lg:grid-cols-3">
           {/* ── Pipeline controls ── */}
           <section className="space-y-4 lg:col-span-1">
-            <div className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+            <div className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
               <div className="flex items-center justify-between">
                 <h2 className="font-display text-lg font-bold">Stage</h2>
                 <Pill tone={stage === "declined" ? "red" : stage === "active" || stage === "installed" ? "ink" : "lime"}>{STAGE_LABELS[stage]}</Pill>
@@ -113,7 +113,7 @@ export default async function PlacementDetail({ params, searchParams }: { params
               )}
             </div>
 
-            <div className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+            <div className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
               <h2 className="font-display text-lg font-bold">Assignment &amp; follow-up</h2>
               <form method="post" action="/api/admin/placements" className="mt-4 space-y-3">
                 <input type="hidden" name="action" value="update_meta" />
@@ -140,7 +140,7 @@ export default async function PlacementDetail({ params, searchParams }: { params
 
           {/* ── Application info ── */}
           <section className="space-y-4 lg:col-span-2">
-            <div className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+            <div className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
               <h2 className="font-display text-lg font-bold">Application</h2>
               <dl className="mt-4 grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
                 {([
@@ -166,7 +166,7 @@ export default async function PlacementDetail({ params, searchParams }: { params
             </div>
 
             {/* ── Assessment ── */}
-            <div className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+            <div className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
               <h2 className="font-display text-lg font-bold">Venue assessment <span className="ml-2 align-middle text-[10px] font-extrabold uppercase tracking-widest text-silver">informational · never auto-approves</span></h2>
               {assessment && (
                 <dl className="mt-4 grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
@@ -209,7 +209,7 @@ export default async function PlacementDetail({ params, searchParams }: { params
             </div>
 
             {/* ── Activity timeline ── */}
-            <div className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+            <div className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
               <h2 className="font-display text-lg font-bold">Activity</h2>
               <form method="post" action="/api/admin/placements" className="mt-4 flex flex-wrap items-center gap-2">
                 <input type="hidden" name="action" value="add_note" />

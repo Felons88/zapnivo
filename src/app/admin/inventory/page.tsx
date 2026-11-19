@@ -95,7 +95,7 @@ export default async function AdminInventory({ searchParams }: { searchParams: P
   return (
     <AdminGate title="Inventory" nav="inventory">
       {!db || !data ? <EmptyCard title="Inventory data not connected">{board && "error" in board ? `Could not load inventory (${board.error}).` : "Connect Supabase to manage SKUs and stock."}</EmptyCard> : (
-        <div className="space-y-8">
+        <div className="space-y-4">
           {sp.result === "error" ? (
             <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-bold text-red-700">{sp.detail ?? "Action failed."}</p>
           ) : sp.result === "saved" ? (
@@ -156,7 +156,7 @@ export default async function AdminInventory({ searchParams }: { searchParams: P
                 ))}
               </tbody>
             </table>
-            {data.skus.length === 0 ? <p className="px-6 py-10 text-sm text-graphite">No SKUs yet — add the first one above.</p> : null}
+            {data.skus.length === 0 ? <p className="px-4 py-8 text-sm text-graphite">No SKUs yet — add the first one above.</p> : null}
           </section>
 
           {/* Mobile cards */}
@@ -187,7 +187,7 @@ export default async function AdminInventory({ searchParams }: { searchParams: P
                 </details>
               </article>
             ))}
-            {data.skus.length === 0 ? <p className="rounded-2xl border border-mist bg-white p-6 text-sm text-graphite">No SKUs yet — add the first one above.</p> : null}
+            {data.skus.length === 0 ? <p className="rounded-2xl border border-mist bg-white p-4 text-sm text-graphite">No SKUs yet — add the first one above.</p> : null}
           </section>
         </div>
       )}

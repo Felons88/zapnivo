@@ -22,20 +22,20 @@ export default async function SlaPage() {
   return (
     <AdminGate title="Partner support SLA" nav="sla">
       {!ctx ? <EmptyCard title="Support system not connected">Connect Supabase to see SLA data.</EmptyCard> : (
-        <div className="space-y-6">
+        <div className="space-y-4">
           <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Metric label="Partner tickets" value={s.total} sub={`${s.open} open`} />
             <Metric label="Avg first response" value={hrs(s.avgFirstResponseHours)} sub={`${s.responded} responded`} />
             <Metric label="Avg resolution" value={hrs(s.avgResolutionHours)} sub={`${s.resolved} resolved`} />
             <Metric label="Breaches" value={s.firstResponseBreaches + s.resolutionBreaches} sub={`${s.firstResponseBreaches} first response · ${s.resolutionBreaches} resolution`} />
           </section>
-          <section className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+          <section className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
             <h2 className="font-display text-lg font-bold">Internal targets</h2>
             <p className="mt-2 text-sm text-graphite">{(Object.entries(SLA_HOURS) as [string, { first: number; resolve: number }][]).map(([p, v]) => `${p}: ${v.first}h first response, ${v.resolve}h resolution`).join(" · ")}. Internal only; not published to partners.</p>
           </section>
           <section className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
-            <div className="border-b border-mist px-6 py-4"><h2 className="font-display text-lg font-bold">By organization</h2></div>
-            {s.perOrg.length === 0 ? <p className="px-6 py-10 text-sm text-graphite">No partner tickets yet.</p> : (
+            <div className="border-b border-mist px-4 py-4"><h2 className="font-display text-lg font-bold">By organization</h2></div>
+            {s.perOrg.length === 0 ? <p className="px-4 py-8 text-sm text-graphite">No partner tickets yet.</p> : (
               <table className="w-full min-w-[520px] text-left text-sm">
                 <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite"><tr>{["Organization", "Tickets", "Open", "Breached"].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr></thead>
                 <tbody>{s.perOrg.map((o) => (

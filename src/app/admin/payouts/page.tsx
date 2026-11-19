@@ -54,7 +54,7 @@ export default async function Payouts({ searchParams }: { searchParams: Promise<
   return (
     <AdminGate title="Settlement board" nav="payouts">
       {!db ? <EmptyCard title="Finance data not connected">Connect Supabase.</EmptyCard> : (
-        <div className="space-y-6">
+        <div className="space-y-4">
           {sp.gen != null && <p className="rounded-xl bg-lime px-4 py-2.5 text-sm font-bold text-ink">Generated {sp.gen} ledger(s){Number(sp.norate) > 0 ? ` · ${sp.norate} venue(s) skipped — no private commission rate on their agreement` : ""}{Number(sp.locked) > 0 ? ` · ${sp.locked} locked (payout exists)` : ""}.</p>}
 
           <section className="grid gap-4 sm:grid-cols-3">
@@ -63,7 +63,7 @@ export default async function Payouts({ searchParams }: { searchParams: Promise<
             <Metric label="Venues" value={rows.length} sub={`${rows.filter((r) => r.state === "unbilled").length} without a ledger`} />
           </section>
 
-          <section className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+          <section className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
             <div className="flex flex-wrap items-end justify-between gap-4">
               <div>
                 <h2 className="font-display text-lg font-bold">Settlement period</h2>
@@ -86,8 +86,8 @@ export default async function Payouts({ searchParams }: { searchParams: Promise<
           </section>
 
           <section className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
-            <div className="border-b border-mist px-6 py-4"><h2 className="font-display text-lg font-bold">Venues — {month(`${period}-01`)}</h2></div>
-            {rows.length === 0 ? <p className="px-6 py-10 text-sm text-graphite">No venues found.</p> : (
+            <div className="border-b border-mist px-4 py-4"><h2 className="font-display text-lg font-bold">Venues — {month(`${period}-01`)}</h2></div>
+            {rows.length === 0 ? <p className="px-4 py-8 text-sm text-graphite">No venues found.</p> : (
               <table className="w-full min-w-[1100px] text-left text-sm">
                 <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite"><tr>{["Venue", "Organization", "Gross", "Commission", "Agreement", "Payout", "State", ""].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr></thead>
                 <tbody>

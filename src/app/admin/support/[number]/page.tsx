@@ -56,7 +56,7 @@ export default async function TicketPage({ params }: { params: Promise<{ number:
             </div>
             <section aria-label="Case overview" className="rounded-2xl border border-[#dbe5dc] bg-white p-5 shadow-sm md:p-7">
               <div className="flex flex-wrap items-start justify-between gap-4">
-                <div><p className="eyebrow text-forest">Support case / {t.number}</p><h2 className="mt-2 text-2xl font-bold tracking-tight md:text-3xl">{t.subject || t.category}</h2><p className="mt-2 text-sm text-graphite">From {t.name} · opened {when(t.createdAt)} · {t.queue} queue</p></div>
+                <div><p className="eyebrow text-forest">Support case / {t.number}</p><h2 className="mt-2 text-2xl font-bold tracking-tight md:text-2xl">{t.subject || t.category}</h2><p className="mt-2 text-sm text-graphite">From {t.name} · opened {when(t.createdAt)} · {t.queue} queue</p></div>
                 <div className="flex flex-wrap gap-2"><Pill tone={t.state === "resolved" || t.state === "closed" ? "lime" : "gold"}>{t.state.replace(/_/g, " ")}</Pill><Pill tone={t.priority === "urgent" ? "red" : t.priority === "high" ? "gold" : "mist"}>{t.priority} priority</Pill></div>
               </div>
               <div className="mt-5 grid gap-3 border-t border-mist pt-4 text-xs sm:grid-cols-3">
@@ -73,7 +73,7 @@ export default async function TicketPage({ params }: { params: Promise<{ number:
                 <div className="flex items-center justify-between border-b border-mist px-5 py-4"><div><p className="eyebrow text-forest">Conversation</p><h3 className="mt-1 text-lg font-bold">{data.messages.length} message{data.messages.length === 1 ? "" : "s"}</h3></div><span className="text-xs text-graphite">Oldest first</span></div>
               <ol className="space-y-0 divide-y divide-mist/70 px-5" aria-label="Conversation">
                 {data.messages.map((m) => (
-                  <li key={m.id} className={m.internal ? "my-3 rounded-xl border border-gold/60 bg-gold/15 p-4" : "py-5"}>
+                  <li key={m.id} className={m.internal ? "my-3 rounded-xl border border-gold/60 bg-gold/15 p-4" : "py-3"}>
                     <p className="flex flex-wrap items-center gap-2 text-xs font-extrabold uppercase tracking-wider text-forest/70">
                       {m.internal && <Pill tone="gold">Internal</Pill>}<span>{m.authorName || m.authorType}</span><Pill tone={m.authorType === "ai" ? "lime" : m.authorType === "system" ? "mist" : "ink"}>{m.authorType}</Pill><span className="font-medium normal-case tracking-normal">{when(m.createdAt)}</span>
                     </p>

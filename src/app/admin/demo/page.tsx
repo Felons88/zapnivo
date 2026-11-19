@@ -19,7 +19,7 @@ const icons = {
 };
 
 const Card = ({ title, href, children }: { title: string; href?: string; children: ReactNode }) => (
-  <section className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+  <section className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
     <div className="flex items-center justify-between"><h2 className="font-display text-lg font-bold">{title}</h2>{href && <span className="text-xs font-extrabold uppercase tracking-wider text-forest">Open →</span>}</div>
     <div className="mt-4">{children}</div>
   </section>
@@ -41,7 +41,7 @@ const qTone = { support: "mist", billing: "gold", partner: "cyan", safety: "red"
 export default function AdminDemo() {
   return (
     <AdminGate title="Dashboard" nav="dashboard">
-      <div className="space-y-6">
+      <div className="space-y-4">
         <div className="rounded-xl bg-gold px-4 py-2.5 text-center text-xs font-extrabold uppercase tracking-widest text-ink">
           Sample data — dashboard preview · <Link href="/admin" className="underline">back to live dashboard</Link>
         </div>
@@ -65,12 +65,12 @@ export default function AdminDemo() {
           ))}
         </section>
 
-        <div className="grid gap-6 xl:grid-cols-[1.6fr_1fr]">
-          <div className="space-y-6">
+        <div className="grid gap-4 xl:grid-cols-[1.6fr_1fr]">
+          <div className="space-y-4">
             <Card title="Latest activity" href="/admin/support">
               <ul className="-mx-6 -mb-4 divide-y divide-mist/80">
                 {ACTIVITY.map((t) => (
-                  <li key={t.n}><span className="flex items-center gap-4 px-6 py-3.5">
+                  <li key={t.n}><span className="flex items-center gap-4 px-4 py-3.5">
                     <span className="w-20 shrink-0 font-bold">{t.n}</span>
                     <span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold">{t.s}</span><span className="block truncate text-xs text-graphite">{t.who}</span></span>
                     <span className="hidden sm:block"><Pill tone={qTone[t.q]}>{t.q}</Pill></span>
@@ -83,7 +83,7 @@ export default function AdminDemo() {
             <Card title="Partner & maintenance requests" href="/admin/support?queue=partner">
               <ul className="-mx-6 -mb-4 divide-y divide-mist/80">
                 {[ACTIVITY[1], ACTIVITY[3], ACTIVITY[4]].map((t) => (
-                  <li key={t.n}><span className="flex items-center gap-4 px-6 py-3.5">
+                  <li key={t.n}><span className="flex items-center gap-4 px-4 py-3.5">
                     <span className="w-20 shrink-0 font-bold">{t.n}</span>
                     <span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold">{t.s}</span><span className="block truncate text-xs text-graphite">{t.who}</span></span>
                     <Pill tone={t.q === "safety" ? "red" : "cyan"}>{t.s}</Pill>
@@ -93,7 +93,7 @@ export default function AdminDemo() {
             </Card>
           </div>
 
-          <div className="space-y-6">
+          <div className="space-y-4">
             <Card title="Ticket volume · 14 days" href="/admin/support/metrics">
               <div className="flex h-24 items-end gap-1.5" role="img" aria-label="Sample ticket volume">
                 {VOLUME.map((v, i) => <div key={i} className="flex flex-1 items-end"><span className="w-full rounded-t bg-violet/70" style={{ height: `${Math.max(4, (v / peak) * 100)}%` }} /></div>)}

@@ -36,7 +36,7 @@ export default async function Partners({ searchParams }: { searchParams: Promise
       {!db ? (
         <EmptyCard title="Partner data not connected">Connect Supabase to see live applications and venues.</EmptyCard>
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-4">
           {(feedback.result || feedback.stm) && <div role="status" className={`rounded-xl px-5 py-3 text-sm font-bold ${feedback.result === "error" ? "bg-red-100 text-red-900" : "bg-lime text-ink"}`}>
             {feedback.result === "error" ? feedback.detail : feedback.result === "org" ? "Organization created." : feedback.result === "invited" ? "Partner invitation sent and account linked to the organization." : feedback.result === "linked" ? "Existing account linked to the organization." : feedback.result === "application" ? "Application status saved." : feedback.result === "venue" ? "Venue owner saved." : feedback.result === "converted" ? "Approved application added as an unpublished venue. Register its kiosk on Fleet." : feedback.result === "map" ? "Venue map settings saved." : feedback.stm === "none" ? "No statements exist for that month." : feedback.stm ? `${feedback.stm} statement email(s) queued.` : "Saved."}
           </div>}
@@ -54,9 +54,9 @@ export default async function Partners({ searchParams }: { searchParams: Promise
           </div>
 
           <section aria-label="Applications" className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
-            <div className="border-b border-mist px-6 py-4"><h2 className="font-display text-lg font-bold">Partner applications</h2></div>
+            <div className="border-b border-mist px-4 py-4"><h2 className="font-display text-lg font-bold">Partner applications</h2></div>
             {appRows.length === 0 ? (
-              <p className="px-6 py-10 text-sm text-graphite">No applications yet. New venue applications from /business/apply appear here.</p>
+              <p className="px-4 py-8 text-sm text-graphite">No applications yet. New venue applications from /business/apply appear here.</p>
             ) : (
               <table className="w-full min-w-[900px] text-left text-sm">
                 <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite">
@@ -80,9 +80,9 @@ export default async function Partners({ searchParams }: { searchParams: Promise
           </section>
 
           <section aria-label="Venues" className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
-            <div className="flex items-center justify-between border-b border-mist px-6 py-4"><h2 className="font-display text-lg font-bold">Venues</h2><Link href="/admin/fleet" className="text-xs font-bold text-forest underline">Add venue or kiosk →</Link></div>
+            <div className="flex items-center justify-between border-b border-mist px-4 py-4"><h2 className="font-display text-lg font-bold">Venues</h2><Link href="/admin/fleet" className="text-xs font-bold text-forest underline">Add venue or kiosk →</Link></div>
             {venueRows.length === 0 ? (
-              <p className="px-6 py-10 text-sm text-graphite">No venues yet. Add one on the Fleet page after reviewing the partner application.</p>
+              <p className="px-4 py-8 text-sm text-graphite">No venues yet. Add one on the Fleet page after reviewing the partner application.</p>
             ) : (
               <table className="w-full min-w-[800px] text-left text-sm">
                 <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite">

@@ -10,7 +10,7 @@ export function EvalsClient({ suites, runs }: { suites: Suite[]; runs: Run[] }) 
   const [msg, setMsg] = useState("");
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div className="flex items-center gap-3">
         <button className="btn btn-primary" disabled={busy !== null} onClick={async () => {
           setBusy("seed"); setMsg("");

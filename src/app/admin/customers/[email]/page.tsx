@@ -72,7 +72,7 @@ export default async function Customer360({ params, searchParams }: { params: Pr
       ) : !c ? (
         <EmptyCard title="Not a valid customer">“{email}” isn't a recognizable customer email. <Link href="/admin/customers" className="underline">Search again</Link>.</EmptyCard>
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-4">
           {feedback.result && (
             <div role="status" className={`rounded-xl px-5 py-3 text-sm font-bold ${feedback.result === "error" || feedback.result === "flagged" ? "bg-red-100 text-red-900" : "bg-lime text-ink"}`}>
               {feedback.detail ?? "Done."}
@@ -90,13 +90,13 @@ export default async function Customer360({ params, searchParams }: { params: Pr
 
           {/* ── Identity ─────────────────────────────────────────── */}
           <section id="customer-overview" className="scroll-mt-40 overflow-hidden rounded-2xl bg-[#142126] text-white shadow-sm">
-            <div className="border-b border-white/10 px-6 py-4 text-[10px] font-extrabold uppercase tracking-[.18em] text-lime">Customer intelligence / Unified record</div>
-            <div className="p-6 md:p-8">
+            <div className="border-b border-white/10 px-4 py-2 text-[10px] font-extrabold uppercase tracking-[.18em] text-lime">Customer intelligence / Unified record</div>
+            <div className="p-4 ">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <p className="eyebrow text-lime">Customer profile</p>
-                <h2 className="mt-2 font-display text-3xl font-bold tracking-tight md:text-4xl">{c.names[0] ?? c.email}</h2>
-                <p className="mt-3 text-sm font-semibold text-[#dbe7e3]">{c.email}</p>
+                <h2 className="mt-1 font-display text-xl font-bold tracking-tight">{c.names[0] ?? c.email}</h2>
+                <p className="mt-1 text-sm font-semibold text-[#dbe7e3]">{c.email}</p>
                 {c.phones.length > 0 && <p className="mt-0.5 text-sm text-[#b7c8c2]">{c.phones.join(" · ")}</p>}
                 {c.names.length > 1 && <p className="mt-2 text-xs text-[#b7c8c2]">Also seen as: {c.names.slice(1).join(", ")}</p>}
               </div>
@@ -122,16 +122,16 @@ export default async function Customer360({ params, searchParams }: { params: Pr
           </section>
 
           <section id="customer-resolution" aria-label="Issue resolution" className="scroll-mt-40 grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(280px,.65fr)]">
-            <div className="rounded-2xl border border-[#cddbcf] bg-[#eaf2e9] p-6 md:p-7">
+            <div className="rounded-2xl border border-[#cddbcf] bg-[#eaf2e9] p-4 md:p-7">
               <p className="eyebrow text-forest">Resolution desk</p>
-              <h2 className="mt-2 text-2xl font-bold tracking-tight">{nextStep.title}</h2>
+              <h2 className="mt-1 text-xl font-bold tracking-tight">{nextStep.title}</h2>
               <p className="mt-2 text-sm text-graphite">{nextStep.detail}</p>
               <div className="mt-5 flex flex-wrap gap-2">
                 <Link href={nextStep.href} className="inline-flex min-h-10 items-center rounded-lg bg-ink px-4 text-sm font-bold text-white hover:bg-forest">{nextStep.action} →</Link>
                 <a href="#customer-activity" className="inline-flex min-h-10 items-center rounded-lg border border-[#b9c9ba] bg-white px-4 text-sm font-bold text-ink hover:bg-lime/30">Review timeline</a>
               </div>
             </div>
-            <div className="rounded-2xl border border-mist bg-white p-6 md:p-7">
+            <div className="rounded-2xl border border-mist bg-white p-4 md:p-7">
               <p className="eyebrow text-forest">Case signals</p>
               <dl className="mt-4 space-y-3 text-sm">
                 <div className="flex justify-between gap-3 border-b border-mist pb-2"><dt>Open tickets</dt><dd className="font-bold">{openTickets.length}</dd></div>
@@ -149,14 +149,14 @@ export default async function Customer360({ params, searchParams }: { params: Pr
             <Metric label="Staff notes" value={c.notes.length} sub={c.incidents.length ? `${c.incidents.length} incident report${c.incidents.length === 1 ? "" : "s"}` : undefined} />
           </section>
 
-          <section id="customer-activity" aria-label="Customer activity" className="scroll-mt-40 rounded-2xl border border-mist bg-white p-6 shadow-sm">
-            <div className="flex flex-wrap items-end justify-between gap-2"><div><p className="eyebrow text-silver">Record history</p><h2 className="mt-1 font-display text-lg font-bold">Recent activity</h2></div><span className="text-xs text-graphite">Rentals, support and staff notes</span></div>
+          <section id="customer-activity" aria-label="Customer activity" className="scroll-mt-40 rounded-2xl border border-mist bg-white p-4 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2"><div><p className="eyebrow text-silver">Record history</p><h2 className="mt-1 font-display text-lg font-bold">Recent activity</h2></div><span className="text-xs text-graphite">Rentals, support and staff notes</span></div>
             {activity.length === 0 ? <p className="mt-4 text-sm text-graphite">No activity on this record yet.</p> : <ol className="mt-4 divide-y divide-mist">
               {activity.map((item) => <li key={item.id}><Link href={item.href} className="flex gap-4 py-3 hover:text-forest"><span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-forest" aria-hidden /><span className="min-w-0 flex-1"><span className="block text-sm font-bold">{item.title}</span><span className="block truncate text-xs text-graphite">{item.detail}</span></span><span className="shrink-0 text-xs text-graphite">{when(item.at)}</span></Link></li>)}
             </ol>}
           </section>
 
-          <section id="customer-wallet" aria-label="Customer wallet" className="scroll-mt-40 rounded-2xl border border-mist bg-white p-6 shadow-sm">
+          <section id="customer-wallet" aria-label="Customer wallet" className="scroll-mt-40 rounded-2xl border border-mist bg-white p-4 shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div><p className="eyebrow text-forest">Stored charging credit</p><h2 className="mt-1 font-display text-xl font-bold">Wallet & top-ups</h2></div>
               <p className="text-2xl font-black">{c.wallet?.balanceCents == null ? "—" : fmt(c.wallet.balanceCents)}</p>
@@ -214,8 +214,8 @@ export default async function Customer360({ params, searchParams }: { params: Pr
           </section>
 
           {/* ── Actions ──────────────────────────────────────────── */}
-          <div id="customer-actions" className="scroll-mt-40 grid gap-6 lg:grid-cols-2 xl:grid-cols-3">
-            <section className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+          <div id="customer-actions" className="scroll-mt-40 grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+            <section className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
               <h2 className="font-display text-lg font-bold">Open a ticket for this customer</h2>
               <p className="mt-1 text-xs text-graphite">For phone/walk-up contacts. The customer gets the usual confirmation email and can reply to the thread.</p>
               <form method="post" action="/api/admin/customers" className="mt-4 space-y-3">
@@ -244,7 +244,7 @@ export default async function Customer360({ params, searchParams }: { params: Pr
               </form>
             </section>
 
-            <section className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+            <section className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
               <h2 className="font-display text-lg font-bold">Grant credit</h2>
               <p className="mt-1 text-xs text-graphite">Entitlement credit on the customer&apos;s account — auto-applies on their next rental. The customer is emailed.</p>
               {c.profile ? (
@@ -273,7 +273,7 @@ export default async function Customer360({ params, searchParams }: { params: Pr
             </section>
 
             {isAdmin && c.profile && (
-              <section className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+              <section className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
                 <h2 className="font-display text-lg font-bold">Edit customer details <span className="ml-2 align-middle text-[10px] font-extrabold uppercase tracking-widest text-silver">admin only</span></h2>
                 <p className="mt-1 text-xs text-graphite">Name and phone update instantly. An email change is applied immediately and the customer is told at the new address — every change is audit-logged.</p>
                 <form method="post" action="/api/admin/customers" className="mt-4 space-y-3">
@@ -300,7 +300,7 @@ export default async function Customer360({ params, searchParams }: { params: Pr
               </section>
             )}
 
-            <section className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+            <section className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
               <h2 className="font-display text-lg font-bold">Add a staff note</h2>
               <p className="mt-1 text-xs text-graphite">Internal only — attached to this customer and audit-logged. Never emailed.</p>
               <form method="post" action="/api/admin/customers" className="mt-4 space-y-3">
@@ -325,9 +325,9 @@ export default async function Customer360({ params, searchParams }: { params: Pr
 
           {/* ── Rentals ──────────────────────────────────────────── */}
           <section id="customer-rentals" aria-label="Rentals" className="scroll-mt-40 overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
-            <div className="border-b border-mist px-6 py-4"><h2 className="font-display text-lg font-bold">Rentals ({c.rentals.length})</h2></div>
+            <div className="border-b border-mist px-4 py-4"><h2 className="font-display text-lg font-bold">Rentals ({c.rentals.length})</h2></div>
             {c.rentals.length === 0 ? (
-              <p className="px-6 py-10 text-sm text-graphite">No rentals on record for this customer.</p>
+              <p className="px-4 py-8 text-sm text-graphite">No rentals on record for this customer.</p>
             ) : (
               <table className="w-full min-w-[900px] text-left text-sm">
                 <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite">
@@ -403,7 +403,7 @@ export default async function Customer360({ params, searchParams }: { params: Pr
               </table>
             )}
             {c.rentals.length > 4 && (
-              <p className="border-t border-mist px-6 py-3 text-xs">
+              <p className="border-t border-mist px-4 py-3 text-xs">
                 {feedback.all === "1"
                   ? <Link href={`${back}#customer-rentals`} className="font-bold text-forest underline">Show latest 4 only</Link>
                   : <Link href={`${back}?all=1#customer-rentals`} className="font-bold text-forest underline">View all {c.rentals.length} rentals →</Link>}
@@ -412,11 +412,11 @@ export default async function Customer360({ params, searchParams }: { params: Pr
           </section>
 
           {/* ── Tickets + refunds ────────────────────────────────── */}
-          <div id="customer-support" className="scroll-mt-40 grid gap-6 xl:grid-cols-2">
+          <div id="customer-support" className="scroll-mt-40 grid gap-4 xl:grid-cols-2">
             <section aria-label="Support tickets" className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
-              <div className="border-b border-mist px-6 py-4"><h2 className="font-display text-lg font-bold">Support tickets ({c.tickets.length})</h2></div>
+              <div className="border-b border-mist px-4 py-4"><h2 className="font-display text-lg font-bold">Support tickets ({c.tickets.length})</h2></div>
               {c.tickets.length === 0 ? (
-                <p className="px-6 py-10 text-sm text-graphite">No support tickets.</p>
+                <p className="px-4 py-8 text-sm text-graphite">No support tickets.</p>
               ) : (
                 <table className="w-full min-w-[560px] text-left text-sm">
                   <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite">
@@ -437,8 +437,8 @@ export default async function Customer360({ params, searchParams }: { params: Pr
               )}
             </section>
 
-            <div className="space-y-6">
-              <section aria-label="Refunds" className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+            <div className="space-y-4">
+              <section aria-label="Refunds" className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
                 <h2 className="font-display text-lg font-bold">Refund requests ({c.refundRequests.length})</h2>
                 {c.refundRequests.length === 0 ? (
                   <p className="mt-3 text-sm text-graphite">No refund requests. Refunds are requested from inside a ticket — open one above or create one.</p>
@@ -455,7 +455,7 @@ export default async function Customer360({ params, searchParams }: { params: Pr
                 {c.refundRequests.length > 0 && <p className="mt-3 text-xs"><Link href="/admin/support/refunds" className="font-bold underline">Refund queue →</Link></p>}
               </section>
 
-              <section aria-label="Disputes" className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+              <section aria-label="Disputes" className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
                 <h2 className="font-display text-lg font-bold">Card disputes ({c.disputes.length})</h2>
                 {c.disputes.length === 0 ? <p className="mt-3 text-sm text-graphite">No disputes on this customer's payments.</p> : (
                   <ul className="mt-3 space-y-2">
@@ -473,8 +473,8 @@ export default async function Customer360({ params, searchParams }: { params: Pr
           </div>
 
           {/* ── Comms + privacy ──────────────────────────────────── */}
-          <div id="customer-comms" className="scroll-mt-40 grid gap-6 xl:grid-cols-2">
-            <section aria-label="Recent SMS" className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+          <div id="customer-comms" className="scroll-mt-40 grid gap-4 xl:grid-cols-2">
+            <section aria-label="Recent SMS" className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
               <h2 className="font-display text-lg font-bold">Recent texts ({c.sms.length})</h2>
               {c.sms.length === 0 ? (
                 <p className="mt-3 text-sm text-graphite">No SMS traffic on this customer's numbers. Full log lives under <Link href="/admin/sms" className="font-bold underline">SMS log</Link>.</p>
@@ -490,7 +490,7 @@ export default async function Customer360({ params, searchParams }: { params: Pr
               )}
             </section>
 
-            <section aria-label="Emails" className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+            <section aria-label="Emails" className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
               <h2 className="font-display text-lg font-bold">Emails sent ({c.emails.length})</h2>
               {c.emails.length === 0 ? <p className="mt-3 text-sm text-graphite">No emails sent to this address yet.</p> : (
                 <ul className="mt-3 space-y-2">
@@ -506,7 +506,7 @@ export default async function Customer360({ params, searchParams }: { params: Pr
               )}
             </section>
 
-            <section aria-label="Privacy" className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+            <section aria-label="Privacy" className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
               <h2 className="font-display text-lg font-bold">Privacy requests ({c.privacyRequests.length})</h2>
               {c.privacyRequests.length === 0 ? (
                 <p className="mt-3 text-sm text-graphite">No export or deletion requests for this customer.</p>

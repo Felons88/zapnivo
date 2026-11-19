@@ -23,14 +23,14 @@ export default async function Promos({ searchParams }: { searchParams: Promise<{
   return (
     <AdminGate title="Promo codes" nav="promos">
       {!db ? <EmptyCard title="Promo data not connected">Connect Supabase to manage promo codes.</EmptyCard> : (
-        <div className="space-y-6">
+        <div className="space-y-4">
           {feedback.result && (
             <div role="status" className={`rounded-xl px-5 py-3 text-sm font-bold ${feedback.result === "error" ? "bg-red-100 text-red-900" : "bg-lime text-ink"}`}>
               {feedback.result === "error" ? feedback.detail ?? "The action failed." : `Promo ${feedback.detail ?? ""} ${feedback.result}.`}
             </div>
           )}
           {isAdmin ? (
-            <form method="post" action="/api/admin/promos" className="grid gap-4 rounded-2xl border border-mist bg-white p-6 shadow-sm sm:grid-cols-3">
+            <form method="post" action="/api/admin/promos" className="grid gap-4 rounded-2xl border border-mist bg-white p-4 shadow-sm sm:grid-cols-3">
               <input type="hidden" name="action" value="create" />
               <label className="text-sm font-semibold">Code<input name="code" required minLength={3} maxLength={32} className="mt-1 block w-full rounded-lg border border-silver/60 px-3 py-2" /></label>
               <label className="text-sm font-semibold">Type
@@ -45,7 +45,7 @@ export default async function Promos({ searchParams }: { searchParams: Promise<{
           ) : <p className="text-sm text-graphite">Only admins can create or deactivate promo codes.</p>}
 
           <section aria-label="Promo codes" className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
-            {rows.length === 0 ? <p className="px-6 py-10 text-sm text-graphite">No promo codes yet.</p> : (
+            {rows.length === 0 ? <p className="px-4 py-8 text-sm text-graphite">No promo codes yet.</p> : (
               <table className="w-full min-w-[760px] text-left text-sm">
                 <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite">
                   <tr>{["Code", "Discount", "Window", "Redeemed", "Status", ""].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr>

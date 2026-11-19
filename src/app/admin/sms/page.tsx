@@ -34,8 +34,8 @@ export default async function SmsLog({ searchParams }: { searchParams: Promise<{
     <AdminGate title="SMS log" nav="sms">
       {!smsConfigured() && <p className="mb-4 rounded-xl bg-gold/40 px-4 py-3 text-sm font-bold">Twilio isn't configured — set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN and TWILIO_FROM_NUMBER. Messages queue nowhere: sends are skipped until configured.</p>}
       {sp.result && <p className="mb-4 rounded-xl bg-lime px-4 py-2.5 text-sm font-bold text-ink">{sp.result === "sent" ? "Test SMS sent." : sp.result === "notconfigured" ? "Twilio isn't configured — the test was skipped." : "Saved."}</p>}
-      <div className="mb-6 grid gap-6 lg:grid-cols-2">
-        <section className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+      <div className="mb-6 grid gap-4 lg:grid-cols-2">
+        <section className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
           <h2 className="font-display text-lg font-bold">Sender &amp; registration</h2>
           <dl className="mt-4 space-y-2 text-sm">
             <div className="flex justify-between gap-4"><dt className="text-graphite">Twilio credentials</dt><dd className="font-bold">{smsConfigured() ? "Configured" : "Missing env vars"}</dd></div>
@@ -48,7 +48,7 @@ export default async function SmsLog({ searchParams }: { searchParams: Promise<{
             (Messaging → Regulatory → A2P). Brand/campaign approval can't be read via the API — until approved,
             carriers may filter application traffic.
           </p>
-          <h2 className="mt-6 font-display text-lg font-bold">Emergency switches</h2>
+          <h2 className="mt-4 font-display text-lg font-bold">Emergency switches</h2>
           <div className="mt-4 space-y-4">
             {([["sms_enabled", "SMS sending", "Stops every automated text — jobs stay queued, nothing sends."], ["non_return_billing_enabled", "Non-return billing", "Blocks the $45 fee charge path until re-enabled."]] as const).map(([k, label, help]) => (
               <div key={k} className="flex items-center justify-between gap-4">
@@ -67,7 +67,7 @@ export default async function SmsLog({ searchParams }: { searchParams: Promise<{
             <button className="min-h-10 rounded-full bg-ink px-5 text-sm font-bold text-white">Send</button>
           </form>
         </section>
-        <section className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+        <section className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
           <h2 className="font-display text-lg font-bold">Message templates</h2>
           <p className="mt-1 text-xs text-graphite">Variables: {VARS}. Empty = built-in default. Each editor shows a live preview with sample data.</p>
           <div className="mt-4 max-h-[36rem] space-y-3 overflow-y-auto">
@@ -79,7 +79,7 @@ export default async function SmsLog({ searchParams }: { searchParams: Promise<{
       </div>
 
       <section className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
-        {rows.length === 0 ? <p className="px-6 py-10 text-sm text-graphite">No messages yet. Rental lifecycle texts and inbound replies appear here with their delivery status.</p> : (
+        {rows.length === 0 ? <p className="px-4 py-8 text-sm text-graphite">No messages yet. Rental lifecycle texts and inbound replies appear here with their delivery status.</p> : (
           <table className="w-full min-w-[720px] text-left text-sm">
             <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite"><tr>{["When", "Dir", "From → To", "Status", "Message"].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr></thead>
             <tbody>

@@ -31,13 +31,13 @@ export default async function EmailDetail({ params }: { params: Promise<{ id: st
 
   return (
     <AdminGate title={`Email · ${mail.subject}`} nav="customers">
-      <div className="space-y-6">
+      <div className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <Link href={`/admin/customers/${encodeURIComponent(mail.to_email)}`} className="text-sm font-bold text-graphite hover:text-ink">← Customer 360</Link>
           <span className="text-xs font-bold uppercase tracking-widest text-graphite">Staff only · outbox record</span>
         </div>
 
-        <section className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+        <section className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="font-display text-xl font-bold">{mail.subject}</h2>
             <Pill tone={mail.status === "sent" ? "lime" : mail.status === "failed" ? "red" : "gold"}>{mail.status}</Pill>
@@ -55,7 +55,7 @@ export default async function EmailDetail({ params }: { params: Promise<{ id: st
           )}
         </section>
 
-        <section className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+        <section className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
           <h3 className="font-display text-lg font-bold">Message body</h3>
           <p className="mt-3 whitespace-pre-wrap text-sm leading-7">{mail.body}</p>
         </section>

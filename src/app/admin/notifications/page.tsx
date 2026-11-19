@@ -65,15 +65,15 @@ export default async function NotificationsAdmin({ searchParams }: { searchParam
         ] as const).map(([label, n, help]) => (
           <div key={label} className="rounded-2xl border border-mist bg-white p-5 shadow-sm">
             <p className="text-[11px] font-extrabold uppercase tracking-wider text-graphite">{label}</p>
-            <p className="mt-1 font-display text-3xl font-extrabold">{n}</p>
+            <p className="mt-1 font-display text-2xl font-extrabold">{n}</p>
             <p className="mt-1 text-[11px] text-graphite">{help}</p>
           </div>
         ))}
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-4 lg:grid-cols-2">
         {/* ── Event catalog + template editor ── */}
-        <section className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+        <section className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
           <h2 className="font-display text-lg font-bold">Event catalog &amp; templates</h2>
           <p className="mt-1 text-xs text-graphite">
             Allowed variables: <code className="text-[10px]">{[...NOTIFY_VARS].join(" ")}</code>.
@@ -100,10 +100,10 @@ export default async function NotificationsAdmin({ searchParams }: { searchParam
           </div>
         </section>
 
-        <div className="space-y-6">
+        <div className="space-y-4">
           {/* ── Test + campaign (admin only) ── */}
           {isAdmin && (
-            <section className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+            <section className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
               <h2 className="font-display text-lg font-bold">Test send</h2>
               <form method="post" action="/api/admin/notifications" className="mt-3 space-y-2">
                 <input type="hidden" name="action" value="test_send" />
@@ -117,7 +117,7 @@ export default async function NotificationsAdmin({ searchParams }: { searchParam
                 <button className="min-h-10 rounded-full bg-ink px-5 text-sm font-bold text-white">Send test</button>
               </form>
 
-              <h2 className="mt-6 font-display text-lg font-bold">Campaign</h2>
+              <h2 className="mt-4 font-display text-lg font-bold">Campaign</h2>
               <p className="mt-1 text-xs text-graphite">Broadcasts an optional notification to every customer who hasn't opted out of that category. Deliveries respect each person's preferences and quiet hours.</p>
               <form method="post" action="/api/admin/notifications" className="mt-3 space-y-2">
                 <input type="hidden" name="action" value="campaign" />
@@ -135,7 +135,7 @@ export default async function NotificationsAdmin({ searchParams }: { searchParam
           )}
 
           {/* ── Failed queue ── */}
-          <section className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+          <section className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
             <h2 className="font-display text-lg font-bold">Event outbox</h2>
             <p className="mt-1 text-xs text-graphite">Durable notification events — queued, failed and dead (5 attempts). Requeue puts them back on the 5-minute sweep.</p>
             <div className="mt-3 max-h-72 space-y-2 overflow-y-auto">
@@ -161,9 +161,9 @@ export default async function NotificationsAdmin({ searchParams }: { searchParam
       </div>
 
       {/* ── Delivery log ── */}
-      <section className="mt-6 overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
-        <div className="border-b border-mist px-6 py-4"><h2 className="font-display text-lg font-bold">Recent deliveries</h2></div>
-        {deliveries.length === 0 ? <p className="px-6 py-8 text-sm text-graphite">No channel deliveries recorded yet.</p> : (
+      <section className="mt-4 overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
+        <div className="border-b border-mist px-4 py-4"><h2 className="font-display text-lg font-bold">Recent deliveries</h2></div>
+        {deliveries.length === 0 ? <p className="px-4 py-8 text-sm text-graphite">No channel deliveries recorded yet.</p> : (
           <table className="w-full min-w-[640px] text-left text-sm">
             <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite"><tr>{["When", "Channel", "Status", "Detail"].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr></thead>
             <tbody>
@@ -181,7 +181,7 @@ export default async function NotificationsAdmin({ searchParams }: { searchParam
       </section>
 
       {/* ── Customer notification history ── */}
-      <section className="mt-6 rounded-2xl border border-mist bg-white p-6 shadow-sm">
+      <section className="mt-4 rounded-2xl border border-mist bg-white p-4 shadow-sm">
         <h2 className="font-display text-lg font-bold">Customer history</h2>
         <form method="get" className="mt-3 flex gap-2">
           <input name="email" defaultValue={sp.email ?? ""} placeholder="customer@email.com" className="min-h-10 flex-1 rounded-lg border border-silver/70 px-3 text-sm" />

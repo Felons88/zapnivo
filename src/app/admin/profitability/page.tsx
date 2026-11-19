@@ -62,7 +62,7 @@ export default async function ProfitabilityPage({ searchParams }: { searchParams
 
   return (
     <AdminGate title="Fleet profitability" nav="profitability">
-      <div className="space-y-8">
+      <div className="space-y-4">
         <p className="text-sm text-graphite">
           Unit economics over the last {econ?.window.days ?? 30} days ({econ ? `${econ.window.start} → ${econ.window.end}` : "—"}).
           Revenue figures are observed payments; every cost, payback and monthly figure is an{" "}
@@ -112,7 +112,7 @@ export default async function ProfitabilityPage({ searchParams }: { searchParams
             </section>
 
             {/* ── Per-kiosk table ── */}
-            <section className="rounded-2xl border border-mist bg-white p-6">
+            <section className="rounded-2xl border border-mist bg-white p-4">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <h2 className="text-lg font-bold">Per-kiosk economics</h2>
                 <p className="text-xs font-bold uppercase tracking-wider text-graphite">observed + assumption-based estimate</p>
@@ -148,7 +148,7 @@ export default async function ProfitabilityPage({ searchParams }: { searchParams
             </section>
 
             {/* ── Assumption editor ── */}
-            <section className="rounded-2xl border border-mist bg-white p-6">
+            <section className="rounded-2xl border border-mist bg-white p-4">
               <h2 className="text-lg font-bold">Economics assumptions</h2>
               <p className="mt-1 text-xs text-graphite">
                 Stored in <code>admin_finance_assumptions</code> — editable inputs, not transactions. Every figure above that uses them is labelled assumption-based.

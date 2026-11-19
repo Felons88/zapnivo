@@ -26,7 +26,7 @@ export default async function Disputes() {
     <AdminGate title="Disputes" nav="disputes">
       {!db ? <EmptyCard title="Dispute data not connected">Connect Supabase to see disputes.</EmptyCard> : (
         <section aria-label="Disputes" className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
-          {rows.length === 0 ? <p className="px-6 py-10 text-sm text-graphite">No disputes recorded. They appear here when Stripe sends a dispute webhook.</p> : (
+          {rows.length === 0 ? <p className="px-4 py-8 text-sm text-graphite">No disputes recorded. They appear here when Stripe sends a dispute webhook.</p> : (
             <table className="w-full min-w-[820px] text-left text-sm">
               <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite">
                 <tr>{["Rental", "Status", "Amount", "Reason", "Opened", "Evidence due", ""].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr>

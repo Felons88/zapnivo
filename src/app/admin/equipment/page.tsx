@@ -41,7 +41,7 @@ export default async function EquipmentPage({ searchParams }: { searchParams: Pr
           Connect Supabase and apply migration 0071 to manage the vending equipment catalog and unit fleet.
         </EmptyCard>
       ) : (
-        <div className="space-y-8">
+        <div className="space-y-4">
           {sp.result && (
             <div role="status" className={`rounded-xl px-5 py-3 text-sm font-bold ${sp.result === "error" ? "bg-red-100 text-red-900" : "bg-lime text-ink"}`}>
               {sp.result === "created" ? `Created ${sp.detail ?? "record"}.`
@@ -64,7 +64,7 @@ export default async function EquipmentPage({ searchParams }: { searchParams: Pr
               <h2 className="font-display text-lg font-bold">Models</h2>
               <p className="text-xs text-graphite">{board.models.length} catalog entr{board.models.length === 1 ? "y" : "ies"} — draft until finalized.</p>
             </div>
-            <div className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+            <div className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
               <h3 className="font-display text-base font-bold">Add a model</h3>
               <form method="post" action="/api/admin/equipment" className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <input type="hidden" name="action" value="create_model" />
@@ -84,7 +84,7 @@ export default async function EquipmentPage({ searchParams }: { searchParams: Pr
 
             <div className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
               {board.models.length === 0 ? (
-                <p className="px-6 py-10 text-sm text-graphite">No models cataloged yet. Add the first equipment model above.</p>
+                <p className="px-4 py-8 text-sm text-graphite">No models cataloged yet. Add the first equipment model above.</p>
               ) : (
                 <table className="w-full min-w-[960px] text-left text-sm">
                   <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite">
@@ -132,7 +132,7 @@ export default async function EquipmentPage({ searchParams }: { searchParams: Pr
           {/* ─── Units (physical fleet) ─── */}
           <section aria-label="Equipment units" className="space-y-4">
             <h2 className="font-display text-lg font-bold">Units</h2>
-            <div className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+            <div className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
               <h3 className="font-display text-base font-bold">Register a unit</h3>
               <form method="post" action="/api/admin/equipment" className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <input type="hidden" name="action" value="create_unit" />
@@ -184,7 +184,7 @@ export default async function EquipmentPage({ searchParams }: { searchParams: Pr
 
             <div className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
               {units.length === 0 ? (
-                <p className="px-6 py-10 text-sm text-graphite">
+                <p className="px-4 py-8 text-sm text-graphite">
                   {board.units.length === 0 ? "No units registered yet — the first physical machine appears here once added." : "No units match these filters."}
                 </p>
               ) : (

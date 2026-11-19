@@ -31,7 +31,7 @@ export default async function VenueDetail({ params, searchParams }: { params: Pr
 
   return (
     <AdminGate title={v.name} nav="partners">
-      <div className="space-y-6">
+      <div className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <Link href="/admin/partners" className="text-sm font-bold text-graphite hover:text-ink">← Partners</Link>
           <span className="text-xs font-bold uppercase tracking-widest text-graphite">Staff only · venue record</span>
@@ -39,12 +39,12 @@ export default async function VenueDetail({ params, searchParams }: { params: Pr
         {(feedback.result || feedback.detail) && <div role="status" className={`rounded-xl px-5 py-3 text-sm font-bold ${feedback.result === "error" ? "bg-red-100 text-red-900" : "bg-lime text-ink"}`}>{feedback.detail ?? "Saved."}</div>}
 
         <section className="overflow-hidden rounded-2xl bg-[#142126] text-white shadow-sm">
-          <div className="border-b border-white/10 px-6 py-4 text-[10px] font-extrabold uppercase tracking-[.18em] text-lime">Venue</div>
-          <div className="flex flex-wrap items-start justify-between gap-4 p-6 md:p-8">
+          <div className="border-b border-white/10 px-4 py-2 text-[10px] font-extrabold uppercase tracking-[.18em] text-lime">Venue</div>
+          <div className="flex flex-wrap items-start justify-between gap-4 p-4 ">
             <div>
               <p className="eyebrow text-lime">{equipmentLabelOr(v.equipment_category, "unclassified")}</p>
-              <h2 className="mt-2 font-display text-3xl font-bold tracking-tight">{v.name}</h2>
-              <p className="mt-2 text-sm text-[#b7c8c2]">{v.address ? `${v.address}, ` : ""}{v.city}, {v.state}</p>
+              <h2 className="mt-1 font-display text-xl font-bold tracking-tight">{v.name}</h2>
+              <p className="mt-1 text-sm text-[#b7c8c2]">{v.address ? `${v.address}, ` : ""}{v.city}, {v.state}</p>
               {kiosks.length > 0 && <p className="mt-2 text-xs text-[#b7c8c2]">Kiosks: {kiosks.map((k) => `${k.station_id} (${k.state}${k.test_mode ? " · test" : ""})`).join(" · ")}</p>}
             </div>
             <Pill tone={v.published ? "lime" : "mist"}>{v.published ? "published" : "unpublished"}</Pill>
@@ -52,7 +52,7 @@ export default async function VenueDetail({ params, searchParams }: { params: Pr
         </section>
 
         <section className="grid gap-4 lg:grid-cols-2">
-          <div className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+          <div className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
             <h3 className="font-display text-lg font-bold">Owner organization</h3>
             <form method="post" action="/api/admin/partners" className="mt-3 flex flex-wrap items-center gap-2">
               <input type="hidden" name="action" value="assign_venue_org" /><input type="hidden" name="venue_id" value={v.id} /><input type="hidden" name="back" value={back} />
@@ -62,7 +62,7 @@ export default async function VenueDetail({ params, searchParams }: { params: Pr
             <p className="mt-3 text-xs text-graphite">The org's owners see this venue's earnings in their portal.</p>
           </div>
 
-          <div className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+          <div className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
             <h3 className="font-display text-lg font-bold">Map settings</h3>
             <form method="post" action="/api/admin/partners" className="mt-3 space-y-3">
               <input type="hidden" name="action" value="save_venue_map" /><input type="hidden" name="venue_id" value={v.id} /><input type="hidden" name="back" value={back} />

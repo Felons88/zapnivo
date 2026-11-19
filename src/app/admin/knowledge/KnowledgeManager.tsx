@@ -159,7 +159,7 @@ export function KnowledgeManager({
   const label = "text-sm font-semibold";
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {notice && (
         <div role="status" className={`rounded-xl px-5 py-3 text-sm font-bold ${notice.ok ? "bg-lime text-ink" : "bg-red-100 text-red-900"}`}>
           {notice.text}
@@ -216,7 +216,7 @@ export function KnowledgeManager({
       {editor && (
         <form
           key={editor.mode === "edit" ? editor.article.id : "new"}
-          className="grid gap-4 rounded-2xl border border-mist bg-white p-6 shadow-sm sm:grid-cols-2"
+          className="grid gap-4 rounded-2xl border border-mist bg-white p-4 shadow-sm sm:grid-cols-2"
           onSubmit={(e) => {
             e.preventDefault();
             const form = new FormData(e.currentTarget);
@@ -253,7 +253,7 @@ export function KnowledgeManager({
 
       <section aria-label="Articles" className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
         {filtered.length === 0 ? (
-          <p className="px-6 py-10 text-sm text-graphite">No articles match.</p>
+          <p className="px-4 py-8 text-sm text-graphite">No articles match.</p>
         ) : (
           <table className="w-full min-w-[860px] text-left text-sm">
             <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite">

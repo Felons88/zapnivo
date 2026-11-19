@@ -69,7 +69,7 @@ export default async function AdminAds({ searchParams }: { searchParams: Promise
       {!db ? (
         <EmptyCard title="Advertising data not connected">Connect Supabase to see live inquiries and campaigns.</EmptyCard>
       ) : (
-        <div className="space-y-8">
+        <div className="space-y-4">
           {feedback.result && <p role="status" className={`rounded-xl px-4 py-3 text-sm font-bold ${feedback.result === "saved" ? "bg-lime" : "bg-red-100 text-red-900"}`}>{feedback.result === "saved" ? "Saved." : "Could not save — check the values and try again."}</p>}
 
           <section aria-label="Advertising summary" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
@@ -90,7 +90,7 @@ export default async function AdminAds({ searchParams }: { searchParams: Promise
                 const cr = creativesByCampaign.get(c.id) ?? [];
                 const submitted = cr.filter((x) => x.status === "submitted");
                 return (
-                  <article key={c.id} className="rounded-2xl border border-mist bg-white p-6 shadow-sm">
+                  <article key={c.id} className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
                     <div className="flex flex-wrap items-start justify-between gap-4">
                       <div>
                         <h3 className="font-display text-lg font-bold">{c.name}</h3>
@@ -135,9 +135,9 @@ export default async function AdminAds({ searchParams }: { searchParams: Promise
 
           {/* ── Live campaigns ────────────────────────────────────── */}
           <section aria-label="Campaigns" className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
-            <div className="border-b border-mist px-6 py-4"><h2 className="font-display text-lg font-bold">All campaigns</h2></div>
+            <div className="border-b border-mist px-4 py-4"><h2 className="font-display text-lg font-bold">All campaigns</h2></div>
             {campRows.length === 0 ? (
-              <p className="px-6 py-10 text-sm text-graphite">No campaigns yet. Playback is only reported when a station confirms it.</p>
+              <p className="px-4 py-8 text-sm text-graphite">No campaigns yet. Playback is only reported when a station confirms it.</p>
             ) : (
               <table className="w-full min-w-[960px] text-left text-sm">
                 <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite">
@@ -170,7 +170,7 @@ export default async function AdminAds({ searchParams }: { searchParams: Promise
 
           {/* ── Rate cards ────────────────────────────────────────── */}
           <section aria-label="Rate cards" className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
-            <div className="border-b border-mist px-6 py-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="border-b border-mist px-4 py-4 flex flex-wrap items-center justify-between gap-3">
               <h2 className="font-display text-lg font-bold">Rate cards</h2>
               <form method="post" action="/api/admin/advertising" className="flex flex-wrap items-center gap-2 text-xs">
                 <input type="hidden" name="action" value="rate_card_create" />
@@ -188,7 +188,7 @@ export default async function AdminAds({ searchParams }: { searchParams: Promise
               </form>
             </div>
             {rateRows.length === 0 ? (
-              <p className="px-6 py-8 text-sm text-graphite">No rate cards yet. Advertisers see “contact us” pricing until rates are published here.</p>
+              <p className="px-4 py-8 text-sm text-graphite">No rate cards yet. Advertisers see “contact us” pricing until rates are published here.</p>
             ) : (
               <table className="w-full min-w-[760px] text-left text-sm">
                 <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite">
@@ -213,9 +213,9 @@ export default async function AdminAds({ searchParams }: { searchParams: Promise
 
           {/* ── Sponsored charging ────────────────────────────────── */}
           <section aria-label="Sponsored charging" className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
-            <div className="border-b border-mist px-6 py-4"><h2 className="font-display text-lg font-bold">Sponsored charging</h2></div>
+            <div className="border-b border-mist px-4 py-4"><h2 className="font-display text-lg font-bold">Sponsored charging</h2></div>
             {sponsorRows.length === 0 ? (
-              <p className="px-6 py-8 text-sm text-graphite">No sponsorships yet. Venue-funded charging credits submitted by partners appear here for approval.</p>
+              <p className="px-4 py-8 text-sm text-graphite">No sponsorships yet. Venue-funded charging credits submitted by partners appear here for approval.</p>
             ) : (
               <table className="w-full min-w-[820px] text-left text-sm">
                 <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite">
@@ -248,7 +248,7 @@ export default async function AdminAds({ searchParams }: { searchParams: Promise
 
           {/* ── Membership plans ──────────────────────────────────── */}
           <section aria-label="Membership plans" className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
-            <div className="border-b border-mist px-6 py-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="border-b border-mist px-4 py-4 flex flex-wrap items-center justify-between gap-3">
               <h2 className="font-display text-lg font-bold">Membership plans</h2>
               <form method="post" action="/api/admin/advertising" className="flex flex-wrap items-center gap-2 text-xs">
                 <input type="hidden" name="action" value="plan_create" />
@@ -265,7 +265,7 @@ export default async function AdminAds({ searchParams }: { searchParams: Promise
               </form>
             </div>
             {planRows.length === 0 ? (
-              <p className="px-6 py-8 text-sm text-graphite">No membership plans yet. Plans stay hidden from customers until activated.</p>
+              <p className="px-4 py-8 text-sm text-graphite">No membership plans yet. Plans stay hidden from customers until activated.</p>
             ) : (
               <table className="w-full min-w-[720px] text-left text-sm">
                 <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite">
@@ -294,9 +294,9 @@ export default async function AdminAds({ searchParams }: { searchParams: Promise
 
           {/* ── Inquiries (existing) ──────────────────────────────── */}
           <section aria-label="Inquiries" className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
-            <div className="border-b border-mist px-6 py-4"><h2 className="font-display text-lg font-bold">Inquiries</h2></div>
+            <div className="border-b border-mist px-4 py-4"><h2 className="font-display text-lg font-bold">Inquiries</h2></div>
             {inqRows.length === 0 ? (
-              <p className="px-6 py-10 text-sm text-graphite">No inquiries yet. Advertising inquiries submitted via /advertise appear here.</p>
+              <p className="px-4 py-8 text-sm text-graphite">No inquiries yet. Advertising inquiries submitted via /advertise appear here.</p>
             ) : (
               <table className="w-full min-w-[880px] text-left text-sm">
                 <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite">
