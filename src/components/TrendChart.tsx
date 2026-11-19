@@ -41,13 +41,22 @@ export default function TrendChart({
   subtitle,
   days,
   series,
+  dark = false,
 }: {
   title: string;
   subtitle?: string;
   days: string[];
   series: TrendSeries[];
+  dark?: boolean;
 }) {
   const [hover, setHover] = useState<number | null>(null);
+  const card = dark ? "border-white/10 bg-[#0f1c22] text-white" : "border-[#dfe6df] bg-white";
+  const heading = dark ? "text-white" : "text-ink";
+  const sub = dark ? "text-[#8fa6a8]" : "text-graphite";
+  const grid = dark ? "#20323a" : GRID;
+  const muted = dark ? "#7d9597" : MUTED;
+  const tableHead = dark ? "bg-[#16282f] text-[#8fa6a8]" : "bg-[#f0f4ef] text-graphite";
+  const tableRow = dark ? "border-white/10" : "border-mist/70";
 
   const n = days.length;
   const maxV = niceMax(Math.max(1, ...series.flatMap((s) => s.data)));
@@ -59,23 +68,23 @@ export default function TrendChart({
   const totals = days.map((_, i) => series.reduce((s, cur) => s + (cur.data[i] ?? 0), 0));
 
   return (
-    <section aria-label={title} className="rounded-xl border border-[#dfe6df] bg-white px-4 py-3">
+    <section aria-label={title} className={`rounded-xl border px-4 py-3 ${card}`}>
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
-          <h2 className="text-sm font-extrabold uppercase tracking-wider text-ink">{title}</h2>
-          {subtitle ? <p className="mt-0.5 text-xs text-graphite">{subtitle}</p> : null}
+          <h2 className={`text-sm font-extrabold uppercase tracking-wider ${heading}`}>{title}</h2>
+          {subtitle ? <p className={`mt-0.5 text-xs ${sub}`}>{subtitle}</p> : null}
         </div>
         {series.length > 1 ? (
           <ul className="flex flex-wrap items-center gap-3">
             {series.map((s) => (
-              <li key={s.label} className="flex items-center gap-1.5 text-xs font-bold text-graphite">
+              <li key={s.label} className={`flex items-center gap-1.5 text-xs font-bold ${sub}`}>
                 <span aria-hidden className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: s.color }} />
                 {s.label}
               </li>
             ))}
           </ul>
         ) : (
-          <span className="text-xs font-bold text-graphite">{series[0]?.label}</span>
+          <span className={`text-xs font-bold ${sub}`}>{series[0]?.label}</span>
         )}
       </div>
 
@@ -91,8 +100,8 @@ export default function TrendChart({
             const y = PAD.t + PLOT_H * (1 - t / maxV);
             return (
               <g key={t}>
-                <line x1={PAD.l} y1={y} x2={W - PAD.r} y2={y} stroke={t === 0 ? "#c3c2b7" : GRID} strokeWidth={1} />
-                <text x={PAD.l - 6} y={y + 3.5} textAnchor="end" fontSize={10} fill={MUTED}>
+                <line x1={PAD.l} y1={y} x2={W - PAD.r} y2={y} stroke={t === 0 ? (dark ? "#39505a" : "#c3c2b7") : grid} strokeWidth={1} />
+                <text x={PAD.l - 6} y={y + 3.5} textAnchor="end" fontSize={10} fill={muted}>
                   {fmt(t)}
                 </text>
               </g>
@@ -123,7 +132,7 @@ export default function TrendChart({
                   );
                 })}
                 {i % labelEvery === 0 || i === n - 1 ? (
-                  <text x={gx + groupW / 2} y={H - 8} textAnchor="middle" fontSize={10} fill={MUTED}>
+                  <text x={gx + groupW / 2} y={H - 8} textAnchor="middle" fontSize={10} fill={muted}>
                     {day.slice(5)}
                   </text>
                 ) : null}
@@ -160,7 +169,7 @@ export default function TrendChart({
             const y = PAD.t + PLOT_H * (1 - v / maxV);
             if (y < PAD.t + 9) return null; // would collide with the top gridline
             return (
-              <text key={`lab-${s.label}`} x={x} y={y - 4} textAnchor="middle" fontSize={10} fontWeight={700} fill={INK}>
+              <text key={`lab-${s.label}`} x={x} y={y - 4} textAnchor="middle" fontSize={10} fontWeight={700} fill={dark ? "#e8f0ec" : INK}>
                 {fmt(v)}
               </text>
             );
@@ -169,29 +178,29 @@ export default function TrendChart({
 
         {hover !== null ? (
           <div
-            className="pointer-events-none absolute top-1 z-10 min-w-[120px] -translate-x-1/2 rounded-lg border border-mist bg-white px-2.5 py-1.5 text-xs shadow-lg"
+            className={`pointer-events-none absolute top-1 z-10 min-w-[120px] -translate-x-1/2 rounded-lg border px-2.5 py-1.5 text-xs shadow-lg ${dark ? "border-white/15 bg-[#0f1c22]" : "border-mist bg-white"}`}
             style={{ left: `${((PAD.l + (hover + 0.5) * groupW) / W) * 100}%` }}
           >
-            <p className="font-bold text-ink">{days[hover]}</p>
+            <p className={`font-bold ${heading}`}>{days[hover]}</p>
             {series.map((s) => (
-              <p key={s.label} className="mt-0.5 flex items-center gap-1.5 text-graphite">
+              <p key={s.label} className={`mt-0.5 flex items-center gap-1.5 ${sub}`}>
                 <span aria-hidden className="h-2 w-2 rounded-sm" style={{ backgroundColor: s.color }} />
                 {s.label}
-                <span className="ml-auto font-bold text-ink">{fmt(s.data[hover] ?? 0)}</span>
+                <span className={`ml-auto font-bold ${heading}`}>{fmt(s.data[hover] ?? 0)}</span>
               </p>
             ))}
-            <p className="mt-0.5 border-t border-mist pt-0.5 text-graphite">
-              Total <span className="font-bold text-ink">{fmt(totals[hover])}</span>
+            <p className={`mt-0.5 border-t pt-0.5 ${sub} ${dark ? "border-white/10" : "border-mist"}`}>
+              Total <span className={`font-bold ${heading}`}>{fmt(totals[hover])}</span>
             </p>
           </div>
         ) : null}
       </div>
 
       <details className="mt-2">
-        <summary className="cursor-pointer text-xs font-bold text-forest hover:underline">View as table</summary>
+        <summary className={`cursor-pointer text-xs font-bold hover:underline ${dark ? "text-lime" : "text-forest"}`}>View as table</summary>
         <div className="mt-2 max-h-56 overflow-auto">
           <table className="w-full text-xs">
-            <thead className="sticky top-0 bg-[#f0f4ef] text-left text-graphite">
+            <thead className={`sticky top-0 text-left ${tableHead}`}>
               <tr>
                 <th className="px-2 py-1 font-bold">Day</th>
                 {series.map((s) => (
@@ -204,7 +213,7 @@ export default function TrendChart({
             </thead>
             <tbody>
               {days.map((d, i) => (
-                <tr key={d} className="border-t border-mist/70">
+                <tr key={d} className={`border-t ${tableRow}`}>
                   <td className="px-2 py-1 font-semibold">{d}</td>
                   {series.map((s) => (
                     <td key={s.label} className="px-2 py-1 text-right tabular-nums">

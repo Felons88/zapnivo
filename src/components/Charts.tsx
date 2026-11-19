@@ -93,18 +93,25 @@ export function FunnelChart({
   title,
   subtitle,
   steps,
+  dark = false,
 }: {
   title: string;
   subtitle?: string;
   steps: { label: string; count: number; convPct: number | null }[];
+  dark?: boolean;
 }) {
   const max = Math.max(1, ...steps.map((s) => s.count));
+  const card = dark ? "border-white/10 bg-[#0f1c22]" : "border-[#dfe6df] bg-white";
+  const heading = dark ? "text-white" : "text-ink";
+  const sub = dark ? "text-[#8fa6a8]" : "text-graphite";
+  const track = dark ? "bg-white/10" : "bg-mist/70";
+  const bar = dark ? "#d4f76a" : FOREST;
   return (
-    <section aria-label={title} className="rounded-xl border border-[#dfe6df] bg-white px-4 py-3">
+    <section aria-label={title} className={`rounded-xl border px-4 py-3 ${card}`}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <h2 className="text-sm font-extrabold uppercase tracking-wider text-ink">{title}</h2>
-          {subtitle ? <p className="mt-0.5 text-xs text-graphite">{subtitle}</p> : null}
+          <h2 className={`text-sm font-extrabold uppercase tracking-wider ${heading}`}>{title}</h2>
+          {subtitle ? <p className={`mt-0.5 text-xs ${sub}`}>{subtitle}</p> : null}
         </div>
       </div>
       <ol className="mt-3 space-y-1.5">
@@ -112,27 +119,27 @@ export function FunnelChart({
           const pct = max > 0 ? (s.count / max) * 100 : 0;
           return (
             <li key={s.label} className="grid grid-cols-[minmax(0,150px)_1fr_auto] items-center gap-2">
-              <span className="truncate text-xs font-semibold text-ink" title={s.label}>
+              <span className={`truncate text-xs font-semibold ${heading}`} title={s.label}>
                 {s.label}
               </span>
-              <span className="h-4 overflow-hidden rounded-sm bg-mist/70">
+              <span className={`h-4 overflow-hidden rounded-sm ${track}`}>
                 <span
                   className="block h-full rounded-r-[4px]"
-                  style={{ width: `${Math.max(s.count > 0 ? 1.5 : 0, pct)}%`, backgroundColor: FOREST }}
+                  style={{ width: `${Math.max(s.count > 0 ? 1.5 : 0, pct)}%`, backgroundColor: bar }}
                 />
               </span>
               <span className="flex shrink-0 items-baseline gap-1.5 text-xs">
-                <span className="font-bold tabular-nums text-ink">{s.count.toLocaleString("en-US")}</span>
-                <span className="text-graphite">
+                <span className={`font-bold tabular-nums ${heading}`}>{s.count.toLocaleString("en-US")}</span>
+                <span className={sub}>
                   {s.convPct == null ? (i === 0 ? "start" : "—") : `${s.convPct}%`}
                 </span>
               </span>
             </li>
           );
         })}
-        {steps.every((s) => s.count === 0) ? <li className="py-4 text-sm text-graphite">No events in this window yet.</li> : null}
+        {steps.every((s) => s.count === 0) ? <li className={`py-4 text-sm ${sub}`}>No events in this window yet.</li> : null}
       </ol>
-      <p className="mt-2 text-[11px] text-graphite">Bar = visitors at each step · % = conversion from the previous step.</p>
+      <p className={`mt-2 text-[11px] ${sub}`}>Bar = visitors at each step · % = conversion from the previous step.</p>
     </section>
   );
 }
@@ -146,19 +153,27 @@ export function LeaderboardChart({
   subtitle,
   rows,
   format = (v) => v.toLocaleString("en-US"),
+  dark = false,
 }: {
   title: string;
   subtitle?: string;
   rows: { label: string; detail?: string; value: number; flag?: string }[];
   format?: (v: number) => string;
+  dark?: boolean;
 }) {
   const max = Math.max(1, ...rows.map((r) => r.value));
+  const card = dark ? "border-white/10 bg-[#0f1c22]" : "border-[#dfe6df] bg-white";
+  const heading = dark ? "text-white" : "text-ink";
+  const sub = dark ? "text-[#8fa6a8]" : "text-graphite";
+  const track = dark ? "bg-white/10" : "bg-mist/70";
+  const bar = dark ? "#4d9de0" : FOREST;
+  const flag = dark ? "bg-[#3a2e08] text-[#e8c95a]" : "bg-[#fff6d6] text-[#5b4300]";
   return (
-    <section aria-label={title} className="rounded-xl border border-[#dfe6df] bg-white px-4 py-3">
+    <section aria-label={title} className={`rounded-xl border px-4 py-3 ${card}`}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <h2 className="text-sm font-extrabold uppercase tracking-wider text-ink">{title}</h2>
-          {subtitle ? <p className="mt-0.5 text-xs text-graphite">{subtitle}</p> : null}
+          <h2 className={`text-sm font-extrabold uppercase tracking-wider ${heading}`}>{title}</h2>
+          {subtitle ? <p className={`mt-0.5 text-xs ${sub}`}>{subtitle}</p> : null}
         </div>
       </div>
       <ul className="mt-3 space-y-1.5">
@@ -167,23 +182,23 @@ export function LeaderboardChart({
           return (
             <li key={r.label} className="grid grid-cols-[minmax(0,150px)_1fr_auto] items-center gap-2">
               <span className="flex min-w-0 items-center gap-1.5">
-                <span className="truncate text-xs font-semibold text-ink" title={r.label}>
+                <span className={`truncate text-xs font-semibold ${heading}`} title={r.label}>
                   {r.label}
                 </span>
                 {r.flag ? (
-                  <span className="shrink-0 rounded-full bg-[#fff6d6] px-1.5 py-px text-[9px] font-extrabold uppercase tracking-wide text-[#5b4300]" title={r.flag}>
+                  <span className={`shrink-0 rounded-full px-1.5 py-px text-[9px] font-extrabold uppercase tracking-wide ${flag}`} title={r.flag}>
                     ● {r.flag}
                   </span>
                 ) : null}
               </span>
-              <span className="h-4 overflow-hidden rounded-sm bg-mist/70">
-                <span className="block h-full rounded-r-[4px]" style={{ width: `${Math.max(r.value > 0 ? 1.5 : 0, pct)}%`, backgroundColor: FOREST }} />
+              <span className={`h-4 overflow-hidden rounded-sm ${track}`}>
+                <span className="block h-full rounded-r-[4px]" style={{ width: `${Math.max(r.value > 0 ? 1.5 : 0, pct)}%`, backgroundColor: bar }} />
               </span>
-              <span className="shrink-0 text-right text-xs font-bold tabular-nums text-ink">{format(r.value)}</span>
+              <span className={`shrink-0 text-right text-xs font-bold tabular-nums ${heading}`}>{format(r.value)}</span>
             </li>
           );
         })}
-        {rows.length === 0 ? <li className="py-4 text-sm text-graphite">No stations with activity in this window.</li> : null}
+        {rows.length === 0 ? <li className={`py-4 text-sm ${sub}`}>No stations with activity in this window.</li> : null}
       </ul>
     </section>
   );
