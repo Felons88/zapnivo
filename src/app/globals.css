@@ -114,10 +114,14 @@ main section :is(.rounded-xl,.rounded-lg).bg-white:hover { box-shadow: 0 28px 65
 .prose-z ul { list-style: disc; padding-left: 1.25rem; margin: .75rem 0; }
 
 /* Internal workspace surfaces and dense data views. */
-.admin-console { font-feature-settings: "tnum"; }
+.admin-console { font-feature-settings: "tnum"; background: radial-gradient(circle at 95% 0%, rgba(217,255,115,.12), transparent 28%), #f3f5f2; }
 .admin-console main > * { min-width: 0; }
+.admin-console main :is(section, article, div)[class*="bg-white"][class*="rounded-2xl"] { box-shadow: 0 8px 28px -24px rgba(16,29,34,.38); }
+.admin-console main :is(section, article, div)[class*="bg-white"][class*="rounded-2xl"]:hover { box-shadow: 0 14px 32px -27px rgba(16,29,34,.44); }
 .admin-console main table { border-collapse: separate; border-spacing: 0; }
 .admin-console main th { white-space: nowrap; }
+.admin-console main thead { background: #f0f4ef; }
+.admin-console main tbody tr:hover { background: #f7faf3; }
 .admin-console main tbody tr { transition: background-color .16s ease; }
 .admin-console main :is(input, select, textarea) { accent-color: #142126; }
 .admin-console main :is(input, select, textarea):focus-visible { outline: 2px solid #557665; outline-offset: 2px; }
