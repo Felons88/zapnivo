@@ -236,7 +236,7 @@ describe("deliverEvent", () => {
   it("defers optional categories to quiet-hours and requeues the push", async () => {
     const { db, tables } = fakeDb({
       profiles: [PROFILE],
-      customer_notification_prefs: [{ profile_id: PROFILE.id, offers: true, product_updates: true, rental_reminders: true, support_updates: true, rewards: true, quiet_start: 0, quiet_end: 23, timezone: "America/Chicago" }],
+      customer_notification_prefs: [{ profile_id: PROFILE.id, offers: true, product_updates: true, rental_reminders: true, support_updates: true, rewards: true, quiet_start: 0, quiet_end: 24, timezone: "America/Chicago" }],
       notifications: [], notification_deliveries: [], notification_events: [], notification_templates: [],
     });
     const r = await deliverEvent(db, event({ kind: "promo_offer", vars: { promo: "Weekend deal", reason: "off-peak rentals are half price" } }) as never);

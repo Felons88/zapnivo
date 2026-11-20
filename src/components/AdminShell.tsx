@@ -6,6 +6,7 @@ import { authConfigured, devAuth, getSessionUser, isStaff, SESSION_COOKIE } from
 import { LogoutButton } from "./LogoutButton";
 import { LiveSync } from "./LiveSync";
 import { Notice } from "./ui";
+import { CommandPalette } from "./CommandPalette";
 import { SITE } from "@/lib/site";
 import { getPublishedContent, flag, text as cmsText } from "@/lib/site-content";
 
@@ -21,7 +22,7 @@ const I = ({ children, className = "h-[18px] w-[18px] shrink-0" }: { children: R
   <svg viewBox="0 0 24 24" aria-hidden className={className} {...stroke}>{children}</svg>
 );
 
-const icons = {
+export const icons = {
   dashboard: <I><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></I>,
   inbox: <I><path d="M22 12h-6l-2 3h-4l-2-3H2" /><path d="M5.5 5.5 2 12v5a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-5l-3.5-6.5A2 2 0 0 0 16.7 4H7.3a2 2 0 0 0-1.8 1.5Z" /></I>,
   building: <I><rect x="4" y="3" width="16" height="18" rx="2" /><path d="M9 21v-4h6v4" /><path d="M9 7h1m4 0h1M9 11h1m4 0h1" /></I>,
@@ -46,7 +47,8 @@ const icons = {
 export type AdminNavKey = keyof typeof NAV_ITEMS;
 
 const NAV_ITEMS = {
-  dashboard: { href: "/admin", label: "Dashboard", icon: icons.dashboard, group: "Overview" },
+  dashboard: { href: "/admin", label: "Home", icon: icons.dashboard, group: "Overview" },
+  overview: { href: "/admin/overview", label: "Mission control", icon: icons.chart, group: "Overview" },
   search: { href: "/admin/search", label: "Search all", icon: icons.search, group: "Overview" },
   analytics: { href: "/admin/analytics", label: "Analytics", icon: icons.chart, group: "Growth" },
   forecasting: { href: "/admin/forecasting", label: "Forecasting", icon: icons.chart, group: "Growth" },
@@ -195,6 +197,7 @@ export async function AdminGate({ title, nav, children }: { title: string; nav: 
   return (
     <div className="admin-console min-h-screen bg-[#f6f9fc] text-ink">
       <LiveSync channel="admin-live" tables={LIVE_TABLES} intervalMs={30000} accessToken={accessToken} />
+      <CommandPalette items={ADMIN_TOOL_INDEX} />
       {devAuth() && (
         <div className="relative z-50 bg-gold px-4 py-2 text-center text-xs font-bold text-ink">
           DEV STORE · not real data · acting as <b>{user.email}</b> ({user.role}) — switch:{" "}
