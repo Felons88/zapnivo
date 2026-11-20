@@ -5,6 +5,7 @@ import { SystemGate } from "@/components/SystemGate";
 import { serviceClient } from "@/lib/supabase";
 import { getObservabilityOverview } from "@/lib/system/observability";
 import { getAlertDeliveryStatus } from "@/lib/system/alert-notify";
+import { SystemAction, SystemPageHeading, SystemPanel } from "@/components/SystemUI";
 
 export const metadata: Metadata = { title: "Observability" };
 
@@ -12,12 +13,7 @@ const when = (iso: string | null) =>
   iso ? new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "UTC" }) + "Z" : "never";
 
 function Card({ title, children, className = "" }: { title: string; children: React.ReactNode; className?: string }) {
-  return (
-    <section className={`rounded-2xl border border-white/[0.08] bg-white/[0.05] shadow-[0_12px_32px_-16px_rgba(0,0,0,0.8)] p-5 ${className}`}>
-      <h2 className="eyebrow text-slate-400">{title}</h2>
-      <div className="mt-4">{children}</div>
-    </section>
-  );
+  return <SystemPanel title={title} className={className}>{children}</SystemPanel>;
 }
 const tone = (ok: boolean) => (ok ? "text-lime" : "text-red-300");
 
@@ -28,21 +24,13 @@ export default async function SystemObservabilityPage() {
   return (
     <SystemGate perm="system.security.audit.view">
       <div className="space-y-6">
-        <div>
-          <p className="eyebrow text-lime">Observability</p>
-          <h1 className="mt-2 font-display text-3xl font-bold tracking-tight">Telemetry & health</h1>
-          <p className="mt-1 font-mono text-xs text-slate-400">
-            data: {o.configured ? "live (error_events · app_logs · trace_spans · cron_runs · uptime_checks · incidents)" : "backend not configured"} · window: trailing 24h
-          </p>
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          <Link href="/system/observability/errors" className="rounded-full bg-white/10 px-4 py-2 text-xs font-bold text-slate-200 ring-1 ring-white/15 hover:bg-white/15">Errors</Link>
-          <Link href="/system/observability/logs" className="rounded-full bg-white/10 px-4 py-2 text-xs font-bold text-slate-200 ring-1 ring-white/15 hover:bg-white/15">Logs</Link>
-          <Link href="/system/observability/crons" className="rounded-full bg-white/10 px-4 py-2 text-xs font-bold text-slate-200 ring-1 ring-white/15 hover:bg-white/15">Crons & uptime</Link>
-          <Link href="/system/observability/traces" className="rounded-full bg-white/10 px-4 py-2 text-xs font-bold text-slate-200 ring-1 ring-white/15 hover:bg-white/15">Traces</Link>
-          <Link href="/system/observability/alerts" className="rounded-full bg-lime/15 px-4 py-2 text-xs font-bold text-lime ring-1 ring-lime/30 hover:bg-lime/25">Alerts & incidents</Link>
-        </div>
+        <SystemPageHeading eyebrow="Observability" title="Telemetry & health" description={<>Data: {o.configured ? "live telemetry" : "backend not configured"} · trailing 24 hours</>} actions={<>
+          <SystemAction href="/system/observability/errors">Errors</SystemAction>
+          <SystemAction href="/system/observability/logs">Logs</SystemAction>
+          <SystemAction href="/system/observability/crons">Crons & uptime</SystemAction>
+          <SystemAction href="/system/observability/traces">Traces</SystemAction>
+          <SystemAction href="/system/observability/alerts" primary>Alerts & incidents</SystemAction>
+        </>} />
 
         {/* KPIs */}
         <div className="grid grid-cols-2 gap-4 md:grid-cols-5">

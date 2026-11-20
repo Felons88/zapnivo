@@ -9,6 +9,7 @@ import { roleCan, systemRole } from "@/lib/system/rbac";
 import { listFleetDevices, SYSTEM_DEVICE_STATUSES, deriveConnectivity, DEVICE_STATUS_TONE as STATUS_TONE } from "@/lib/system/kiosks";
 import { getFleetStats, listFleetDevicesFiltered } from "@/lib/system/fleet-stats";
 import { FleetLive } from "./FleetLive";
+import { SystemAction, SystemPageHeading } from "@/components/SystemUI";
 
 export const metadata: Metadata = { title: "Kiosk Infrastructure — Fleet registry" };
 
@@ -63,27 +64,12 @@ export default async function KiosksFleetPage({ searchParams }: {
   return (
     <SystemGate perm="system.kiosks.view">
       <div className="space-y-4">
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <p className="eyebrow text-lime">Kiosk Infrastructure</p>
-            <h1 className="mt-2 font-display text-3xl font-bold tracking-tight">Fleet registry</h1>
-            <p className="mt-1 max-w-2xl text-sm text-slate-400">
-              Hardware fleet from <code className="font-mono text-xs">system_devices</code>. Connectivity is derived
-              only from recorded heartbeats — nothing here claims a live link.{" "}
-              <span className="font-mono text-[11px]">Adapter: {process.env.KIOSK_ADAPTER ?? "none"} — commands disabled</span>
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Link href="/system/kiosks/maintenance" className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-bold text-slate-200 ring-1 ring-white/15 hover:bg-white/15">Maintenance</Link>
-            <Link href="/system/kiosks/updates" className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-bold text-slate-200 ring-1 ring-white/15 hover:bg-white/15">Updates</Link>
-            <Link href="/system/kiosks/provision-qr" className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-bold text-slate-200 ring-1 ring-white/15 hover:bg-white/15">Provision QR</Link>
-            {canManage && (
-              <Link href="/system/kiosks/register" className="rounded-full bg-lime px-4 py-2 text-xs font-bold text-ink hover:bg-[#e6ffa8]">
-                + Register kiosk
-              </Link>
-            )}
-          </div>
-        </div>
+        <SystemPageHeading eyebrow="Kiosk infrastructure" title="Fleet registry" description={<>Hardware fleet from <code className="font-mono text-xs">system_devices</code>. Connectivity is derived from recorded heartbeats. Adapter: {process.env.KIOSK_ADAPTER ?? "none"}.</>} actions={<>
+          <SystemAction href="/system/kiosks/maintenance">Maintenance</SystemAction>
+          <SystemAction href="/system/kiosks/updates">Updates</SystemAction>
+          <SystemAction href="/system/kiosks/provision-qr">Provision QR</SystemAction>
+          {canManage && <SystemAction href="/system/kiosks/register" primary>+ Register kiosk</SystemAction>}
+        </>} />
 
         <FleetLive accessToken={accessToken} />
 

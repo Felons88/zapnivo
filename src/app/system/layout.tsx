@@ -31,9 +31,11 @@ export default async function SystemLayout({ children }: { children: ReactNode }
   const user = await getSessionUser();
   if (!user) redirect("/login");
   const role = await systemRole(user);
-  const accessToken = (await cookies()).get(SESSION_COOKIE)?.value ?? null;
+  const cookieStore = await cookies();
+  const accessToken = cookieStore.get(SESSION_COOKIE)?.value ?? null;
+  const theme = cookieStore.get("zapnivo_system_theme")?.value === "light" ? "light" : "dark";
   return (
-    <SystemShell user={user} role={role}>
+    <SystemShell user={user} role={role} theme={theme}>
       <LiveSync channel="system-live" tables={LIVE_TABLES} intervalMs={30000} accessToken={accessToken} />
       {children}
     </SystemShell>

@@ -5,13 +5,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { NavGroup } from "./SystemShell";
 
-const QUICK = [
-  { href: "/system", label: "Overview" },
-  { href: "/system/kiosks", label: "Fleet" },
-  { href: "/system/incidents", label: "Incidents" },
-  { href: "/system/deployments", label: "Deployments" },
-];
-
 function NavContents({ groups, close }: { groups: NavGroup[]; close?: () => void }) {
   const path = usePathname() ?? "/system";
   const [query, setQuery] = useState("");
@@ -39,6 +32,7 @@ function NavContents({ groups, close }: { groups: NavGroup[]; close?: () => void
   const filtered = query.trim()
     ? groups.map((group) => ({ ...group, items: group.items.filter((item) => `${group.name} ${item.label}`.toLowerCase().includes(query.toLowerCase())) })).filter((group) => group.items.length)
     : groups;
+  const quick = groups.flatMap((group) => group.items).filter((item): item is { href: string; label: string } => !!item.href).slice(0, 4);
   const toggle = (name: string) => setExpanded((open) => open.includes(name) ? open.filter((item) => item !== name) : [...open, name]);
 
   return <div className="flex min-h-0 flex-1 flex-col">
@@ -52,7 +46,7 @@ function NavContents({ groups, close }: { groups: NavGroup[]; close?: () => void
     </div>
     {!query && <div className="border-y border-white/[0.07] px-4 py-4">
       <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">Quick access</p>
-      <div className="grid grid-cols-2 gap-1.5">{QUICK.map((item) => <Link key={item.href} href={item.href} onClick={close} aria-current={current === item.href ? "page" : undefined} className={`rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${current === item.href ? "bg-lime text-ink" : "bg-white/[0.05] text-slate-300 hover:bg-white/10 hover:text-white"}`}>{item.label}</Link>)}</div>
+      <div className="grid grid-cols-2 gap-1.5">{quick.map((item) => <Link key={item.href} href={item.href} onClick={close} aria-current={current === item.href ? "page" : undefined} className={`rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${current === item.href ? "bg-lime text-ink" : "bg-white/[0.05] text-slate-300 hover:bg-white/10 hover:text-white"}`}>{item.label}</Link>)}</div>
     </div>}
     <nav aria-label="System console" className="min-h-0 flex-1 space-y-1 overflow-y-auto px-3 py-4">
       {filtered.map((group) => {

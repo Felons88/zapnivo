@@ -20,7 +20,7 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
   const window = periodWindow(days);
   let data: Awaited<ReturnType<typeof fetchFinanceData>> | null = null;
   let loadError: string | null = null;
-  if (db) {
+  if (me?.role === "admin" && db) {
     try { data = await fetchFinanceData(db, window); }
     catch (e) { loadError = e instanceof Error ? e.message : "Failed to load finance data."; }
   }

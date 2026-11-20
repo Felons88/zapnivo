@@ -34,6 +34,32 @@ test.describe("admin pages render for the dev admin", () => {
   }
 });
 
+test.describe("staff application launcher", () => {
+  test.beforeEach(async ({ context, baseURL }) => {
+    await context.addCookies([{ name: "zapnivo_dev_as", value: "admin", url: baseURL! }]);
+  });
+
+  test("opens permitted business applications and keeps the technical console private", async ({ page }) => {
+    const res = await goTo(page, "/system");
+    expect(res?.status()).toBe(200);
+    await expect(page.getByRole("heading", { name: /good to see you/i })).toBeVisible();
+    await expect(page.getByRole("link", { name: /customer service/i }).first()).toBeVisible();
+    await expect(page.getByRole("link", { name: /financial operations/i })).toBeVisible();
+    await expect(page.getByRole("link", { name: /infrastructure/i })).toHaveCount(0);
+    await page.getByRole("button", { name: /switch to light theme/i }).click();
+    await expect(page.locator(".system-console")).toHaveAttribute("data-theme", "light");
+    await page.reload();
+    await expect(page.locator(".system-console")).toHaveAttribute("data-theme", "light");
+  });
+
+  test("staff cannot see the admin-only finance app", async ({ context, baseURL, page }) => {
+    await context.addCookies([{ name: "zapnivo_dev_as", value: "agent", url: baseURL! }]);
+    await goTo(page, "/system");
+    await expect(page.getByRole("link", { name: /financial operations/i })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: /customer service/i }).first()).toBeVisible();
+  });
+});
+
 test.describe("partner pages render for the dev partner", () => {
   test.beforeEach(async ({ context, baseURL }) => {
     await context.addCookies([{ name: "zapnivo_dev_as", value: "partner", url: baseURL! }]);

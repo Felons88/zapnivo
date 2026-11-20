@@ -1,10 +1,14 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
-import type { SessionUser } from "@/lib/auth";
-import type { SystemRole } from "@/lib/system/rbac";
+import { isStaff, type SessionUser } from "@/lib/auth";
+import { subUrl } from "@/lib/site";
+import { roleCan, type SystemPermission, type SystemRole } from "@/lib/system/rbac";
+import routePermissions from "@/lib/system/route-permissions.json";
 import { Logo } from "./Logo";
 import { LogoutButton } from "./LogoutButton";
 import { SystemDesktopNavigation, SystemMobileNavigation, SystemPageContext } from "./SystemNavigation";
+import { SystemThemeToggle, type SystemTheme } from "./SystemThemeToggle";
+import { SystemSidebarToggle } from "./SystemSidebarToggle";
 
 /**
  * Left-nav shell for system.zapnivo.com — dense technical control-plane chrome.
@@ -19,7 +23,8 @@ export const NAV: NavGroup[] = [
   {
     name: "Command Center",
     items: [
-      { href: "/system", label: "Overview" },
+      { href: "/system", label: "Applications" },
+      { href: "/system/overview", label: "System overview" },
       { href: "/system/launch", label: "Launch readiness" },
       { href: "/system/search", label: "Global search" },
       { href: "/system/activity", label: "Activity feed" },
@@ -156,24 +161,47 @@ export const NAV: NavGroup[] = [
 ];
 
 export function SystemShell({
-  user, role, environment, children,
+  user, role, environment, theme = "dark", children,
 }: {
   user: SessionUser;
   role: SystemRole | null;
   environment?: string;
+  theme?: SystemTheme;
   children: ReactNode;
 }) {
   const env = environment ?? process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? "development";
   const isProd = env === "production";
+  const businessStaff = isStaff(user);
+  const groups = NAV.map((group) => ({ ...group, items: group.items.filter((item) => {
+    if (!item.href) return false;
+    if (item.href === "/system") return !!role || businessStaff;
+    if (item.href === "/system/security/bootstrap") return !role;
+    const perm = (routePermissions as Record<string, string>)[item.href];
+    return !!perm && roleCan(role, perm as SystemPermission);
+  }) })).filter((group) => group.items.length);
+  if (businessStaff) groups.splice(1, 0, { name: "Business applications", items: [
+    { href: subUrl("internal", "/support"), label: "Customer service" },
+    { href: subUrl("internal", "/customers"), label: "Customer accounts" },
+    { href: subUrl("internal", "/partners"), label: "Venue management" },
+    ...(user.role === "admin" ? [{ href: subUrl("internal", "/finance"), label: "Finance" }] : []),
+    { href: subUrl("internal", "/analytics"), label: "Analytics" },
+    { href: subUrl("internal", "/users"), label: "Staff administration" },
+  ] });
+  const compactPaths = ["/system", "/system/kiosks", "/system/observability", "/system/deployments", "/system/sites", "/system/security/audit"];
+  const compactItems = compactPaths.map((href) => groups.flatMap((group) => group.items).find((item) => item.href === href)).filter((item): item is NavEntry & { href: string } => !!item?.href);
   return (
-    <div data-theme="dark" className="system-console min-h-screen bg-[#0b1219] text-slate-100">
+    <div data-theme={theme} className="system-console min-h-screen bg-[#0b1219] text-slate-100">
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-[272px] flex-col border-r border-white/[0.08] bg-[#101923] lg:flex">
-        <div className="flex h-[72px] items-center gap-3 border-b border-white/[0.08] px-5">
-          <Link href="/system" aria-label="Zapnivo system overview" className="min-w-0"><Logo className="text-[1.05rem]! text-white" /></Link>
-          <span className="ml-auto rounded-md border border-lime/35 bg-lime/10 px-2 py-1 text-[9px] font-extrabold uppercase tracking-[0.15em] text-lime">System</span>
+        <div className="system-sidebar-brand flex h-[72px] items-center gap-3 border-b border-white/[0.08] px-5">
+          <Link href="/system" aria-label="Zapnivo applications" className="system-brand-logo min-w-0"><Logo className="text-[1.05rem]! text-white" /></Link>
+          <span className="system-brand-badge ml-auto rounded-md border border-lime/35 bg-lime/10 px-2 py-1 text-[9px] font-extrabold uppercase tracking-[0.15em] text-lime">System</span>
+          <SystemSidebarToggle />
         </div>
-        <SystemDesktopNavigation groups={NAV} />
-        <div className="border-t border-white/[0.08] p-4">
+        <div className="system-full-nav flex min-h-0 flex-1 flex-col"><SystemDesktopNavigation groups={groups} /></div>
+        <nav aria-label="Compact system navigation" className="system-compact-nav hidden min-h-0 flex-1 flex-col items-center gap-2 overflow-y-auto py-4">
+          {compactItems.map((item) => <Link key={item.href} href={item.href} title={item.label} aria-label={item.label} className="grid size-11 shrink-0 place-items-center rounded-xl border border-[var(--sys-border)] bg-[var(--sys-surface)] text-sm font-bold text-[var(--sys-text)] hover:border-[var(--sys-accent)]">{item.label.slice(0, 1).toUpperCase()}</Link>)}
+        </nav>
+        <div className="system-sidebar-profile border-t border-white/[0.08] p-4">
           <div className="flex items-center gap-3 rounded-xl bg-white/[0.05] p-3">
             <span aria-hidden className="grid size-9 shrink-0 place-items-center rounded-lg bg-lime/15 text-xs font-extrabold text-lime">{user.email.slice(0, 1).toUpperCase()}</span>
             <div className="min-w-0"><p className="truncate text-xs font-semibold text-slate-100">{user.email}</p><p className="mt-0.5 text-[10px] uppercase tracking-wider text-slate-400">{role ?? "Restricted access"}</p></div>
@@ -185,22 +213,26 @@ export function SystemShell({
         <header className="sticky top-0 z-30 border-b border-white/[0.08] bg-[#0b1219]/95">
           <div className="flex h-16 items-center justify-between gap-4 px-4 sm:px-6 xl:px-9">
             <div className="flex min-w-0 items-center gap-3">
-              <SystemMobileNavigation groups={NAV} />
+              <SystemMobileNavigation groups={groups} />
               <span className="lg:hidden"><Logo className="text-[1rem]! text-white" /></span>
-              <div className="hidden lg:block"><SystemPageContext groups={NAV} /></div>
+              <div className="hidden lg:block"><SystemPageContext groups={groups} /></div>
             </div>
             <div className="flex shrink-0 items-center gap-2 sm:gap-3">
-              <Link href="/system/search" className="hidden h-9 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-3 text-xs font-semibold text-slate-300 hover:border-lime/40 hover:text-white sm:flex" aria-label="Global search">
+              <Link href="/system" className="hidden h-9 items-center rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] px-3 text-xs font-bold text-[var(--sys-text)] hover:border-[var(--sys-accent)] sm:flex">Applications</Link>
+              <Link href={roleCan(role, "system.dashboard.view") ? "/system/search" : subUrl("internal", "/search")} className="hidden h-9 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-3 text-xs font-semibold text-slate-300 hover:border-lime/40 hover:text-white sm:flex" aria-label="Global search">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden className="size-4"><circle cx="10.8" cy="10.8" r="6.3"/><path d="m15.5 15.5 5 5"/></svg>Search
               </Link>
+              {roleCan(role, "system.security.audit.view") && <Link href="/system/observability/alerts" aria-label="System alerts" title="System alerts" className="hidden h-9 items-center rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] px-3 text-xs font-bold text-[var(--sys-text)] hover:border-[var(--sys-accent)] md:flex">Alerts</Link>}
+              {(roleCan(role, "system.dashboard.view") || businessStaff) && <Link href={roleCan(role, "system.dashboard.view") ? "/system/dev/docs" : subUrl("internal", "/knowledge")} className="hidden text-xs font-semibold text-[var(--sys-muted)] hover:text-[var(--sys-text)] xl:block">Help</Link>}
+              <SystemThemeToggle initialTheme={theme} />
               <span className={`inline-flex h-8 items-center gap-2 rounded-lg border px-2.5 text-[10px] font-bold uppercase tracking-wider ${isProd ? "border-amber-300/30 bg-amber-300/10 text-amber-200" : "border-lime/25 bg-lime/10 text-lime"}`}>
                 <span className={`size-1.5 rounded-full ${isProd ? "bg-amber-300" : "bg-lime"}`} />{env}
               </span>
-              <span className="hidden max-w-40 truncate text-xs text-slate-400 xl:block">{user.email}</span>
+              <span className="hidden max-w-40 truncate text-xs text-slate-400 xl:block" title={`${user.email} · ${role ?? user.role}`}>{user.email}</span>
               <LogoutButton />
             </div>
           </div>
-          <div className="border-t border-white/[0.05] px-4 py-2 sm:px-6 lg:hidden"><SystemPageContext groups={NAV} /></div>
+          <div className="border-t border-white/[0.05] px-4 py-2 sm:px-6 lg:hidden"><SystemPageContext groups={groups} /></div>
         </header>
         <main id="system-main" className="mx-auto w-full max-w-[1640px] px-4 pb-20 pt-7 sm:px-6 sm:pt-8 xl:px-9">{children}</main>
       </div>

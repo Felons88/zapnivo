@@ -6,6 +6,7 @@ import { roleCan, systemRole } from "@/lib/system/rbac";
 import { serviceClient } from "@/lib/supabase";
 import { VENUE_ADMIN_SELECT } from "@/lib/venues";
 import { VenuesManager, type OrgItem, type VenueItem } from "./VenuesManager";
+import { SystemPageHeading } from "@/components/SystemUI";
 
 export const metadata: Metadata = { title: "Venues" };
 
@@ -42,15 +43,7 @@ export default async function SystemVenuesPage() {
   return (
     <SystemGate perm="system.kiosks.view">
       <div className="space-y-6">
-        <header>
-          <p className="eyebrow text-lime">Kiosk Infrastructure</p>
-          <h1 className="display-md mt-1 text-slate-100">Venues &amp; locations</h1>
-          <p className="mt-2 max-w-3xl text-sm text-slate-400">
-            Search Mapbox to prefill a venue, verify the details, and publish when it&apos;s verified live.
-            Published venues with an installed, online station appear on the website and in the app.
-            Internal contact info and notes never leave this console.
-          </p>
-        </header>
+        <SystemPageHeading eyebrow="Kiosk infrastructure" title="Venues & locations" description={<>Search Mapbox to prefill a venue, verify its details, and publish when it is verified live. Published venues with an installed, online station appear on the website and in the app. Internal contact info and notes stay in this console.</>} />
         <VenuesManager venues={venues} organizations={organizations} canManage={canManage} />
       </div>
     </SystemGate>

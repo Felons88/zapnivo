@@ -6,7 +6,7 @@ import { authConfigured, devAuth, getSessionUser, isStaff, SESSION_COOKIE } from
 import { LogoutButton } from "./LogoutButton";
 import { LiveSync } from "./LiveSync";
 import { Notice } from "./ui";
-import { SITE } from "@/lib/site";
+import { SITE, subUrl } from "@/lib/site";
 import { getPublishedContent, flag, text as cmsText } from "@/lib/site-content";
 
 /** Staff-visible tables in the realtime publication — any change refreshes the open page. */
@@ -211,7 +211,7 @@ export async function AdminGate({ title, nav, children }: { title: string; nav: 
       {/* Topbar — brand, search, user; one slim nav row underneath */}
       <header className="sticky top-0 z-30 border-b border-[#dce4dc] bg-[#fafbf9]/95 shadow-[0_6px_24px_-22px_#102022] backdrop-blur">
         <div className="flex h-14 items-center gap-4 px-5 md:px-8">
-          <Link href="/admin" aria-label="Zapnivo internal" className="flex shrink-0 items-center gap-2">
+          <Link href={subUrl("system", "/")} aria-label="Zapnivo applications" className="flex shrink-0 items-center gap-2">
             <span className="text-lg font-black tracking-tight text-ink">zapnivo<span className="text-lime">.</span></span>
             <span className="rounded-md border border-lime/40 px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-widest text-forest">Ops</span>
           </Link>
@@ -221,6 +221,7 @@ export async function AdminGate({ title, nav, children }: { title: string; nav: 
             <button type="submit" className="shrink-0 text-xs font-bold text-forest">Search</button>
           </form>
           <div className="ml-auto flex items-center gap-3">
+            <Link href={subUrl("system", "/")} className="hidden min-h-9 items-center rounded-lg border border-mist bg-white px-3 text-xs font-bold text-ink hover:border-ink md:inline-flex">Applications</Link>
             <span className="hidden min-w-0 text-right lg:block">
               <span className="block text-[10px] font-extrabold uppercase leading-4 tracking-[.16em] text-[#61736c]">{NAV_ITEMS[nav].group}</span>
               <span className="block truncate font-display text-sm font-bold tracking-tight">{title}</span>
@@ -238,7 +239,7 @@ export async function AdminGate({ title, nav, children }: { title: string; nav: 
             <ToolsMenu all={all} nav={nav} />
             <span className="ml-auto hidden shrink-0 items-center gap-3 pl-3 text-xs font-bold text-graphite xl:flex">
               <Link href={SITE.url} className="hover:text-ink">Public site ↗</Link>
-              {user.role === "admin" && <Link href="/system" className="hover:text-ink">System console ↗</Link>}
+              <Link href={subUrl("system", "/")} className="hover:text-ink">All applications ↗</Link>
             </span>
           </div>
         </nav>
