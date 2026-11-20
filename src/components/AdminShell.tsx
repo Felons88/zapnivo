@@ -42,6 +42,11 @@ export const icons = {
   tag: <I><path d="M3 12V4h8l10 10-8 8L3 12Z" /><circle cx="7.5" cy="8.5" r="1" /></I>,
   alert: <I><path d="M12 3 2 20h20L12 3Z" /><path d="M12 10v4M12 17h.01" /></I>,
   search: <I><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 5 5" /></I>,
+  activity: <I><path d="M22 12h-4l-3 9L9 3l-3 9H2" /></I>,
+  cpu: <I><rect x="4" y="4" width="16" height="16" rx="2" /><rect x="9" y="9" width="6" height="6" /><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2" /></I>,
+  bell: <I><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" /></I>,
+  boxes: <I><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" /><path d="m3.3 7 8.7 5 8.7-5" /><path d="M12 22V12" /></I>,
+  timer: <I><path d="M10 2h4" /><path d="M12 14l3-3" /><circle cx="12" cy="14" r="8" /></I>,
 } satisfies Record<string, ReactNode>;
 
 export type AdminNavKey = keyof typeof NAV_ITEMS;

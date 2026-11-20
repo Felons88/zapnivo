@@ -164,3 +164,27 @@ main section :is(.rounded-xl,.rounded-lg).bg-white:hover { box-shadow: 0 28px 65
   *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; transition-delay: 0ms !important; }
   .js [data-reveal] { opacity: 1; transform: none; }
 }
+
+/* Command-center launcher — ported from opscenter (Lovable) design language:
+   radial brand washes, dot-grid texture, gradient "app icon" glyphs, rise-in. */
+.admin-launcher {
+  --lz-blue: oklch(0.56 0.2 259);
+  --lz-teal: oklch(0.6 0.11 190);
+  background:
+    radial-gradient(60rem 30rem at 15% -10%, color-mix(in oklab, var(--lz-blue) 12%, transparent), transparent 60%),
+    radial-gradient(40rem 24rem at 95% 0%, color-mix(in oklab, var(--lz-teal) 10%, transparent), transparent 60%),
+    #f6f9fc;
+}
+.launcher-dots {
+  background-image: radial-gradient(color-mix(in oklab, #0a2540 12%, transparent) 1px, transparent 1px);
+  background-size: 18px 18px;
+  mask-image: linear-gradient(to bottom, black, transparent 75%);
+}
+.tile-glyph {
+  background: linear-gradient(145deg, color-mix(in oklab, currentColor 92%, white), color-mix(in oklab, currentColor 70%, black));
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / .25), 0 8px 18px -8px currentColor;
+}
+@keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.anim-rise { animation: rise .35s cubic-bezier(.2,.7,.2,1) both; }
+@keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+.pulse-dot { animation: pulse-dot 1.6s ease-in-out infinite; }
