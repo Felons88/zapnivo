@@ -50,7 +50,7 @@ export default function TrendChart({
   dark?: boolean;
 }) {
   const [hover, setHover] = useState<number | null>(null);
-  const card = dark ? "border-white/10 bg-[#0f1c22] text-white" : "border-[#dfe6df] bg-white";
+  const card = dark ? "border-white/10 bg-[#0f1c22] text-white" : "border-[#e3e8ee] bg-white";
   const heading = dark ? "text-white" : "text-ink";
   const sub = dark ? "text-[#8fa6a8]" : "text-graphite";
   const grid = dark ? "#20323a" : GRID;

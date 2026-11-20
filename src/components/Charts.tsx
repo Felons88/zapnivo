@@ -24,7 +24,7 @@ export function StatTile({
   href: string;
   tone?: "default" | "urgent" | "good";
 }) {
-  const border = tone === "urgent" ? "border-[#f0d7cb] bg-[#fff8f3]" : "border-[#dfe6df] bg-white";
+  const border = tone === "urgent" ? "border-[#f0d7cb] bg-[#fff8f3]" : "border-[#e3e8ee] bg-white";
   return (
     <Link href={href} className={`group rounded-xl border px-3 py-2 transition hover:-translate-y-px hover:shadow ${border}`}>
       <span className="flex items-center justify-between gap-2 text-[10px] font-extrabold uppercase tracking-wider text-graphite">
@@ -42,7 +42,7 @@ export function StatTile({
 /** Titled white panel with an optional action link in the header. */
 export function Panel({ title, action, children, className = "" }: { title: string; action?: { href: string; label: string }; children: ReactNode; className?: string }) {
   return (
-    <section className={`rounded-xl border border-[#dfe6df] bg-white ${className}`}>
+    <section className={`rounded-xl border border-[#e3e8ee] bg-white ${className}`}>
       <div className="flex items-center justify-between gap-3 border-b border-[#e3e8ee] px-4 py-2.5">
         <h2 className="text-sm font-extrabold uppercase tracking-wider text-ink">{title}</h2>
         {action ? (
@@ -101,7 +101,7 @@ export function FunnelChart({
   dark?: boolean;
 }) {
   const max = Math.max(1, ...steps.map((s) => s.count));
-  const card = dark ? "border-white/10 bg-[#0f1c22]" : "border-[#dfe6df] bg-white";
+  const card = dark ? "border-white/10 bg-[#0f1c22]" : "border-[#e3e8ee] bg-white";
   const heading = dark ? "text-white" : "text-ink";
   const sub = dark ? "text-[#8fa6a8]" : "text-graphite";
   const track = dark ? "bg-white/10" : "bg-[#eef1f5]/70";
@@ -162,7 +162,7 @@ export function LeaderboardChart({
   dark?: boolean;
 }) {
   const max = Math.max(1, ...rows.map((r) => r.value));
-  const card = dark ? "border-white/10 bg-[#0f1c22]" : "border-[#dfe6df] bg-white";
+  const card = dark ? "border-white/10 bg-[#0f1c22]" : "border-[#e3e8ee] bg-white";
   const heading = dark ? "text-white" : "text-ink";
   const sub = dark ? "text-[#8fa6a8]" : "text-graphite";
   const track = dark ? "bg-white/10" : "bg-[#eef1f5]/70";
