@@ -33,7 +33,7 @@ function AgentRow({ agent }: { agent: DirectoryAgent }) {
 
   return (
     <>
-      <tr className="border-b border-mist/70 align-top hover:bg-lime/10">
+      <tr className="border-b border-[#e3e8ee]/70 align-top hover:bg-[#edeeff]">
         <td className="px-4 py-3">
           <p className="font-bold">{agent.name}</p>
           <p className="text-xs text-graphite">{agent.id} · {agent.department}</p>
@@ -50,7 +50,7 @@ function AgentRow({ agent }: { agent: DirectoryAgent }) {
         <td className="px-4 py-3">
           <div className="flex flex-wrap gap-1">
             <button
-              className="min-h-8 rounded-full bg-mist px-2.5 text-[11px] font-bold disabled:opacity-50"
+              className="min-h-8 rounded-full bg-[#eef1f5] px-2.5 text-[11px] font-bold disabled:opacity-50"
               disabled={busy !== null}
               onClick={() => act("ping", () => post(`/api/admin/ai/agents/${encodeURIComponent(agent.id)}/run`, { task: "control-center ping" }))}
             >{busy === "ping" ? "…" : "Ping"}</button>
@@ -62,7 +62,7 @@ function AgentRow({ agent }: { agent: DirectoryAgent }) {
               >Kill</button>
             ) : (
               <button
-                className="min-h-8 rounded-full bg-lime px-2.5 text-[11px] font-bold disabled:opacity-50"
+                className="min-h-8 rounded-full bg-[#635bff] text-white px-2.5 text-[11px] font-bold disabled:opacity-50"
                 disabled={busy !== null}
                 onClick={() => act("enable", () => post(`/api/admin/ai/agents/${encodeURIComponent(agent.id)}/enable`))}
               >Enable</button>
@@ -71,7 +71,7 @@ function AgentRow({ agent }: { agent: DirectoryAgent }) {
           {msg && <p className="mt-1 text-[11px] text-graphite">{msg}</p>}
         </td>
       </tr>
-      <tr className="border-b border-mist/70 bg-mist/20">
+      <tr className="border-b border-[#e3e8ee]/70 bg-[#eef1f5]/20">
         <td colSpan={7} className="px-4 py-3">
           <details>
             <summary className="cursor-pointer text-xs font-bold text-forest">Configure {agent.id}</summary>
@@ -114,7 +114,7 @@ function AgentEditForm({ agent }: { agent: DirectoryAgent }) {
 
   const field = "min-h-9 w-full rounded-lg border border-silver/60 px-2 text-xs";
   return (
-    <form onSubmit={submit} className="mt-3 grid gap-3 rounded-xl border border-mist bg-white p-4 sm:grid-cols-3">
+    <form onSubmit={submit} className="mt-3 grid gap-3 rounded-xl border border-[#e3e8ee] bg-white p-4 sm:grid-cols-3">
       <label className="text-xs font-bold">Model<input name="model" defaultValue={agent.model} className={`mt-1 ${field}`} /></label>
       <label className="text-xs font-bold">Temperature<input name="temperature" type="number" step="0.05" min="0" max="2" defaultValue={agent.temperature} className={`mt-1 ${field}`} /></label>
       <label className="text-xs font-bold">Max tokens<input name="max_tokens" type="number" min="1" defaultValue={agent.max_tokens} className={`mt-1 ${field}`} /></label>
@@ -126,7 +126,7 @@ function AgentEditForm({ agent }: { agent: DirectoryAgent }) {
       <label className="text-xs font-bold sm:col-span-2">Permissions (comma-separated)<input name="permissions" defaultValue={agent.permissions.join(", ")} className={`mt-1 ${field}`} /></label>
       <label className="text-xs font-bold sm:col-span-3">Tools (comma-separated allowlist)<input name="tools" defaultValue={agent.tools.join(", ")} className={`mt-1 ${field}`} /></label>
       <div className="flex items-center gap-3 sm:col-span-3">
-        <button className="min-h-9 rounded-full bg-lime px-4 text-xs font-bold disabled:opacity-50" disabled={state === "saving"}>
+        <button className="min-h-9 rounded-full bg-[#635bff] text-white px-4 text-xs font-bold disabled:opacity-50" disabled={state === "saving"}>
           {state === "saving" ? "Saving…" : "Save agent config"}
         </button>
         {state === "saved" && <span className="text-xs font-bold text-forest">Saved.</span>}
@@ -139,9 +139,9 @@ function AgentEditForm({ agent }: { agent: DirectoryAgent }) {
 export function AgentDirectory({ agents }: { agents: DirectoryAgent[] }) {
   if (!agents.length) return <EmptyNote />;
   return (
-    <div className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
+    <div className="overflow-x-auto rounded-2xl border border-[#e3e8ee] bg-white shadow-sm">
       <table className="w-full min-w-[1100px] text-left text-sm">
-        <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite">
+        <thead className="border-b border-[#e3e8ee] bg-[#eef1f5]/40 text-xs uppercase tracking-wider text-graphite">
           <tr>{["Agent", "Model", "State", "Calls/hr", "Budgets", "Last run / 30d", "Actions"].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr>
         </thead>
         <tbody>
@@ -153,5 +153,5 @@ export function AgentDirectory({ agents }: { agents: DirectoryAgent[] }) {
 }
 
 function EmptyNote() {
-  return <p className="rounded-2xl border border-mist bg-white px-4 py-8 text-sm text-graphite shadow-sm">No agents registered yet — the seed runs automatically on first load.</p>;
+  return <p className="rounded-2xl border border-[#e3e8ee] bg-white px-4 py-8 text-sm text-graphite shadow-sm">No agents registered yet — the seed runs automatically on first load.</p>;
 }

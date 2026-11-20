@@ -18,7 +18,7 @@ const ago = (iso: string) => {
 
 const ISSUE_TONE: Record<string, string> = {
   new: "bg-red-100 text-red-800", investigating: "bg-amber-100 text-amber-800", assigned: "bg-blue-100 text-blue-800",
-  resolved: "bg-mist text-graphite", ignored: "bg-mist text-graphite", regressed: "bg-red-100 text-red-800",
+  resolved: "bg-[#eef1f5] text-graphite", ignored: "bg-[#eef1f5] text-graphite", regressed: "bg-red-100 text-red-800",
 };
 
 export default async function Observability() {
@@ -61,17 +61,17 @@ export default async function Observability() {
           <Metric label="Failed cron runs" value={cronFails} />
         </div>
 
-        <section className="rounded-2xl border border-mist bg-white p-4">
+        <section className="rounded-2xl border border-[#e3e8ee] bg-white p-4">
           <h2 className="text-lg font-bold">Error issues</h2>
           <p className="mt-1 text-sm text-graphite">Grouped by fingerprint — repeated errors update the same issue; resolved issues that recur are marked <em>regressed</em>.</p>
           <div className="mt-4 overflow-x-auto">
             <table className="w-full text-sm">
-              <thead><tr className="border-b border-mist text-left text-xs uppercase tracking-wider text-graphite"><th className="py-2 pr-4">Issue</th><th className="py-2 pr-4">Status</th><th className="py-2 pr-4">Events</th><th className="py-2 pr-4">Route</th><th className="py-2 pr-4">First seen</th><th className="py-2">Last seen</th><th className="py-2 pl-4">Actions</th></tr></thead>
+              <thead><tr className="border-b border-[#e3e8ee] text-left text-xs uppercase tracking-wider text-graphite"><th className="py-2 pr-4">Issue</th><th className="py-2 pr-4">Status</th><th className="py-2 pr-4">Events</th><th className="py-2 pr-4">Route</th><th className="py-2 pr-4">First seen</th><th className="py-2">Last seen</th><th className="py-2 pl-4">Actions</th></tr></thead>
               <tbody>
                 {issues.map((i) => (
-                  <tr key={i.id} className="border-b border-mist/60 align-top">
+                  <tr key={i.id} className="border-b border-[#e3e8ee]/60 align-top">
                     <td className="max-w-md py-2 pr-4"><span className="font-semibold">{i.title}</span><div className="mt-0.5 font-mono text-[10px] text-graphite">{i.fingerprint}</div></td>
-                    <td className="py-2 pr-4"><span className={`rounded-full px-2 py-0.5 text-[11px] font-extrabold uppercase ${ISSUE_TONE[i.status] ?? "bg-mist"}`}>{i.status}</span></td>
+                    <td className="py-2 pr-4"><span className={`rounded-full px-2 py-0.5 text-[11px] font-extrabold uppercase ${ISSUE_TONE[i.status] ?? "bg-[#eef1f5]"}`}>{i.status}</span></td>
                     <td className="py-2 pr-4 font-bold">{i.event_count}</td>
                     <td className="max-w-[10rem] truncate py-2 pr-4 text-graphite">{i.culprit ?? "—"}</td>
                     <td className="py-2 pr-4 text-graphite">{ago(i.first_seen)}</td>
@@ -86,7 +86,7 @@ export default async function Observability() {
         </section>
 
         <div className="grid gap-4 lg:grid-cols-2">
-          <section className="rounded-2xl border border-mist bg-white p-4">
+          <section className="rounded-2xl border border-[#e3e8ee] bg-white p-4">
             <h2 className="text-lg font-bold">Recent errors (24h)</h2>
             <ul className="mt-3 space-y-2 text-sm">
               {events.map((e) => (
@@ -99,13 +99,13 @@ export default async function Observability() {
             </ul>
           </section>
 
-          <section className="rounded-2xl border border-mist bg-white p-4">
+          <section className="rounded-2xl border border-[#e3e8ee] bg-white p-4">
             <h2 className="text-lg font-bold">Incidents</h2>
             <ul className="mt-3 space-y-2 text-sm">
               {incidents.map((i) => (
                 <li key={i.id} className="flex items-center justify-between gap-3 rounded-lg bg-paper px-3 py-2">
                   <div><span className="font-semibold">{i.number}</span> <span className="text-graphite">{i.title}</span></div>
-                  <span className="shrink-0 rounded-full bg-mist px-2 py-0.5 text-[11px] font-extrabold uppercase">{i.status}</span>
+                  <span className="shrink-0 rounded-full bg-[#eef1f5] px-2 py-0.5 text-[11px] font-extrabold uppercase">{i.status}</span>
                 </li>
               ))}
               {incidents.length === 0 && <li className="text-graphite">No incidents recorded.</li>}
@@ -114,16 +114,16 @@ export default async function Observability() {
         </div>
 
         <div className="grid gap-4 lg:grid-cols-2">
-          <section className="rounded-2xl border border-mist bg-white p-4">
+          <section className="rounded-2xl border border-[#e3e8ee] bg-white p-4">
             <h2 className="text-lg font-bold">Uptime monitors</h2>
             <p className="mt-1 text-xs text-graphite">Latest check per target. Sustained failures (3 consecutive) auto-create incidents. Hit <code>/api/cron/uptime</code> with CRON_SECRET from an external scheduler for frequent checks.</p>
             <table className="mt-3 w-full text-sm">
-              <thead><tr className="border-b border-mist text-left text-xs uppercase tracking-wider text-graphite"><th className="py-2 pr-4">Target</th><th className="py-2 pr-4">Status</th><th className="py-2 pr-4">HTTP</th><th className="py-2 pr-4">Latency</th><th className="py-2">Checked</th></tr></thead>
+              <thead><tr className="border-b border-[#e3e8ee] text-left text-xs uppercase tracking-wider text-graphite"><th className="py-2 pr-4">Target</th><th className="py-2 pr-4">Status</th><th className="py-2 pr-4">HTTP</th><th className="py-2 pr-4">Latency</th><th className="py-2">Checked</th></tr></thead>
               <tbody>
                 {upRows.map((u) => (
-                  <tr key={u.url} className="border-b border-mist/60">
+                  <tr key={u.url} className="border-b border-[#e3e8ee]/60">
                     <td className="max-w-[12rem] truncate py-2 pr-4 font-mono text-xs">{u.url}</td>
-                    <td className="py-2 pr-4"><span className={`rounded-full px-2 py-0.5 text-[11px] font-extrabold ${u.ok ? "bg-lime/40 text-forest" : "bg-red-100 text-red-800"}`}>{u.ok ? "up" : "down"}</span></td>
+                    <td className="py-2 pr-4"><span className={`rounded-full px-2 py-0.5 text-[11px] font-extrabold ${u.ok ? "bg-[#edeeff] text-[#635bff]" : "bg-red-100 text-red-800"}`}>{u.ok ? "up" : "down"}</span></td>
                     <td className="py-2 pr-4">{u.status_code ?? "—"}</td>
                     <td className="py-2 pr-4">{u.latency_ms ?? "—"}ms</td>
                     <td className="py-2 text-graphite">{ago(u.checked_at)}</td>
@@ -134,13 +134,13 @@ export default async function Observability() {
             </table>
           </section>
 
-          <section className="rounded-2xl border border-mist bg-white p-4">
+          <section className="rounded-2xl border border-[#e3e8ee] bg-white p-4">
             <h2 className="text-lg font-bold">Scheduled jobs</h2>
             <ul className="mt-3 space-y-2 text-sm">
               {crons.map((c, i) => (
                 <li key={i} className="flex items-center justify-between rounded-lg bg-paper px-3 py-2">
                   <span className="font-semibold">{c.job}</span>
-                  <span className="flex items-center gap-3"><span className={`rounded-full px-2 py-0.5 text-[11px] font-extrabold ${c.ok ? "bg-lime/40 text-forest" : "bg-red-100 text-red-800"}`}>{c.ok ? "ok" : "failed"}</span><span className="text-xs text-graphite">{ago(c.ran_at)}</span></span>
+                  <span className="flex items-center gap-3"><span className={`rounded-full px-2 py-0.5 text-[11px] font-extrabold ${c.ok ? "bg-[#edeeff] text-[#635bff]" : "bg-red-100 text-red-800"}`}>{c.ok ? "ok" : "failed"}</span><span className="text-xs text-graphite">{ago(c.ran_at)}</span></span>
                 </li>
               ))}
               {crons.length === 0 && <li className="text-graphite">No cron runs recorded yet.</li>}
@@ -148,7 +148,7 @@ export default async function Observability() {
           </section>
         </div>
 
-        <section className="rounded-2xl border border-mist bg-white p-4">
+        <section className="rounded-2xl border border-[#e3e8ee] bg-white p-4">
           <h2 className="text-lg font-bold">Recent logs</h2>
           <ul className="mt-3 max-h-96 space-y-1 overflow-y-auto font-mono text-xs">
             {logs.map((l) => (

@@ -19,7 +19,7 @@ const icons = {
 };
 
 const Card = ({ title, href, children }: { title: string; href?: string; children: ReactNode }) => (
-  <section className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
+  <section className="rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm">
     <div className="flex items-center justify-between"><h2 className="font-display text-lg font-bold">{title}</h2>{href && <span className="text-xs font-extrabold uppercase tracking-wider text-forest">Open →</span>}</div>
     <div className="mt-4">{children}</div>
   </section>
@@ -47,7 +47,7 @@ export default function AdminDemo() {
         </div>
 
         <Link href="/admin/support" className="flex items-center gap-3 rounded-2xl border border-gold/60 bg-gold/25 px-5 py-3 text-sm font-bold text-ink hover:bg-gold/40">
-          <span className="grid h-6 w-6 place-items-center rounded-full bg-ink text-xs font-extrabold text-lime">!</span>
+          <span className="grid h-6 w-6 place-items-center rounded-full bg-[#0a2540] text-xs font-extrabold text-[#635bff]">!</span>
           <span>3 tickets unassigned</span><span aria-hidden>·</span><span>1 overdue first response</span>
           <span className="ml-auto text-xs font-extrabold uppercase tracking-wider">Open inbox →</span>
         </Link>

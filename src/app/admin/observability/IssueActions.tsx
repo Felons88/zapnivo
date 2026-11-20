@@ -26,7 +26,7 @@ export function IssueActions({ fingerprint, current }: { fingerprint: string; cu
     <span className="flex flex-wrap gap-1">
       {actions.map((a) => (
         <button key={a.status} type="button" disabled={busy !== null} onClick={() => act(a.status)}
-          className="rounded-full border border-mist px-2 py-0.5 text-[11px] font-bold hover:border-ink disabled:opacity-40">
+          className="rounded-full border border-[#e3e8ee] px-2 py-0.5 text-[11px] font-bold hover:border-ink disabled:opacity-40">
           {busy === a.status ? "…" : a.label}
         </button>
       ))}

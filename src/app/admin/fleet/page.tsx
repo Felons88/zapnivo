@@ -58,10 +58,10 @@ export default async function Fleet({ searchParams }: { searchParams: Promise<{ 
       ) : (
         <div className="space-y-4">
           <section className="flex flex-wrap items-center justify-between gap-4 rounded-2xl bg-[#142126] p-4 text-white ">
-            <div><p className="eyebrow text-lime">Network operations</p><h2 className="mt-1 text-xl font-bold tracking-tight">Know what needs attention.</h2><p className="mt-1 max-w-2xl text-xs text-[#b7c8c2]">Monitor live station state, slot readiness and recent device activity. Open a station to investigate and act.</p></div>
-            <div className="flex gap-2"><a href="#fleet-stations" className="rounded-lg bg-lime px-4 py-2.5 text-sm font-bold text-ink">View stations ↓</a><a href="#fleet-setup" className="rounded-lg border border-white/25 px-4 py-2.5 text-sm font-bold hover:bg-white/10">Setup tools</a></div>
+            <div><p className="eyebrow text-[#635bff]">Network operations</p><h2 className="mt-1 text-xl font-bold tracking-tight">Know what needs attention.</h2><p className="mt-1 max-w-2xl text-xs text-[#b7c8c2]">Monitor live station state, slot readiness and recent device activity. Open a station to investigate and act.</p></div>
+            <div className="flex gap-2"><a href="#fleet-stations" className="rounded-lg bg-[#635bff] px-4 py-2.5 text-sm font-bold text-white">View stations ↓</a><a href="#fleet-setup" className="rounded-lg border border-white/25 px-4 py-2.5 text-sm font-bold hover:bg-white/10">Setup tools</a></div>
           </section>
-          {feedback.result && <div role="status" className={`rounded-xl px-5 py-3 text-sm font-bold ${feedback.result === "error" ? "bg-red-100 text-red-900" : "bg-lime text-ink"}`}>
+          {feedback.result && <div role="status" className={`rounded-xl px-5 py-3 text-sm font-bold ${feedback.result === "error" ? "bg-red-100 text-red-900" : "bg-[#635bff] text-white"}`}>
             {feedback.result === "created" ? `Kiosk ${feedback.detail ?? ""} registered with its slot records. It is provisioning until connected hardware confirms status.` : feedback.result === "venue" ? "Venue added as unpublished." : feedback.result === "assigned" ? "Kiosk assignment saved." : feedback.result === "installed" ? "Physical installation recorded. The station remains nonpublic until its device is online and its venue is published." : feedback.detail ?? "The fleet action failed."}
           </div>}
           <section aria-label="Fleet at a glance" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -71,11 +71,11 @@ export default async function Fleet({ searchParams }: { searchParams: Promise<{ 
             <Metric label="Power banks" value={live.length} sub={`${bankRows.length - live.length} retired`} />
           </section>
 
-          <section id="fleet-stations" aria-label="Stations" className="scroll-mt-24 overflow-hidden rounded-2xl border border-mist bg-white shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-mist px-4 py-3"><div><p className="eyebrow text-forest">Station directory</p><h2 className="mt-1 font-display text-xl font-bold">Fleet status</h2></div><p className="text-xs text-graphite">Showing {visibleRows.length} of {kioskRows.length}</p></div>
-            <div className="space-y-3 border-b border-mist px-5 py-4">
-              <form action="/admin/fleet" className="flex max-w-md gap-2"><input type="hidden" name="state" value={state} /><input name="q" defaultValue={feedback.q} aria-label="Search stations" placeholder="Search station, venue or model…" className="min-h-10 min-w-0 flex-1 rounded-lg border border-silver/70 px-3 text-sm" /><button className="rounded-lg bg-ink px-4 text-xs font-bold text-white">Search</button></form>
-              <nav aria-label="Station status filters" className="flex gap-2 overflow-x-auto">{FILTERS.map((filter) => <Link key={filter} href={filterHref(filter)} className={"shrink-0 rounded-full px-3 py-1.5 text-xs font-bold " + (state === filter ? "bg-lime text-ink" : "bg-[#f2f5f1] text-graphite hover:bg-mist")}>{filter === "all" ? "All stations" : filter}</Link>)}</nav>
+          <section id="fleet-stations" aria-label="Stations" className="scroll-mt-24 overflow-hidden rounded-2xl border border-[#e3e8ee] bg-white shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e3e8ee] px-4 py-3"><div><p className="eyebrow text-forest">Station directory</p><h2 className="mt-1 font-display text-xl font-bold">Fleet status</h2></div><p className="text-xs text-graphite">Showing {visibleRows.length} of {kioskRows.length}</p></div>
+            <div className="space-y-3 border-b border-[#e3e8ee] px-5 py-4">
+              <form action="/admin/fleet" className="flex max-w-md gap-2"><input type="hidden" name="state" value={state} /><input name="q" defaultValue={feedback.q} aria-label="Search stations" placeholder="Search station, venue or model…" className="min-h-10 min-w-0 flex-1 rounded-lg border border-silver/70 px-3 text-sm" /><button className="rounded-lg bg-[#0a2540] px-4 text-xs font-bold text-white">Search</button></form>
+              <nav aria-label="Station status filters" className="flex gap-2 overflow-x-auto">{FILTERS.map((filter) => <Link key={filter} href={filterHref(filter)} className={"shrink-0 rounded-full px-3 py-1.5 text-xs font-bold " + (state === filter ? "bg-[#635bff] text-white" : "bg-[#f2f5f1] text-graphite hover:bg-[#eef1f5]")}>{filter === "all" ? "All stations" : filter}</Link>)}</nav>
             </div>
             {kioskRows.length === 0 ? (
               <p className="px-4 py-8 text-sm text-graphite">No stations registered yet. The first kiosk appears here once provisioned.</p>
@@ -86,10 +86,10 @@ export default async function Fleet({ searchParams }: { searchParams: Promise<{ 
             )}
           </section>
 
-          <details id="fleet-setup" className="rounded-2xl border border-mist bg-white p-5">
+          <details id="fleet-setup" className="rounded-2xl border border-[#e3e8ee] bg-white p-5">
             <summary className="cursor-pointer text-sm font-bold">Station setup · register kiosk or add venue <span className="float-right text-graphite">⌄</span></summary>
           <div className="mt-5 grid gap-4 lg:grid-cols-2">
-            <section id="register-kiosk" aria-label="Register kiosk" className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
+            <section id="register-kiosk" aria-label="Register kiosk" className="rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm">
               <h2 className="font-display text-lg font-bold">Register a kiosk</h2>
               <form method="post" action="/api/admin/fleet" className="mt-4 flex flex-wrap items-end gap-3">
                 <input type="hidden" name="action" value="create_kiosk" />
@@ -97,11 +97,11 @@ export default async function Fleet({ searchParams }: { searchParams: Promise<{ 
                   <select id="k-venue" name="venue_id" className={inputCls}><option value="">— unassigned —</option>{venueRows.map((v) => <option key={v.id} value={v.id}>{v.name} · {v.city}</option>)}</select></div>
                 <div><label htmlFor="k-model" className="mb-1 block text-xs font-bold">Model</label><input id="k-model" name="model" className={inputCls} placeholder="ZP-8" /></div>
                 <div><label htmlFor="k-slots" className="mb-1 block text-xs font-bold">Slots</label><input id="k-slots" name="slot_count" type="number" min="1" max="64" defaultValue="8" className={`${inputCls} w-20`} /></div>
-                <button className="min-h-10 rounded-full bg-ink px-5 text-sm font-bold text-white">Register</button>
+                <button className="min-h-10 rounded-full bg-[#0a2540] px-5 text-sm font-bold text-white">Register</button>
               </form>
               <p className="mt-3 text-xs text-graphite">A unique station ID and numbered empty slots are created together. New kiosks stay in <b>provisioning</b> until real hardware is connected.</p>
             </section>
-            <section aria-label="Add venue" className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
+            <section aria-label="Add venue" className="rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm">
               <h2 className="font-display text-lg font-bold">Add a venue</h2>
               <form method="post" action="/api/admin/fleet" className="mt-4 flex flex-wrap items-end gap-3">
                 <input type="hidden" name="action" value="create_venue" />
@@ -113,7 +113,7 @@ export default async function Fleet({ searchParams }: { searchParams: Promise<{ 
                 <div><label htmlFor="v-zip" className="mb-1 block text-xs font-bold">ZIP</label><input id="v-zip" name="zip" className={`${inputCls} w-24`} placeholder="55401" /></div>
                 <div><label htmlFor="v-org" className="mb-1 block text-xs font-bold">Owner org</label>
                   <select id="v-org" name="organization_id" className={inputCls}><option value="">— none yet —</option>{orgRows.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}</select></div>
-                <button className="min-h-10 rounded-full bg-ink px-5 text-sm font-bold text-white">Add venue</button>
+                <button className="min-h-10 rounded-full bg-[#0a2540] px-5 text-sm font-bold text-white">Add venue</button>
               </form>
               <p className="mt-3 text-xs text-graphite">Venues start unpublished. Link an owner organization on <Link href="/admin/partners" className="font-bold text-forest underline">Partners</Link>; add verified coordinates and publish only after installation and live device verification.</p>
             </section>
@@ -121,7 +121,7 @@ export default async function Fleet({ searchParams }: { searchParams: Promise<{ 
           </details>
 
           <div className="grid gap-4 lg:grid-cols-2">
-            <section aria-label="Recent maintenance" className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
+            <section aria-label="Recent maintenance" className="rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm">
               <h2 className="font-display text-lg font-bold">Recent maintenance visits</h2>
               {visitRows.length === 0 ? <p className="mt-4 text-sm text-graphite">None logged yet.</p> : (
                 <ul className="mt-4 space-y-2 text-sm">
@@ -129,7 +129,7 @@ export default async function Fleet({ searchParams }: { searchParams: Promise<{ 
                 </ul>
               )}
             </section>
-            <section aria-label="Device events" className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
+            <section aria-label="Device events" className="rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm">
               <h2 className="font-display text-lg font-bold">Latest device events</h2>
               {eventRows.length === 0 ? <p className="mt-4 text-sm text-graphite">No hardware events yet — they stream in once kiosks are connected.</p> : (
                 <ul className="mt-4 space-y-2 text-sm">

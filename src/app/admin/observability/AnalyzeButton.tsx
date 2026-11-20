@@ -13,9 +13,9 @@ type Analysis = {
 type Result = { ok: true; analysis: Analysis } | { ok: false; error: string };
 
 const CONFIDENCE_TONE: Record<Analysis["confidence"], string> = {
-  high: "bg-lime/40 text-forest",
+  high: "bg-[#edeeff] text-[#635bff]",
   medium: "bg-amber-100 text-amber-800",
-  low: "bg-mist text-graphite",
+  low: "bg-[#eef1f5] text-graphite",
 };
 
 function List({ title, items }: { title: string; items: string[] }) {
@@ -61,18 +61,18 @@ export function AnalyzeButton({ issueId }: { issueId: string }) {
         type="button"
         disabled={busy}
         onClick={run}
-        className="rounded-full border border-mist px-2 py-0.5 text-[11px] font-bold hover:border-ink disabled:opacity-40"
+        className="rounded-full border border-[#e3e8ee] px-2 py-0.5 text-[11px] font-bold hover:border-ink disabled:opacity-40"
       >
         {busy ? "Analyzing…" : "Analyze with AI"}
       </button>
       {open && result && (
-        <div className="w-[28rem] max-w-[80vw] rounded-xl border border-mist bg-paper p-4 text-left shadow-sm">
+        <div className="w-[28rem] max-w-[80vw] rounded-xl border border-[#e3e8ee] bg-paper p-4 text-left shadow-sm">
           <div className="flex items-start justify-between gap-2">
             <h3 className="text-sm font-bold">AI analysis</h3>
             <button
               type="button"
               onClick={() => setOpen(false)}
-              className="rounded-full px-2 py-0.5 text-[11px] font-bold text-graphite hover:bg-mist"
+              className="rounded-full px-2 py-0.5 text-[11px] font-bold text-graphite hover:bg-[#eef1f5]"
               aria-label="Dismiss analysis"
             >
               Dismiss
@@ -94,7 +94,7 @@ export function AnalyzeButton({ issueId }: { issueId: string }) {
               {(result.analysis.draftIssue.title || result.analysis.draftIssue.body) && (
                 <div>
                   <h4 className="text-[11px] font-extrabold uppercase tracking-wider text-graphite">Draft issue</h4>
-                  <div className="mt-1 rounded-lg border border-mist bg-white p-3">
+                  <div className="mt-1 rounded-lg border border-[#e3e8ee] bg-white p-3">
                     {result.analysis.draftIssue.title && <p className="text-sm font-bold">{result.analysis.draftIssue.title}</p>}
                     {result.analysis.draftIssue.body && (
                       <pre className="mt-1 whitespace-pre-wrap font-sans text-xs text-graphite">{result.analysis.draftIssue.body}</pre>

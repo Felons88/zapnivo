@@ -26,7 +26,7 @@ export function ActiveToggle({ kind, id, active }: { kind: "plans" | "packages";
   return (
     <span className="inline-flex items-center gap-2">
       <button type="button" onClick={toggle} disabled={busy}
-        className={`min-h-8 rounded-full px-3 text-xs font-bold disabled:opacity-50 ${active ? "bg-lime text-ink" : "border border-silver/60 text-graphite"}`}>
+        className={`min-h-8 rounded-full px-3 text-xs font-bold disabled:opacity-50 ${active ? "bg-[#635bff] text-white" : "border border-silver/60 text-graphite"}`}>
         {busy ? "…" : active ? "Active — deactivate" : "Inactive — activate"}
       </button>
       {err && <span className="text-xs font-semibold text-[#8a4b00]">{err}</span>}
@@ -76,7 +76,7 @@ export function PackageEditor({ id, priceCents, units, validityDays }: {
       <label className="text-xs font-bold text-graphite">Valid days
         <input className={`${input} ml-1 w-20`} inputMode="numeric" placeholder="never" value={days} onChange={(e) => setDays(e.target.value)} aria-label="Validity days, blank for never" />
       </label>
-      <button type="button" onClick={save} disabled={busy} className="min-h-9 rounded-full bg-ink px-4 text-xs font-bold text-white disabled:opacity-50">{busy ? "…" : "Save"}</button>
+      <button type="button" onClick={save} disabled={busy} className="min-h-9 rounded-full bg-[#0a2540] px-4 text-xs font-bold text-white disabled:opacity-50">{busy ? "…" : "Save"}</button>
       {msg && <span className="text-xs font-semibold text-forest">{msg}</span>}
     </div>
   );

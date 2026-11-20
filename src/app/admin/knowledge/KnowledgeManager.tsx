@@ -161,7 +161,7 @@ export function KnowledgeManager({
   return (
     <div className="space-y-4">
       {notice && (
-        <div role="status" className={`rounded-xl px-5 py-3 text-sm font-bold ${notice.ok ? "bg-lime text-ink" : "bg-red-100 text-red-900"}`}>
+        <div role="status" className={`rounded-xl px-5 py-3 text-sm font-bold ${notice.ok ? "bg-[#635bff] text-white" : "bg-red-100 text-red-900"}`}>
           {notice.text}
         </div>
       )}
@@ -208,7 +208,7 @@ export function KnowledgeManager({
           {KNOWLEDGE_AUDIENCES.map((a) => <option key={a} value={a}>{a}</option>)}
         </select>
         <span className="text-xs font-bold text-graphite">{filtered.length} article{filtered.length === 1 ? "" : "s"}</span>
-        <button type="button" onClick={() => setEditor({ mode: "new" })} className="ml-auto min-h-10 rounded-full bg-lime px-5 text-sm font-bold text-ink">
+        <button type="button" onClick={() => setEditor({ mode: "new" })} className="ml-auto min-h-10 rounded-full bg-[#635bff] px-5 text-sm font-bold text-white">
           New article
         </button>
       </div>
@@ -216,7 +216,7 @@ export function KnowledgeManager({
       {editor && (
         <form
           key={editor.mode === "edit" ? editor.article.id : "new"}
-          className="grid gap-4 rounded-2xl border border-mist bg-white p-4 shadow-sm sm:grid-cols-2"
+          className="grid gap-4 rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm sm:grid-cols-2"
           onSubmit={(e) => {
             e.preventDefault();
             const form = new FormData(e.currentTarget);
@@ -243,7 +243,7 @@ export function KnowledgeManager({
             <p className="text-xs text-graphite sm:col-span-2">Editing the title or body sends this article back to draft for re-review.</p>
           )}
           <div className="flex gap-3 sm:col-span-2">
-            <button disabled={busy} className="min-h-10 rounded-full bg-ink px-5 text-sm font-bold text-white disabled:opacity-50">
+            <button disabled={busy} className="min-h-10 rounded-full bg-[#0a2540] px-5 text-sm font-bold text-white disabled:opacity-50">
               {editor.mode === "new" ? "Create draft" : "Save changes"}
             </button>
             <button type="button" onClick={() => setEditor(null)} className="min-h-10 rounded-full border border-silver/60 px-5 text-sm font-bold hover:border-ink">Cancel</button>
@@ -251,17 +251,17 @@ export function KnowledgeManager({
         </form>
       )}
 
-      <section aria-label="Articles" className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
+      <section aria-label="Articles" className="overflow-x-auto rounded-2xl border border-[#e3e8ee] bg-white shadow-sm">
         {filtered.length === 0 ? (
           <p className="px-4 py-8 text-sm text-graphite">No articles match.</p>
         ) : (
           <table className="w-full min-w-[860px] text-left text-sm">
-            <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite">
+            <thead className="border-b border-[#e3e8ee] bg-[#eef1f5]/40 text-xs uppercase tracking-wider text-graphite">
               <tr>{["Article", "Audience", "Status", "Ver", "Updated", ""].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr>
             </thead>
             <tbody>
               {filtered.map((a) => (
-                <tr key={a.id} className="border-b border-mist/70 last:border-0">
+                <tr key={a.id} className="border-b border-[#e3e8ee]/70 last:border-0">
                   <td className="px-4 py-3">
                     <button type="button" onClick={() => setEditor({ mode: "edit", article: a })} className="font-bold text-ink underline decoration-silver underline-offset-2">{a.title}</button>
                     <p className="text-xs text-graphite"><code>{a.id}</code>{a.category ? ` · ${a.category}` : ""}</p>
@@ -278,7 +278,7 @@ export function KnowledgeManager({
                           type="button"
                           disabled={busy}
                           onClick={() => void act(a.id, actn.to)}
-                          className={`min-h-8 rounded-full px-3 text-xs font-bold disabled:opacity-50 ${actn.primary ? "bg-lime text-ink" : "border border-silver/60 hover:border-ink"}`}
+                          className={`min-h-8 rounded-full px-3 text-xs font-bold disabled:opacity-50 ${actn.primary ? "bg-[#635bff] text-white" : "border border-silver/60 hover:border-ink"}`}
                         >
                           {actn.label}
                         </button>

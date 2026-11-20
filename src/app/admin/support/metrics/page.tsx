@@ -46,7 +46,7 @@ export default async function MetricsPage() {
                 ["AI assistant (OpenRouter)", assistantConfigured(), "Set OPENROUTER_API_KEY"],
                 ["Email delivery (Resend)", mailerConfigured(), `Set RESEND_API_KEY + SUPPORT_FROM_EMAIL. ${queued} email(s) waiting, ${failed} failed`],
                 ["Stripe (refunds & live payment data)", stripeLinked(), "Not linked. Refunds are approved here and issued manually"],
-              ].map(([k, ok, hint]) => <li key={String(k)} className="flex items-start gap-3 rounded-lg bg-mist/60 p-3"><span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${ok ? "bg-green-500" : "bg-gold"}`} aria-hidden /><span><b>{String(k)}</b><br /><span className="text-graphite">{ok ? "Connected" : String(hint)}</span></span></li>)}
+              ].map(([k, ok, hint]) => <li key={String(k)} className="flex items-start gap-3 rounded-lg bg-[#eef1f5]/60 p-3"><span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${ok ? "bg-green-500" : "bg-gold"}`} aria-hidden /><span><b>{String(k)}</b><br /><span className="text-graphite">{ok ? "Connected" : String(hint)}</span></span></li>)}
             </ul>
             <h3 className="mt-4 font-bold">Internal SLA targets (hours)</h3>
             <p className="mt-1 text-xs text-graphite">{Object.entries(SLA_HOURS).map(([p, s]) => `${p}: first reply ${s.first}h · resolve ${s.resolve}h`).join("  |  ")}</p>

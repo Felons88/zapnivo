@@ -79,15 +79,15 @@ export default async function Analytics() {
           <Metric label="Partner apps" value={byName.get("partner_application_submitted") ?? 0} />
         </div>
 
-        <section className="rounded-2xl border border-mist bg-white p-4">
+        <section className="rounded-2xl border border-[#e3e8ee] bg-white p-4">
           <h2 className="text-lg font-bold">Events by type</h2>
           <div className="mt-4 overflow-x-auto">
             <table className="w-full text-sm">
-              <thead><tr className="border-b border-mist text-left text-xs uppercase tracking-wider text-graphite"><th className="py-2 pr-4">Event</th><th className="py-2 pr-4">Count</th><th className="py-2">Source</th></tr></thead>
+              <thead><tr className="border-b border-[#e3e8ee] text-left text-xs uppercase tracking-wider text-graphite"><th className="py-2 pr-4">Event</th><th className="py-2 pr-4">Count</th><th className="py-2">Source</th></tr></thead>
               <tbody>
                 {top(byName, 25).map(([name, count]) => {
                   const src = events.find((e) => e.name === name)?.source ?? "—";
-                  return <tr key={name} className="border-b border-mist/60"><td className="py-2 pr-4 font-semibold">{EVENT_LABELS[name] ?? name}</td><td className="py-2 pr-4">{count.toLocaleString()}</td><td className="py-2 text-graphite">{src}</td></tr>;
+                  return <tr key={name} className="border-b border-[#e3e8ee]/60"><td className="py-2 pr-4 font-semibold">{EVENT_LABELS[name] ?? name}</td><td className="py-2 pr-4">{count.toLocaleString()}</td><td className="py-2 text-graphite">{src}</td></tr>;
                 })}
                 {events.length === 0 && <tr><td colSpan={3} className="py-6 text-center text-graphite">No events yet — the pipeline activates as visitors interact (consent-gated).</td></tr>}
               </tbody>
@@ -96,12 +96,12 @@ export default async function Analytics() {
         </section>
 
         <div className="grid gap-4 lg:grid-cols-2">
-          <section className="rounded-2xl border border-mist bg-white p-4">
+          <section className="rounded-2xl border border-[#e3e8ee] bg-white p-4">
             <h2 className="text-lg font-bold">Events per day</h2>
             <div className="mt-4 flex h-32 items-end gap-1">
               {days.map(([d, c]) => (
                 <div key={d} className="group relative flex-1" title={`${d}: ${c}`}>
-                  <div className="w-full rounded-t bg-lime/80 transition group-hover:bg-lime" style={{ height: `${Math.max(4, (c / maxDay) * 100)}%` }} />
+                  <div className="w-full rounded-t bg-[#edeeff] transition group-hover:bg-[#edeeff]" style={{ height: `${Math.max(4, (c / maxDay) * 100)}%` }} />
                 </div>
               ))}
               {days.length === 0 && <p className="text-sm text-graphite">No data yet.</p>}
@@ -109,7 +109,7 @@ export default async function Analytics() {
             <div className="mt-1 flex justify-between text-[10px] text-graphite"><span>{days[0]?.[0] ?? ""}</span><span>{days[days.length - 1]?.[0] ?? ""}</span></div>
           </section>
 
-          <section className="rounded-2xl border border-mist bg-white p-4">
+          <section className="rounded-2xl border border-[#e3e8ee] bg-white p-4">
             <h2 className="text-lg font-bold">Top pages</h2>
             <ul className="mt-3 space-y-1 text-sm">
               {top(byPath, 10).map(([p, c]) => <li key={p} className="flex justify-between gap-3"><span className="truncate font-mono text-xs">{p}</span><span className="font-bold">{c}</span></li>)}
@@ -119,7 +119,7 @@ export default async function Analytics() {
         </div>
 
         <div className="grid gap-4 lg:grid-cols-2">
-          <section className="rounded-2xl border border-mist bg-white p-4">
+          <section className="rounded-2xl border border-[#e3e8ee] bg-white p-4">
             <h2 className="text-lg font-bold">Partner acquisition funnel</h2>
             <ol className="mt-4 space-y-2">
               {funnel.map((f, i) => {
@@ -134,7 +134,7 @@ export default async function Analytics() {
               })}
             </ol>
           </section>
-          <section className="rounded-2xl border border-mist bg-white p-4">
+          <section className="rounded-2xl border border-[#e3e8ee] bg-white p-4">
             <h2 className="text-lg font-bold">Rental funnel</h2>
             <ol className="mt-4 space-y-2">
               {rentalFunnel.map((f, i) => {
@@ -152,7 +152,7 @@ export default async function Analytics() {
         </div>
 
         {/* ── Phase 5: BI depth ─────────────────────────────────────────── */}
-        <section className="rounded-2xl border border-mist bg-white p-4">
+        <section className="rounded-2xl border border-[#e3e8ee] bg-white p-4">
           <h2 className="text-lg font-bold">Customer journey funnel</h2>
           <p className="mt-1 text-xs text-graphite">Source: business_events (last {DAYS} days). Terminal step is feedback — there is no dedicated review event in the pipeline.</p>
           <ol className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
@@ -169,15 +169,15 @@ export default async function Analytics() {
         </section>
 
         <div className="grid gap-4 lg:grid-cols-2">
-          <section className="rounded-2xl border border-mist bg-white p-4">
+          <section className="rounded-2xl border border-[#e3e8ee] bg-white p-4">
             <h2 className="text-lg font-bold">Cohort retention snapshot</h2>
             <p className="mt-1 text-xs text-graphite">Source: analytics_cohorts. Week-2/4 = share of a cohort still seen ≥7/≥28 days after first event; immature cohorts show — until they mature.</p>
             <div className="mt-4 overflow-x-auto">
               <table className="w-full text-sm">
-                <thead><tr className="border-b border-mist text-left text-xs uppercase tracking-wider text-graphite"><th className="py-2 pr-4">Cohort week</th><th className="py-2 pr-4">Subjects</th><th className="py-2 pr-4">Wk-2 retained</th><th className="py-2 pr-4">Wk-4 retained</th><th className="py-2">Avg active days</th></tr></thead>
+                <thead><tr className="border-b border-[#e3e8ee] text-left text-xs uppercase tracking-wider text-graphite"><th className="py-2 pr-4">Cohort week</th><th className="py-2 pr-4">Subjects</th><th className="py-2 pr-4">Wk-2 retained</th><th className="py-2 pr-4">Wk-4 retained</th><th className="py-2">Avg active days</th></tr></thead>
                 <tbody>
                   {(cohortRows ?? []).slice(-8).reverse().map((c) => (
-                    <tr key={c.weekStart} className="border-b border-mist/60">
+                    <tr key={c.weekStart} className="border-b border-[#e3e8ee]/60">
                       <td className="py-2 pr-4 font-semibold">{c.weekStart}</td>
                       <td className="py-2 pr-4">{c.subjects}</td>
                       <td className="py-2 pr-4">{c.week2Pct === null ? "—" : `${c.week2Pct}%`}{c.matured2 < c.subjects && <span className="ml-1 text-[10px] text-graphite">({c.matured2} matured)</span>}</td>
@@ -192,15 +192,15 @@ export default async function Analytics() {
             </div>
           </section>
 
-          <section className="rounded-2xl border border-mist bg-white p-4">
+          <section className="rounded-2xl border border-[#e3e8ee] bg-white p-4">
             <h2 className="text-lg font-bold">Station revenue &amp; utilization</h2>
             <p className="mt-1 text-xs text-graphite">Source: rentals ⋈ payments ⋈ kiosks ⋈ venues. Gross = captured − refunded; completion = rentals reaching 'returned'. Bottom-decile stations (lowest gross, ≥5 stations) are flagged.</p>
             <div className="mt-4 overflow-x-auto">
               <table className="w-full text-sm">
-                <thead><tr className="border-b border-mist text-left text-xs uppercase tracking-wider text-graphite"><th className="py-2 pr-4">Station</th><th className="py-2 pr-4">Venue</th><th className="py-2 pr-4">Rentals</th><th className="py-2 pr-4">Gross</th><th className="py-2 pr-4">Returned</th><th className="py-2">Completion</th></tr></thead>
+                <thead><tr className="border-b border-[#e3e8ee] text-left text-xs uppercase tracking-wider text-graphite"><th className="py-2 pr-4">Station</th><th className="py-2 pr-4">Venue</th><th className="py-2 pr-4">Rentals</th><th className="py-2 pr-4">Gross</th><th className="py-2 pr-4">Returned</th><th className="py-2">Completion</th></tr></thead>
                 <tbody>
                   {(topStations ?? []).map((s) => (
-                    <tr key={s.station} className={`border-b border-mist/60 ${s.bottomDecile ? "bg-red-50" : ""}`}>
+                    <tr key={s.station} className={`border-b border-[#e3e8ee]/60 ${s.bottomDecile ? "bg-red-50" : ""}`}>
                       <td className="py-2 pr-4 font-semibold">{s.station}{s.bottomDecile && <span className="ml-2 rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-red-700">low</span>}</td>
                       <td className="py-2 pr-4 text-graphite">{s.venue ?? "—"}</td>
                       <td className="py-2 pr-4">{s.rentals}</td>
@@ -220,7 +220,7 @@ export default async function Analytics() {
           </section>
         </div>
 
-        <section className="rounded-2xl border border-mist bg-white p-4">
+        <section className="rounded-2xl border border-[#e3e8ee] bg-white p-4">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <h2 className="text-lg font-bold">Exceptions &amp; support volume by week</h2>
             <p className="text-xs text-graphite">Sources: rental_exceptions.created_at · support_tickets.created_at</p>
@@ -231,19 +231,19 @@ export default async function Analytics() {
           </div>
           <div className="mt-4 overflow-x-auto">
             <table className="w-full text-sm">
-              <thead><tr className="border-b border-mist text-left text-xs uppercase tracking-wider text-graphite"><th className="py-2 pr-4">Week of</th><th className="py-2 pr-4">Exceptions</th><th className="py-2 pr-4">Tickets</th><th className="py-2">Trend</th></tr></thead>
+              <thead><tr className="border-b border-[#e3e8ee] text-left text-xs uppercase tracking-wider text-graphite"><th className="py-2 pr-4">Week of</th><th className="py-2 pr-4">Exceptions</th><th className="py-2 pr-4">Tickets</th><th className="py-2">Trend</th></tr></thead>
               <tbody>
                 {weeks.map((w) => {
                   const ex = exByWeek.get(w) ?? 0;
                   const tk = tkByWeek.get(w) ?? 0;
                   const total = ex + tk;
                   return (
-                    <tr key={w} className="border-b border-mist/60">
+                    <tr key={w} className="border-b border-[#e3e8ee]/60">
                       <td className="py-2 pr-4 font-semibold">{w}</td>
                       <td className="py-2 pr-4">{ex}</td>
                       <td className="py-2 pr-4">{tk}</td>
                       <td className="py-2">
-                        <div className="h-2 w-40 rounded bg-paper"><div className="h-2 rounded bg-lime/80" style={{ width: `${Math.max(2, (total / maxWeek) * 100)}%` }} /></div>
+                        <div className="h-2 w-40 rounded bg-paper"><div className="h-2 rounded bg-[#edeeff]" style={{ width: `${Math.max(2, (total / maxWeek) * 100)}%` }} /></div>
                       </td>
                     </tr>
                   );

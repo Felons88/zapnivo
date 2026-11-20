@@ -74,7 +74,7 @@ export default async function Customer360({ params, searchParams }: { params: Pr
       ) : (
         <div className="space-y-4">
           {feedback.result && (
-            <div role="status" className={`rounded-xl px-5 py-3 text-sm font-bold ${feedback.result === "error" || feedback.result === "flagged" ? "bg-red-100 text-red-900" : "bg-lime text-ink"}`}>
+            <div role="status" className={`rounded-xl px-5 py-3 text-sm font-bold ${feedback.result === "error" || feedback.result === "flagged" ? "bg-red-100 text-red-900" : "bg-[#635bff] text-white"}`}>
               {feedback.detail ?? "Done."}
             </div>
           )}
@@ -83,18 +83,18 @@ export default async function Customer360({ params, searchParams }: { params: Pr
             <Link href="/admin/customers" className="text-sm font-bold text-graphite hover:text-ink">← Customer directory</Link>
             <span className="text-xs font-bold uppercase tracking-widest text-graphite">Staff only · live customer record</span>
           </div>
-          <nav aria-label="Customer record sections" className="sticky top-16 z-20 flex gap-1 overflow-x-auto rounded-xl border border-mist bg-white/95 p-1.5 shadow-sm backdrop-blur">
+          <nav aria-label="Customer record sections" className="sticky top-16 z-20 flex gap-1 overflow-x-auto rounded-xl border border-[#e3e8ee] bg-white/95 p-1.5 shadow-sm backdrop-blur">
             {[["Overview", "customer-overview"], ["Resolve", "customer-resolution"], ["Activity", "customer-activity"], ["Rentals", "customer-rentals"], ["Support", "customer-support"], ["Wallet", "customer-wallet"], ["Notes & actions", "customer-actions"], ["Messages", "customer-comms"]].map(([label, target]) =>
-              <a key={target} href={`#${target}`} className="shrink-0 rounded-lg px-4 py-2 text-xs font-bold text-forest hover:bg-lime/50 focus-visible:bg-lime">{label}</a>)}
+              <a key={target} href={`#${target}`} className="shrink-0 rounded-lg px-4 py-2 text-xs font-bold text-forest hover:bg-[#edeeff] focus-visible:bg-[#edeeff]">{label}</a>)}
           </nav>
 
           {/* ── Identity ─────────────────────────────────────────── */}
           <section id="customer-overview" className="scroll-mt-40 overflow-hidden rounded-2xl bg-[#142126] text-white shadow-sm">
-            <div className="border-b border-white/10 px-4 py-2 text-[10px] font-extrabold uppercase tracking-[.18em] text-lime">Customer intelligence / Unified record</div>
+            <div className="border-b border-white/10 px-4 py-2 text-[10px] font-extrabold uppercase tracking-[.18em] text-[#635bff]">Customer intelligence / Unified record</div>
             <div className="p-4 ">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
-                <p className="eyebrow text-lime">Customer profile</p>
+                <p className="eyebrow text-[#635bff]">Customer profile</p>
                 <h2 className="mt-1 font-display text-xl font-bold tracking-tight">{c.names[0] ?? c.email}</h2>
                 <p className="mt-1 text-sm font-semibold text-[#dbe7e3]">{c.email}</p>
                 {c.phones.length > 0 && <p className="mt-0.5 text-sm text-[#b7c8c2]">{c.phones.join(" · ")}</p>}
@@ -127,16 +127,16 @@ export default async function Customer360({ params, searchParams }: { params: Pr
               <h2 className="mt-1 text-xl font-bold tracking-tight">{nextStep.title}</h2>
               <p className="mt-2 text-sm text-graphite">{nextStep.detail}</p>
               <div className="mt-5 flex flex-wrap gap-2">
-                <Link href={nextStep.href} className="inline-flex min-h-10 items-center rounded-lg bg-ink px-4 text-sm font-bold text-white hover:bg-forest">{nextStep.action} →</Link>
-                <a href="#customer-activity" className="inline-flex min-h-10 items-center rounded-lg border border-[#b9c9ba] bg-white px-4 text-sm font-bold text-ink hover:bg-lime/30">Review timeline</a>
+                <Link href={nextStep.href} className="inline-flex min-h-10 items-center rounded-lg bg-[#0a2540] px-4 text-sm font-bold text-white hover:bg-forest">{nextStep.action} →</Link>
+                <a href="#customer-activity" className="inline-flex min-h-10 items-center rounded-lg border border-[#b9c9ba] bg-white px-4 text-sm font-bold text-ink hover:bg-[#edeeff]">Review timeline</a>
               </div>
             </div>
-            <div className="rounded-2xl border border-mist bg-white p-4 md:p-7">
+            <div className="rounded-2xl border border-[#e3e8ee] bg-white p-4 md:p-7">
               <p className="eyebrow text-forest">Case signals</p>
               <dl className="mt-4 space-y-3 text-sm">
-                <div className="flex justify-between gap-3 border-b border-mist pb-2"><dt>Open tickets</dt><dd className="font-bold">{openTickets.length}</dd></div>
-                <div className="flex justify-between gap-3 border-b border-mist pb-2"><dt>Rentals in progress</dt><dd className="font-bold">{rentalsOut.length}</dd></div>
-                <div className="flex justify-between gap-3 border-b border-mist pb-2"><dt>Refunds needing review</dt><dd className="font-bold">{pendingRefunds.length}</dd></div>
+                <div className="flex justify-between gap-3 border-b border-[#e3e8ee] pb-2"><dt>Open tickets</dt><dd className="font-bold">{openTickets.length}</dd></div>
+                <div className="flex justify-between gap-3 border-b border-[#e3e8ee] pb-2"><dt>Rentals in progress</dt><dd className="font-bold">{rentalsOut.length}</dd></div>
+                <div className="flex justify-between gap-3 border-b border-[#e3e8ee] pb-2"><dt>Refunds needing review</dt><dd className="font-bold">{pendingRefunds.length}</dd></div>
                 <div className="flex justify-between gap-3"><dt>Open disputes</dt><dd className="font-bold">{openDisputes.length}</dd></div>
               </dl>
             </div>
@@ -149,21 +149,21 @@ export default async function Customer360({ params, searchParams }: { params: Pr
             <Metric label="Staff notes" value={c.notes.length} sub={c.incidents.length ? `${c.incidents.length} incident report${c.incidents.length === 1 ? "" : "s"}` : undefined} />
           </section>
 
-          <section id="customer-activity" aria-label="Customer activity" className="scroll-mt-40 rounded-2xl border border-mist bg-white p-4 shadow-sm">
+          <section id="customer-activity" aria-label="Customer activity" className="scroll-mt-40 rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-2"><div><p className="eyebrow text-silver">Record history</p><h2 className="mt-1 font-display text-lg font-bold">Recent activity</h2></div><span className="text-xs text-graphite">Rentals, support and staff notes</span></div>
             {activity.length === 0 ? <p className="mt-4 text-sm text-graphite">No activity on this record yet.</p> : <ol className="mt-4 divide-y divide-mist">
               {activity.map((item) => <li key={item.id}><Link href={item.href} className="flex gap-4 py-3 hover:text-forest"><span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-forest" aria-hidden /><span className="min-w-0 flex-1"><span className="block text-sm font-bold">{item.title}</span><span className="block truncate text-xs text-graphite">{item.detail}</span></span><span className="shrink-0 text-xs text-graphite">{when(item.at)}</span></Link></li>)}
             </ol>}
           </section>
 
-          <section id="customer-wallet" aria-label="Customer wallet" className="scroll-mt-40 rounded-2xl border border-mist bg-white p-4 shadow-sm">
+          <section id="customer-wallet" aria-label="Customer wallet" className="scroll-mt-40 rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div><p className="eyebrow text-forest">Stored charging credit</p><h2 className="mt-1 font-display text-xl font-bold">Wallet & top-ups</h2></div>
               <p className="text-2xl font-black">{c.wallet?.balanceCents == null ? "—" : fmt(c.wallet.balanceCents)}</p>
             </div>
             {!c.profile ? <p className="mt-3 text-sm text-graphite">No signed-in wallet for this guest.</p> : (
               <>
-                <div className="mt-4 flex flex-wrap items-center gap-4 rounded-xl bg-mist/50 px-4 py-3 text-sm">
+                <div className="mt-4 flex flex-wrap items-center gap-4 rounded-xl bg-[#eef1f5]/50 px-4 py-3 text-sm">
                   <span className="font-bold">Prepaid card</span>
                   {c.wallet?.card ? (
                     <>
@@ -177,17 +177,17 @@ export default async function Customer360({ params, searchParams }: { params: Pr
                 {c.profile && (
                   <div className="mt-4 grid gap-3 sm:grid-cols-2">
                     {isAdmin && (
-                      <form method="post" action="/api/admin/customers" className="rounded-xl border border-mist p-3">
+                      <form method="post" action="/api/admin/customers" className="rounded-xl border border-[#e3e8ee] p-3">
                         <input type="hidden" name="action" value="add_funds" /><input type="hidden" name="email" value={c.email} />
                         <p className="text-xs font-extrabold uppercase tracking-wider text-forest">Add funds <span className="text-silver">· admin</span></p>
                         <div className="mt-2 flex flex-wrap items-center gap-2">
                           <input name="amountDollars" type="number" min="1" max="200" step="0.01" required placeholder="$25.00" aria-label="Amount in dollars" className="min-h-9 w-24 rounded-lg border border-silver/60 px-2 text-xs" />
                           <input name="reason" required minLength={3} maxLength={200} placeholder="Reason (shown to customer)" aria-label="Reason" className="min-h-9 min-w-0 flex-1 rounded-lg border border-silver/60 px-2 text-xs" />
-                          <button className={`${btn} bg-ink text-white`}>Add</button>
+                          <button className={`${btn} bg-[#0a2540] text-white`}>Add</button>
                         </div>
                       </form>
                     )}
-                    <form method="post" action="/api/admin/customers" className="rounded-xl border border-mist p-3">
+                    <form method="post" action="/api/admin/customers" className="rounded-xl border border-[#e3e8ee] p-3">
                       <input type="hidden" name="action" value="reissue_card" /><input type="hidden" name="email" value={c.email} />
                       <p className="text-xs font-extrabold uppercase tracking-wider text-forest">Reissue prepaid card</p>
                       <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -215,7 +215,7 @@ export default async function Customer360({ params, searchParams }: { params: Pr
 
           {/* ── Actions ──────────────────────────────────────────── */}
           <div id="customer-actions" className="scroll-mt-40 grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
-            <section className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
+            <section className="rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm">
               <h2 className="font-display text-lg font-bold">Open a ticket for this customer</h2>
               <p className="mt-1 text-xs text-graphite">For phone/walk-up contacts. The customer gets the usual confirmation email and can reply to the thread.</p>
               <form method="post" action="/api/admin/customers" className="mt-4 space-y-3">
@@ -240,11 +240,11 @@ export default async function Customer360({ params, searchParams }: { params: Pr
                   <label htmlFor="ct-desc" className="mb-1 block text-xs font-bold">What they need</label>
                   <textarea id="ct-desc" name="description" required minLength={10} maxLength={4000} rows={3} className="w-full rounded-lg border border-silver/70 px-3 py-2 text-sm" placeholder="Customer called about…" />
                 </div>
-                <button className="min-h-10 rounded-full bg-ink px-5 text-sm font-bold text-white">Create ticket</button>
+                <button className="min-h-10 rounded-full bg-[#0a2540] px-5 text-sm font-bold text-white">Create ticket</button>
               </form>
             </section>
 
-            <section className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
+            <section className="rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm">
               <h2 className="font-display text-lg font-bold">Grant credit</h2>
               <p className="mt-1 text-xs text-graphite">Entitlement credit on the customer&apos;s account — auto-applies on their next rental. The customer is emailed.</p>
               {c.profile ? (
@@ -265,7 +265,7 @@ export default async function Customer360({ params, searchParams }: { params: Pr
                     <label htmlFor="gc-note" className="mb-1 block text-xs font-bold">Reason (shown to customer)</label>
                     <input id="gc-note" name="note" maxLength={200} className={`${input} w-full`} placeholder="e.g. Goodwill for the failed dispense" />
                   </div>
-                  <button className="min-h-10 rounded-full bg-ink px-5 text-sm font-bold text-white">Grant credit</button>
+                  <button className="min-h-10 rounded-full bg-[#0a2540] px-5 text-sm font-bold text-white">Grant credit</button>
                 </form>
               ) : (
                 <p className="mt-4 text-sm text-graphite">Guest record — no account profile to attach credit to. Ask the customer to create an account, or issue a refund instead.</p>
@@ -273,7 +273,7 @@ export default async function Customer360({ params, searchParams }: { params: Pr
             </section>
 
             {isAdmin && c.profile && (
-              <section className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
+              <section className="rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm">
                 <h2 className="font-display text-lg font-bold">Edit customer details <span className="ml-2 align-middle text-[10px] font-extrabold uppercase tracking-widest text-silver">admin only</span></h2>
                 <p className="mt-1 text-xs text-graphite">Name and phone update instantly. An email change is applied immediately and the customer is told at the new address — every change is audit-logged.</p>
                 <form method="post" action="/api/admin/customers" className="mt-4 space-y-3">
@@ -291,29 +291,29 @@ export default async function Customer360({ params, searchParams }: { params: Pr
                     <label htmlFor="ep-email" className="mb-1 block text-xs font-bold">New email (leave blank to keep {c.email})</label>
                     <input id="ep-email" name="newEmail" type="email" maxLength={254} className={`${input} w-full`} placeholder="new.address@example.com" />
                   </div>
-                  <button className="min-h-10 rounded-full bg-ink px-5 text-sm font-bold text-white">Save changes</button>
+                  <button className="min-h-10 rounded-full bg-[#0a2540] px-5 text-sm font-bold text-white">Save changes</button>
                 </form>
-                <div className="mt-4 flex flex-wrap gap-2 border-t border-mist pt-4">
+                <div className="mt-4 flex flex-wrap gap-2 border-t border-[#e3e8ee] pt-4">
                   <form method="post" action="/api/admin/customers"><input type="hidden" name="action" value="reset_password" /><input type="hidden" name="email" value={c.email} /><button className={`${btn} border border-silver/60 hover:border-ink`}>Send password reset</button></form>
                   <form method="post" action="/api/admin/customers"><input type="hidden" name="action" value="sign_out_user" /><input type="hidden" name="email" value={c.email} /><button className={`${btn} border border-silver/60 hover:border-ink`}>Sign out everywhere</button></form>
                 </div>
               </section>
             )}
 
-            <section className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
+            <section className="rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm">
               <h2 className="font-display text-lg font-bold">Add a staff note</h2>
               <p className="mt-1 text-xs text-graphite">Internal only — attached to this customer and audit-logged. Never emailed.</p>
               <form method="post" action="/api/admin/customers" className="mt-4 space-y-3">
                 <input type="hidden" name="action" value="add_note" />
                 <input type="hidden" name="email" value={c.email} />
                 <textarea name="body" required minLength={2} maxLength={4000} rows={4} className="w-full rounded-lg border border-silver/70 px-3 py-2 text-sm" placeholder="e.g. Customer says kiosk at Demo Tavern ate the bank — verify against slot telemetry before refund…" />
-                <button className="min-h-10 rounded-full bg-ink px-5 text-sm font-bold text-white">Save note</button>
+                <button className="min-h-10 rounded-full bg-[#0a2540] px-5 text-sm font-bold text-white">Save note</button>
               </form>
 
               {c.notes.length > 0 && (
-                <ul className="mt-5 space-y-3 border-t border-mist pt-4">
+                <ul className="mt-5 space-y-3 border-t border-[#e3e8ee] pt-4">
                   {c.notes.map((n) => (
-                    <li key={n.id} className="rounded-xl bg-mist/50 px-4 py-3 text-sm">
+                    <li key={n.id} className="rounded-xl bg-[#eef1f5]/50 px-4 py-3 text-sm">
                       <p className="whitespace-pre-wrap">{n.body}</p>
                       <p className="mt-1 text-xs text-graphite">{n.author_email ?? "Staff"} · {when(n.created_at)}</p>
                     </li>
@@ -324,13 +324,13 @@ export default async function Customer360({ params, searchParams }: { params: Pr
           </div>
 
           {/* ── Rentals ──────────────────────────────────────────── */}
-          <section id="customer-rentals" aria-label="Rentals" className="scroll-mt-40 overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
-            <div className="border-b border-mist px-4 py-4"><h2 className="font-display text-lg font-bold">Rentals ({c.rentals.length})</h2></div>
+          <section id="customer-rentals" aria-label="Rentals" className="scroll-mt-40 overflow-x-auto rounded-2xl border border-[#e3e8ee] bg-white shadow-sm">
+            <div className="border-b border-[#e3e8ee] px-4 py-4"><h2 className="font-display text-lg font-bold">Rentals ({c.rentals.length})</h2></div>
             {c.rentals.length === 0 ? (
               <p className="px-4 py-8 text-sm text-graphite">No rentals on record for this customer.</p>
             ) : (
               <table className="w-full min-w-[900px] text-left text-sm">
-                <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite">
+                <thead className="border-b border-[#e3e8ee] bg-[#eef1f5]/40 text-xs uppercase tracking-wider text-graphite">
                   <tr>{["Reference", "Station", "State", "Started", "Returned", "Due back", "Payment", "Actions"].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr>
                 </thead>
                 <tbody>
@@ -338,7 +338,7 @@ export default async function Customer360({ params, searchParams }: { params: Pr
                     const od = overdue(r);
                     const incidents = c.incidents.filter((i) => i.rental_id === r.id);
                     return (
-                      <tr key={r.id} className="border-b border-mist/70 align-top last:border-0 hover:bg-lime/10">
+                      <tr key={r.id} className="border-b border-[#e3e8ee]/70 align-top last:border-0 hover:bg-[#edeeff]">
                         <td className="px-4 py-3">
                           <p className="font-bold"><Link href={`/admin/rentals/${r.id}`} className="text-forest underline hover:text-ink">{r.reference}</Link></p>
                           {incidents.map((i) => <p key={i.id} className="mt-1 text-xs font-bold text-red-800">⚑ {i.kind} reported</p>)}
@@ -355,7 +355,7 @@ export default async function Customer360({ params, searchParams }: { params: Pr
                         <td className="px-4 py-3">
                           <div className="space-y-2">
                             {(r.state === "authorized" || r.state === "dispense_pending") && (
-                              <form method="post" action={`/api/rentals/${r.id}`}><input type="hidden" name="action" value="dispense" /><input type="hidden" name="back" value={back} /><button className={`${btn} bg-lime text-ink`}>Confirm dispense</button></form>
+                              <form method="post" action={`/api/rentals/${r.id}`}><input type="hidden" name="action" value="dispense" /><input type="hidden" name="back" value={back} /><button className={`${btn} bg-[#635bff] text-white`}>Confirm dispense</button></form>
                             )}
                             {isOut(r) && (
                               <form method="post" action={`/api/rentals/${r.id}`}><input type="hidden" name="action" value="return" /><input type="hidden" name="back" value={back} /><button className={`${btn} border border-silver/60 hover:border-ink`}>Record return</button></form>
@@ -384,7 +384,7 @@ export default async function Customer360({ params, searchParams }: { params: Pr
                                 <select name="reason" defaultValue="goodwill" aria-label="Refund reason" className="min-h-8 rounded-lg border border-silver/60 px-1.5 text-xs font-semibold">
                                   {REFUND_REASONS.map((x) => <option key={x} value={x}>{x.replace(/_/g, " ")}</option>)}
                                 </select>
-                                <button className={`${btn} bg-mist hover:bg-lime`}>Refund</button>
+                                <button className={`${btn} bg-[#eef1f5] hover:bg-[#edeeff]`}>Refund</button>
                               </form>
                             )}
                             {isAdmin && (od || r.state === "unreturned") && r.payments?.[0]?.state === "authorized" && (
@@ -403,7 +403,7 @@ export default async function Customer360({ params, searchParams }: { params: Pr
               </table>
             )}
             {c.rentals.length > 4 && (
-              <p className="border-t border-mist px-4 py-3 text-xs">
+              <p className="border-t border-[#e3e8ee] px-4 py-3 text-xs">
                 {feedback.all === "1"
                   ? <Link href={`${back}#customer-rentals`} className="font-bold text-forest underline">Show latest 4 only</Link>
                   : <Link href={`${back}?all=1#customer-rentals`} className="font-bold text-forest underline">View all {c.rentals.length} rentals →</Link>}
@@ -413,23 +413,23 @@ export default async function Customer360({ params, searchParams }: { params: Pr
 
           {/* ── Tickets + refunds ────────────────────────────────── */}
           <div id="customer-support" className="scroll-mt-40 grid gap-4 xl:grid-cols-2">
-            <section aria-label="Support tickets" className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
-              <div className="border-b border-mist px-4 py-4"><h2 className="font-display text-lg font-bold">Support tickets ({c.tickets.length})</h2></div>
+            <section aria-label="Support tickets" className="overflow-x-auto rounded-2xl border border-[#e3e8ee] bg-white shadow-sm">
+              <div className="border-b border-[#e3e8ee] px-4 py-4"><h2 className="font-display text-lg font-bold">Support tickets ({c.tickets.length})</h2></div>
               {c.tickets.length === 0 ? (
                 <p className="px-4 py-8 text-sm text-graphite">No support tickets.</p>
               ) : (
                 <table className="w-full min-w-[560px] text-left text-sm">
-                  <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite">
+                  <thead className="border-b border-[#e3e8ee] bg-[#eef1f5]/40 text-xs uppercase tracking-wider text-graphite">
                     <tr>{["Ticket", "Category", "State", "Opened", ""].map((h, i) => <th key={i} className="px-4 py-3 font-extrabold">{h}</th>)}</tr>
                   </thead>
                   <tbody>
                     {c.tickets.map((t) => (
-                      <tr key={t.id} className="border-b border-mist/70 last:border-0 hover:bg-lime/10">
+                      <tr key={t.id} className="border-b border-[#e3e8ee]/70 last:border-0 hover:bg-[#edeeff]">
                         <td className="px-4 py-3 font-bold">{t.ticket_number}{t.rental_ref && <p className="text-xs font-semibold text-graphite">{t.rental_ref}</p>}</td>
                         <td className="px-4 py-3 text-xs font-semibold">{t.category}</td>
                         <td className="px-4 py-3"><Pill tone={TICKET_TONE[t.state as keyof typeof TICKET_TONE] ?? "mist"}>{t.state.replace(/_/g, " ")}</Pill></td>
                         <td className="px-4 py-3 text-xs text-graphite">{when(t.created_at)}</td>
-                        <td className="px-4 py-3"><Link href={`/admin/support/${t.ticket_number}`} className={`${btn} inline-flex items-center bg-mist hover:bg-lime`}>Open</Link></td>
+                        <td className="px-4 py-3"><Link href={`/admin/support/${t.ticket_number}`} className={`${btn} inline-flex items-center bg-[#eef1f5] hover:bg-[#edeeff]`}>Open</Link></td>
                       </tr>
                     ))}
                   </tbody>
@@ -438,14 +438,14 @@ export default async function Customer360({ params, searchParams }: { params: Pr
             </section>
 
             <div className="space-y-4">
-              <section aria-label="Refunds" className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
+              <section aria-label="Refunds" className="rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm">
                 <h2 className="font-display text-lg font-bold">Refund requests ({c.refundRequests.length})</h2>
                 {c.refundRequests.length === 0 ? (
                   <p className="mt-3 text-sm text-graphite">No refund requests. Refunds are requested from inside a ticket — open one above or create one.</p>
                 ) : (
                   <ul className="mt-3 space-y-2">
                     {c.refundRequests.map((r) => (
-                      <li key={r.id} className="flex items-center justify-between gap-3 rounded-xl bg-mist/50 px-4 py-3 text-sm">
+                      <li key={r.id} className="flex items-center justify-between gap-3 rounded-xl bg-[#eef1f5]/50 px-4 py-3 text-sm">
                         <div><p className="font-bold">{fmt(r.amount_cents)} · {r.rental_ref}</p><p className="text-xs text-graphite">{r.reason.replace(/_/g, " ")} · {when(r.created_at)}</p></div>
                         <Pill tone={REFUND_TONE[r.status as keyof typeof REFUND_TONE] ?? "mist"}>{r.status}</Pill>
                       </li>
@@ -455,12 +455,12 @@ export default async function Customer360({ params, searchParams }: { params: Pr
                 {c.refundRequests.length > 0 && <p className="mt-3 text-xs"><Link href="/admin/support/refunds" className="font-bold underline">Refund queue →</Link></p>}
               </section>
 
-              <section aria-label="Disputes" className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
+              <section aria-label="Disputes" className="rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm">
                 <h2 className="font-display text-lg font-bold">Card disputes ({c.disputes.length})</h2>
                 {c.disputes.length === 0 ? <p className="mt-3 text-sm text-graphite">No disputes on this customer's payments.</p> : (
                   <ul className="mt-3 space-y-2">
                     {c.disputes.map((d) => (
-                      <li key={d.id} className="flex items-center justify-between gap-3 rounded-xl bg-mist/50 px-4 py-3 text-sm">
+                      <li key={d.id} className="flex items-center justify-between gap-3 rounded-xl bg-[#eef1f5]/50 px-4 py-3 text-sm">
                         <div><p className="font-bold">Dispute on payment</p><p className="text-xs text-graphite">Opened {when(d.opened_at)}{d.resolved_at ? ` · resolved ${when(d.resolved_at)}` : ""}</p></div>
                         <Pill tone={d.resolved_at ? "mist" : "red"}>{d.status ?? "open"}</Pill>
                       </li>
@@ -474,14 +474,14 @@ export default async function Customer360({ params, searchParams }: { params: Pr
 
           {/* ── Comms + privacy ──────────────────────────────────── */}
           <div id="customer-comms" className="scroll-mt-40 grid gap-4 xl:grid-cols-2">
-            <section aria-label="Recent SMS" className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
+            <section aria-label="Recent SMS" className="rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm">
               <h2 className="font-display text-lg font-bold">Recent texts ({c.sms.length})</h2>
               {c.sms.length === 0 ? (
                 <p className="mt-3 text-sm text-graphite">No SMS traffic on this customer's numbers. Full log lives under <Link href="/admin/sms" className="font-bold underline">SMS log</Link>.</p>
               ) : (
                 <ul className="mt-3 space-y-2">
                   {c.sms.map((m) => (
-                    <li key={m.id} className="rounded-xl bg-mist/50 px-4 py-3 text-sm">
+                    <li key={m.id} className="rounded-xl bg-[#eef1f5]/50 px-4 py-3 text-sm">
                       <p className="whitespace-pre-wrap">{m.direction === "inbound" ? "← " : "→ "}{m.body}</p>
                       <p className="mt-1 text-xs text-graphite">{m.direction} · {m.status} · {when(m.created_at)}</p>
                     </li>
@@ -490,13 +490,13 @@ export default async function Customer360({ params, searchParams }: { params: Pr
               )}
             </section>
 
-            <section aria-label="Emails" className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
+            <section aria-label="Emails" className="rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm">
               <h2 className="font-display text-lg font-bold">Emails sent ({c.emails.length})</h2>
               {c.emails.length === 0 ? <p className="mt-3 text-sm text-graphite">No emails sent to this address yet.</p> : (
                 <ul className="mt-3 space-y-2">
                   {c.emails.map((m) => (
                     <li key={m.id}>
-                      <Link href={`/admin/emails/${m.id}`} className="flex items-center justify-between gap-3 rounded-xl bg-mist/50 px-4 py-3 text-sm hover:bg-lime/30">
+                      <Link href={`/admin/emails/${m.id}`} className="flex items-center justify-between gap-3 rounded-xl bg-[#eef1f5]/50 px-4 py-3 text-sm hover:bg-[#edeeff]">
                         <div className="min-w-0"><p className="truncate font-bold">{m.subject}</p><p className="text-xs text-graphite">{when(m.created_at)}{m.error ? ` · ${m.error.slice(0, 80)}` : ""}</p></div>
                         <Pill tone={m.status === "sent" ? "lime" : m.status === "failed" ? "red" : "gold"}>{m.status}</Pill>
                       </Link>
@@ -506,14 +506,14 @@ export default async function Customer360({ params, searchParams }: { params: Pr
               )}
             </section>
 
-            <section aria-label="Privacy" className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
+            <section aria-label="Privacy" className="rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm">
               <h2 className="font-display text-lg font-bold">Privacy requests ({c.privacyRequests.length})</h2>
               {c.privacyRequests.length === 0 ? (
                 <p className="mt-3 text-sm text-graphite">No export or deletion requests for this customer.</p>
               ) : (
                 <ul className="mt-3 space-y-2">
                   {c.privacyRequests.map((p) => (
-                    <li key={p.id} className="flex items-center justify-between gap-3 rounded-xl bg-mist/50 px-4 py-3 text-sm">
+                    <li key={p.id} className="flex items-center justify-between gap-3 rounded-xl bg-[#eef1f5]/50 px-4 py-3 text-sm">
                       <div><p className="font-bold">{p.kind}</p><p className="text-xs text-graphite">{when(p.created_at)}</p></div>
                       <Pill tone={p.status === "pending" ? "gold" : "mist"}>{p.status}</Pill>
                     </li>

@@ -22,5 +22,5 @@ export function SupportNav({ active }: { active: "inbox" | "partner" | "safety" 
 }
 
 export const Pill = ({ children, tone = "mist" }: { children: React.ReactNode; tone?: "mist" | "lime" | "gold" | "red" | "ink" | "cyan" }) => (
-  <span className={`inline-flex items-center whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-wider ${{ mist: "bg-mist text-graphite", lime: "bg-lime text-ink", gold: "bg-gold text-ink", red: "bg-red-100 text-red-800", ink: "bg-ink text-white", cyan: "bg-cyan text-ink" }[tone]}`}>{children}</span>
+  <span className={`inline-flex items-center whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider ${{ mist: "bg-[#e3e8ee] text-[#425466]", lime: "bg-[#e6f5ef] text-[#0e6245]", gold: "bg-[#fff3d6] text-[#b25e09]", red: "bg-[#ffe2e5] text-[#df1b41]", ink: "bg-[#0a2540] text-white", cyan: "bg-[#dff6f8] text-[#0e7c86]" }[tone]}`}>{children}</span>
 );

@@ -53,7 +53,7 @@ export default async function NotificationsAdmin({ searchParams }: { searchParam
 
   return (
     <AdminGate title="Notifications" nav="notifications">
-      {sp.result && <p className={`mb-4 rounded-xl px-4 py-2.5 text-sm font-bold ${sp.result === "ok" ? "bg-lime text-ink" : "bg-red-100 text-red-800"}`}>{sp.detail ?? sp.result}</p>}
+      {sp.result && <p className={`mb-4 rounded-xl px-4 py-2.5 text-sm font-bold ${sp.result === "ok" ? "bg-[#635bff] text-white" : "bg-red-100 text-red-800"}`}>{sp.detail ?? sp.result}</p>}
 
       {/* ── Analytics strip ── */}
       <div className="mb-6 grid gap-4 sm:grid-cols-4">
@@ -63,7 +63,7 @@ export default async function NotificationsAdmin({ searchParams }: { searchParam
           ["Events queued", stats.queued, "outbox rows waiting on the sweep"],
           ["Failed / dead events", stats.failed, "exhausted retries — requeue below"],
         ] as const).map(([label, n, help]) => (
-          <div key={label} className="rounded-2xl border border-mist bg-white p-5 shadow-sm">
+          <div key={label} className="rounded-2xl border border-[#e3e8ee] bg-white p-5 shadow-sm">
             <p className="text-[11px] font-extrabold uppercase tracking-wider text-graphite">{label}</p>
             <p className="mt-1 font-display text-2xl font-extrabold">{n}</p>
             <p className="mt-1 text-[11px] text-graphite">{help}</p>
@@ -73,7 +73,7 @@ export default async function NotificationsAdmin({ searchParams }: { searchParam
 
       <div className="grid gap-4 lg:grid-cols-2">
         {/* ── Event catalog + template editor ── */}
-        <section className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
+        <section className="rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm">
           <h2 className="font-display text-lg font-bold">Event catalog &amp; templates</h2>
           <p className="mt-1 text-xs text-graphite">
             Allowed variables: <code className="text-[10px]">{[...NOTIFY_VARS].join(" ")}</code>.
@@ -85,10 +85,10 @@ export default async function NotificationsAdmin({ searchParams }: { searchParam
               isAdmin
                 ? <NotificationTemplateEditor key={t.kind} kind={t.kind} title={t.title} body={t.body} category={t.category} channels={t.channels} essential={t.essential} enabled={t.enabled} overridden={t.overridden} />
                 : (
-                  <div key={t.kind} className="rounded-xl border border-mist/80 bg-paper/60 p-4">
+                  <div key={t.kind} className="rounded-xl border border-[#e3e8ee]/80 bg-paper/60 p-4">
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="text-[11px] font-extrabold uppercase tracking-wider text-silver">{t.kind.replace(/_/g, " ")}</p>
-                      <span className="rounded-full bg-mist px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-graphite">{t.category}</span>
+                      <span className="rounded-full bg-[#eef1f5] px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-graphite">{t.category}</span>
                       {t.essential && <span className="rounded-full bg-forest/15 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-forest">essential</span>}
                       <span className="ml-auto text-[10px] font-bold uppercase tracking-wider text-graphite">{t.channels.join(" · ")}</span>
                     </div>
@@ -103,7 +103,7 @@ export default async function NotificationsAdmin({ searchParams }: { searchParam
         <div className="space-y-4">
           {/* ── Test + campaign (admin only) ── */}
           {isAdmin && (
-            <section className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
+            <section className="rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm">
               <h2 className="font-display text-lg font-bold">Test send</h2>
               <form method="post" action="/api/admin/notifications" className="mt-3 space-y-2">
                 <input type="hidden" name="action" value="test_send" />
@@ -114,7 +114,7 @@ export default async function NotificationsAdmin({ searchParams }: { searchParam
                   <input name="email" required placeholder="customer@email.com" className="min-h-10 rounded-lg border border-silver/70 px-3 text-sm" />
                 </div>
                 <input name="vars" placeholder='Template vars as JSON — {"amount":"$5.00","rental_ref":"ZR-ABC123"}' className="min-h-10 w-full rounded-lg border border-silver/70 px-3 font-mono text-xs" />
-                <button className="min-h-10 rounded-full bg-ink px-5 text-sm font-bold text-white">Send test</button>
+                <button className="min-h-10 rounded-full bg-[#0a2540] px-5 text-sm font-bold text-white">Send test</button>
               </form>
 
               <h2 className="mt-4 font-display text-lg font-bold">Campaign</h2>
@@ -135,13 +135,13 @@ export default async function NotificationsAdmin({ searchParams }: { searchParam
           )}
 
           {/* ── Failed queue ── */}
-          <section className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
+          <section className="rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm">
             <h2 className="font-display text-lg font-bold">Event outbox</h2>
             <p className="mt-1 text-xs text-graphite">Durable notification events — queued, failed and dead (5 attempts). Requeue puts them back on the 5-minute sweep.</p>
             <div className="mt-3 max-h-72 space-y-2 overflow-y-auto">
               {events.length === 0 && <p className="py-4 text-sm text-graphite">No pending or failed events — the outbox is clear.</p>}
               {events.map((e) => (
-                <div key={e.id} className="flex items-center gap-3 rounded-xl border border-mist/70 px-3 py-2.5">
+                <div key={e.id} className="flex items-center gap-3 rounded-xl border border-[#e3e8ee]/70 px-3 py-2.5">
                   <Pill tone={TONE[e.status] ?? "mist"}>{e.status}</Pill>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-xs font-bold">{e.kind} <span className="font-normal text-graphite">· {e.actor ?? "system"} · {e.attempts} attempt(s)</span></p>
@@ -150,7 +150,7 @@ export default async function NotificationsAdmin({ searchParams }: { searchParam
                   {isAdmin && e.status !== "queued" && (
                     <form method="post" action="/api/admin/notifications">
                       <input type="hidden" name="action" value="requeue_event" /><input type="hidden" name="id" value={e.id} />
-                      <button className="min-h-8 rounded-full bg-mist px-3 text-xs font-bold hover:bg-lime">Requeue</button>
+                      <button className="min-h-8 rounded-full bg-[#eef1f5] px-3 text-xs font-bold hover:bg-[#edeeff]">Requeue</button>
                     </form>
                   )}
                 </div>
@@ -161,14 +161,14 @@ export default async function NotificationsAdmin({ searchParams }: { searchParam
       </div>
 
       {/* ── Delivery log ── */}
-      <section className="mt-4 overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
-        <div className="border-b border-mist px-4 py-4"><h2 className="font-display text-lg font-bold">Recent deliveries</h2></div>
+      <section className="mt-4 overflow-x-auto rounded-2xl border border-[#e3e8ee] bg-white shadow-sm">
+        <div className="border-b border-[#e3e8ee] px-4 py-4"><h2 className="font-display text-lg font-bold">Recent deliveries</h2></div>
         {deliveries.length === 0 ? <p className="px-4 py-8 text-sm text-graphite">No channel deliveries recorded yet.</p> : (
           <table className="w-full min-w-[640px] text-left text-sm">
-            <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite"><tr>{["When", "Channel", "Status", "Detail"].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr></thead>
+            <thead className="border-b border-[#e3e8ee] bg-[#eef1f5]/40 text-xs uppercase tracking-wider text-graphite"><tr>{["When", "Channel", "Status", "Detail"].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr></thead>
             <tbody>
               {deliveries.map((d) => (
-                <tr key={d.id} className="border-b border-mist/70 last:border-0">
+                <tr key={d.id} className="border-b border-[#e3e8ee]/70 last:border-0">
                   <td className="whitespace-nowrap px-4 py-2.5 text-xs text-graphite">{when(d.created_at)}</td>
                   <td className="px-4 py-2.5"><Pill tone={TONE[d.channel] ?? "mist"}>{d.channel}</Pill></td>
                   <td className={`px-4 py-2.5 text-xs font-bold ${d.status === "failed" ? "text-red-700" : ""}`}>{d.status}</td>
@@ -181,21 +181,21 @@ export default async function NotificationsAdmin({ searchParams }: { searchParam
       </section>
 
       {/* ── Customer notification history ── */}
-      <section className="mt-4 rounded-2xl border border-mist bg-white p-4 shadow-sm">
+      <section className="mt-4 rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm">
         <h2 className="font-display text-lg font-bold">Customer history</h2>
         <form method="get" className="mt-3 flex gap-2">
           <input name="email" defaultValue={sp.email ?? ""} placeholder="customer@email.com" className="min-h-10 flex-1 rounded-lg border border-silver/70 px-3 text-sm" />
-          <button className="min-h-10 rounded-full bg-ink px-5 text-sm font-bold text-white">Look up</button>
+          <button className="min-h-10 rounded-full bg-[#0a2540] px-5 text-sm font-bold text-white">Look up</button>
         </form>
         {sp.email && !historyOwner && <p className="mt-3 text-sm text-graphite">No account on <span className="font-bold">{sp.email}</span> — guests receive email/SMS only.</p>}
         {historyOwner && (
           <div className="mt-4 space-y-2">
             {history.length === 0 && <p className="text-sm text-graphite">No notifications yet for {historyOwner}.</p>}
             {history.map((n) => (
-              <div key={n.id} className="flex items-start gap-3 rounded-xl border border-mist/70 px-3 py-2.5">
+              <div key={n.id} className="flex items-start gap-3 rounded-xl border border-[#e3e8ee]/70 px-3 py-2.5">
                 <Pill tone={n.category === "security" ? "gold" : n.category === "payment" ? "lime" : "mist"}>{n.category}</Pill>
                 <div className="min-w-0 flex-1">
-                  <p className="text-xs font-bold">{n.title} {!n.read_at && <span className="ml-1 rounded-full bg-lime px-1.5 py-0.5 text-[9px] font-extrabold uppercase text-ink">unread</span>}</p>
+                  <p className="text-xs font-bold">{n.title} {!n.read_at && <span className="ml-1 rounded-full bg-[#635bff] px-1.5 py-0.5 text-[9px] font-extrabold uppercase text-white">unread</span>}</p>
                   <p className="truncate text-[11px] text-graphite">{n.body}</p>
                 </div>
                 <span className="whitespace-nowrap text-[11px] text-graphite">{when(n.created_at)}</span>

@@ -36,13 +36,13 @@ export default async function VenueDetail({ params, searchParams }: { params: Pr
           <Link href="/admin/partners" className="text-sm font-bold text-graphite hover:text-ink">← Partners</Link>
           <span className="text-xs font-bold uppercase tracking-widest text-graphite">Staff only · venue record</span>
         </div>
-        {(feedback.result || feedback.detail) && <div role="status" className={`rounded-xl px-5 py-3 text-sm font-bold ${feedback.result === "error" ? "bg-red-100 text-red-900" : "bg-lime text-ink"}`}>{feedback.detail ?? "Saved."}</div>}
+        {(feedback.result || feedback.detail) && <div role="status" className={`rounded-xl px-5 py-3 text-sm font-bold ${feedback.result === "error" ? "bg-red-100 text-red-900" : "bg-[#635bff] text-white"}`}>{feedback.detail ?? "Saved."}</div>}
 
         <section className="overflow-hidden rounded-2xl bg-[#142126] text-white shadow-sm">
-          <div className="border-b border-white/10 px-4 py-2 text-[10px] font-extrabold uppercase tracking-[.18em] text-lime">Venue</div>
+          <div className="border-b border-white/10 px-4 py-2 text-[10px] font-extrabold uppercase tracking-[.18em] text-[#635bff]">Venue</div>
           <div className="flex flex-wrap items-start justify-between gap-4 p-4 ">
             <div>
-              <p className="eyebrow text-lime">{equipmentLabelOr(v.equipment_category, "unclassified")}</p>
+              <p className="eyebrow text-[#635bff]">{equipmentLabelOr(v.equipment_category, "unclassified")}</p>
               <h2 className="mt-1 font-display text-xl font-bold tracking-tight">{v.name}</h2>
               <p className="mt-1 text-sm text-[#b7c8c2]">{v.address ? `${v.address}, ` : ""}{v.city}, {v.state}</p>
               {kiosks.length > 0 && <p className="mt-2 text-xs text-[#b7c8c2]">Kiosks: {kiosks.map((k) => `${k.station_id} (${k.state}${k.test_mode ? " · test" : ""})`).join(" · ")}</p>}
@@ -52,17 +52,17 @@ export default async function VenueDetail({ params, searchParams }: { params: Pr
         </section>
 
         <section className="grid gap-4 lg:grid-cols-2">
-          <div className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
+          <div className="rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm">
             <h3 className="font-display text-lg font-bold">Owner organization</h3>
             <form method="post" action="/api/admin/partners" className="mt-3 flex flex-wrap items-center gap-2">
               <input type="hidden" name="action" value="assign_venue_org" /><input type="hidden" name="venue_id" value={v.id} /><input type="hidden" name="back" value={back} />
               <select name="organization_id" defaultValue={v.organization_id ?? ""} className={input}><option value="">— unassigned —</option>{orgRows.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}</select>
-              <button className="min-h-10 rounded-full bg-ink px-4 text-xs font-bold text-white">Save owner</button>
+              <button className="min-h-10 rounded-full bg-[#0a2540] px-4 text-xs font-bold text-white">Save owner</button>
             </form>
             <p className="mt-3 text-xs text-graphite">The org's owners see this venue's earnings in their portal.</p>
           </div>
 
-          <div className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
+          <div className="rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm">
             <h3 className="font-display text-lg font-bold">Map settings</h3>
             <form method="post" action="/api/admin/partners" className="mt-3 space-y-3">
               <input type="hidden" name="action" value="save_venue_map" /><input type="hidden" name="venue_id" value={v.id} /><input type="hidden" name="back" value={back} />
@@ -72,7 +72,7 @@ export default async function VenueDetail({ params, searchParams }: { params: Pr
               </div>
               <label className="flex items-center gap-2 text-sm"><input name="published" type="checkbox" value="yes" defaultChecked={v.published} />Publish on the public map</label>
               <p className="text-[11px] text-graphite">Showing publicly also requires verified coordinates and an installed kiosk reporting online.</p>
-              <button className="min-h-10 rounded-full bg-ink px-4 text-xs font-bold text-white">Save map settings</button>
+              <button className="min-h-10 rounded-full bg-[#0a2540] px-4 text-xs font-bold text-white">Save map settings</button>
             </form>
           </div>
         </section>

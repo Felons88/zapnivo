@@ -31,12 +31,12 @@ export default async function Agreements({ searchParams }: { searchParams: Promi
       ) : (
         <div className="space-y-4">
           {(feedback.result || feedback.detail) && (
-            <div role="status" className={`rounded-xl px-5 py-3 text-sm font-bold ${feedback.result === "error" ? "bg-red-100 text-red-900" : "bg-lime text-ink"}`}>
+            <div role="status" className={`rounded-xl px-5 py-3 text-sm font-bold ${feedback.result === "error" ? "bg-red-100 text-red-900" : "bg-[#635bff] text-white"}`}>
               {feedback.result === "error" ? (feedback.detail ?? "Something went wrong.") : feedback.result === "draft" ? "Agreement draft created." : feedback.result === "approved" ? "Agreement approved — previous active version superseded." : feedback.result === "terminated" ? "Agreement terminated." : "Saved."}
             </div>
           )}
 
-          <section aria-label="New agreement draft" className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
+          <section aria-label="New agreement draft" className="rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm">
             <h2 className="font-display text-lg font-bold">New agreement draft</h2>
             <p className="mt-1 text-xs text-graphite">Drafts are never active until an admin approves them. Approving supersedes the previous active version for the same venue + category.</p>
             <form method="post" action="/api/admin/agreements" className="mt-4 flex flex-wrap items-end gap-3">
@@ -66,22 +66,22 @@ export default async function Agreements({ searchParams }: { searchParams: Promi
                 <label htmlFor="ag-notes" className="mb-1 block text-xs font-bold">Notes (stored in terms)</label>
                 <input id="ag-notes" name="notes" maxLength={500} className="min-h-10 w-full rounded-lg border border-silver/70 px-3 text-sm" placeholder="Optional context for reviewers" />
               </div>
-              <button className="min-h-10 rounded-full bg-ink px-5 text-sm font-bold text-white">Create draft</button>
+              <button className="min-h-10 rounded-full bg-[#0a2540] px-5 text-sm font-bold text-white">Create draft</button>
             </form>
           </section>
 
-          <section aria-label="Agreements" className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
-            <div className="border-b border-mist px-4 py-4"><h2 className="font-display text-lg font-bold">Agreement versions</h2></div>
+          <section aria-label="Agreements" className="overflow-x-auto rounded-2xl border border-[#e3e8ee] bg-white shadow-sm">
+            <div className="border-b border-[#e3e8ee] px-4 py-4"><h2 className="font-display text-lg font-bold">Agreement versions</h2></div>
             {agreements.length === 0 ? (
               <p className="px-4 py-8 text-sm text-graphite">No equipment agreements yet. Create a draft above, then approve it to make it the active version.</p>
             ) : (
               <table className="w-full min-w-[1100px] text-left text-sm">
-                <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite">
+                <thead className="border-b border-[#e3e8ee] bg-[#eef1f5]/40 text-xs uppercase tracking-wider text-graphite">
                   <tr>{["Venue", "Org", "Category", "Ver", "Status", "Effective", "Share", "Approved", ""].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr>
                 </thead>
                 <tbody>
                   {agreements.map((a) => (
-                    <tr key={a.id} className="border-b border-mist/70 last:border-0 hover:bg-lime/10">
+                    <tr key={a.id} className="border-b border-[#e3e8ee]/70 last:border-0 hover:bg-[#edeeff]">
                       <td className="px-4 py-3 font-bold">{a.venueName ?? "Unknown venue"}<p className="text-xs font-semibold text-graphite">{[a.venueCity, a.venueState].filter(Boolean).join(", ")}</p></td>
                       <td className="px-4 py-3 text-xs font-semibold">{a.orgName ?? orgName(a.organization_id) ?? "—"}</td>
                       <td className="px-4 py-3 text-xs font-semibold">{a.equipment_category.replace(/_/g, " ")}</td>
@@ -92,7 +92,7 @@ export default async function Agreements({ searchParams }: { searchParams: Promi
                       <td className="px-4 py-3 text-xs text-graphite">{a.approved_at ? day(a.approved_at) : "—"}</td>
                       <td className="px-4 py-3">
                         {a.status === "draft" && (
-                          <form method="post" action="/api/admin/agreements"><input type="hidden" name="action" value="approve" /><input type="hidden" name="agreement_id" value={a.id} /><button className="min-h-9 rounded-full bg-lime px-3 text-xs font-bold text-ink hover:bg-[#e6ffa8]">Approve</button></form>
+                          <form method="post" action="/api/admin/agreements"><input type="hidden" name="action" value="approve" /><input type="hidden" name="agreement_id" value={a.id} /><button className="min-h-9 rounded-full bg-[#635bff] px-3 text-xs font-bold text-white hover:bg-[#e6ffa8]">Approve</button></form>
                         )}
                         {a.status === "active" && (
                           <form method="post" action="/api/admin/agreements" className="flex items-center gap-2"><input type="hidden" name="action" value="terminate" /><input type="hidden" name="agreement_id" value={a.id} /><input name="reason" maxLength={300} placeholder="Reason" className="min-h-9 w-32 rounded-lg border border-silver/60 px-2 text-xs" /><button className="min-h-9 rounded-full bg-red-100 px-3 text-xs font-bold text-red-900 hover:bg-red-200">Terminate</button></form>

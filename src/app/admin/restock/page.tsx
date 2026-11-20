@@ -10,13 +10,13 @@ export const metadata: Metadata = { title: "Restocking", robots: { index: false,
 
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" }) : "—");
 const input = "min-h-9 w-full rounded-lg border border-silver/70 px-2 text-xs";
-const btn = "min-h-9 rounded-full bg-mist px-3 text-xs font-bold hover:bg-lime";
+const btn = "min-h-9 rounded-full bg-[#eef1f5] px-3 text-xs font-bold hover:bg-[#edeeff]";
 const toneFor = (s: VisitStatus) => (s === "completed" ? "lime" : s === "in_progress" ? "gold" : s === "cancelled" ? "red" : "mist") as "lime" | "gold" | "red" | "mist";
 const editable = (s: VisitStatus) => s === "planned" || s === "in_progress";
 
 function VisitCard({ v, skus }: { v: RestockBoardVisit; skus: { id: string; name: string; category: string }[] }) {
   return (
-    <article className="rounded-2xl border border-mist bg-white p-4 shadow-sm sm:p-5">
+    <article className="rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <p className="font-display text-base font-bold">{v.unit_label}</p>
@@ -49,12 +49,12 @@ function VisitCard({ v, skus }: { v: RestockBoardVisit; skus: { id: string; name
       {/* Lines */}
       <div className="mt-4 overflow-x-auto">
         <table className="w-full min-w-[560px] text-left text-xs">
-          <thead className="border-b border-mist text-[10px] uppercase tracking-wider text-graphite">
+          <thead className="border-b border-[#e3e8ee] text-[10px] uppercase tracking-wider text-graphite">
             <tr>{["SKU", "Picked", "Loaded", "Waste", editable(v.status) ? "Update" : ""].map((h) => <th key={h} className="px-2 py-2 font-extrabold">{h}</th>)}</tr>
           </thead>
           <tbody>
             {v.lines.map((l) => (
-              <tr key={l.id} className="border-b border-mist/60 last:border-0">
+              <tr key={l.id} className="border-b border-[#e3e8ee]/60 last:border-0">
                 <td className="px-2 py-2 font-bold">{l.sku_name}<span className="ml-1 font-normal text-graphite">{l.sku_category.replace("_", " ")}</span></td>
                 {editable(v.status) ? (
                   <>
@@ -83,7 +83,7 @@ function VisitCard({ v, skus }: { v: RestockBoardVisit; skus: { id: string; name
       </div>
 
       {editable(v.status) ? (
-        <form method="post" action="/api/admin/restock" className="mt-3 flex flex-wrap items-end gap-2 rounded-xl bg-mist/50 p-3">
+        <form method="post" action="/api/admin/restock" className="mt-3 flex flex-wrap items-end gap-2 rounded-xl bg-[#eef1f5]/50 p-3">
           <input type="hidden" name="action" value="line_upsert" />
           <input type="hidden" name="visit_id" value={v.id} />
           <input type="hidden" name="return_to" value="/admin/restock" />
@@ -120,7 +120,7 @@ export default async function AdminRestock({ searchParams }: { searchParams: Pro
           {sp.result === "error" ? (
             <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-bold text-red-700">{sp.detail ?? "Action failed."}</p>
           ) : sp.result === "saved" ? (
-            <p className="rounded-xl bg-lime px-4 py-2.5 text-sm font-bold text-ink">{sp.detail ?? "Saved."}</p>
+            <p className="rounded-xl bg-[#635bff] px-4 py-2.5 text-sm font-bold text-white">{sp.detail ?? "Saved."}</p>
           ) : null}
 
           <section className="grid gap-4 sm:grid-cols-3">
@@ -129,7 +129,7 @@ export default async function AdminRestock({ searchParams }: { searchParams: Pro
             <Metric label="In progress" value={data.visits.filter((v) => v.status === "in_progress").length} />
           </section>
 
-          <section className="rounded-2xl border border-mist bg-white p-5 shadow-sm">
+          <section className="rounded-2xl border border-[#e3e8ee] bg-white p-5 shadow-sm">
             <h2 className="font-display text-lg font-bold">Plan a restock visit</h2>
             <p className="mt-1 text-xs text-graphite">Completing a visit decrements warehouse stock by qty picked (clamped at 0) and adds qty loaded to the unit. Waste is recorded for reporting.</p>
             {data.eligibleUnits.length === 0 ? (
@@ -159,7 +159,7 @@ export default async function AdminRestock({ searchParams }: { searchParams: Pro
 
           <section className="space-y-4">
             <h2 className="font-display text-lg font-bold">Open visits ({open.length})</h2>
-            {open.length === 0 ? <p className="rounded-2xl border border-mist bg-white p-4 text-sm text-graphite">Nothing planned or in progress.</p> : open.map((v) => <VisitCard key={v.id} v={v} skus={data.skus} />)}
+            {open.length === 0 ? <p className="rounded-2xl border border-[#e3e8ee] bg-white p-4 text-sm text-graphite">Nothing planned or in progress.</p> : open.map((v) => <VisitCard key={v.id} v={v} skus={data.skus} />)}
           </section>
 
           {closed.length ? (

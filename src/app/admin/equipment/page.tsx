@@ -43,7 +43,7 @@ export default async function EquipmentPage({ searchParams }: { searchParams: Pr
       ) : (
         <div className="space-y-4">
           {sp.result && (
-            <div role="status" className={`rounded-xl px-5 py-3 text-sm font-bold ${sp.result === "error" ? "bg-red-100 text-red-900" : "bg-lime text-ink"}`}>
+            <div role="status" className={`rounded-xl px-5 py-3 text-sm font-bold ${sp.result === "error" ? "bg-red-100 text-red-900" : "bg-[#635bff] text-white"}`}>
               {sp.result === "created" ? `Created ${sp.detail ?? "record"}.`
                 : sp.result === "updated" ? "Record updated."
                 : sp.result === "transitioned" ? `Unit moved to ${sp.detail ?? "new status"}.`
@@ -64,7 +64,7 @@ export default async function EquipmentPage({ searchParams }: { searchParams: Pr
               <h2 className="font-display text-lg font-bold">Models</h2>
               <p className="text-xs text-graphite">{board.models.length} catalog entr{board.models.length === 1 ? "y" : "ies"} — draft until finalized.</p>
             </div>
-            <div className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
+            <div className="rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm">
               <h3 className="font-display text-base font-bold">Add a model</h3>
               <form method="post" action="/api/admin/equipment" className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <input type="hidden" name="action" value="create_model" />
@@ -78,21 +78,21 @@ export default async function EquipmentPage({ searchParams }: { searchParams: Pr
                 <div><label htmlFor="m-warranty" className="mb-1 block text-xs font-bold">Warranty (months)</label><input id="m-warranty" name="warranty_months" type="number" min="0" step="1" className={`${inputCls} w-full`} /></div>
                 <div><label htmlFor="m-supplier" className="mb-1 block text-xs font-bold">Supplier</label><input id="m-supplier" name="supplier" className={`${inputCls} w-full`} /></div>
                 <div className="sm:col-span-2"><label htmlFor="m-conn" className="mb-1 block text-xs font-bold">Connectivity</label><input id="m-conn" name="connectivity" className={`${inputCls} w-full`} placeholder="Cashless, telemetry via cellular" /></div>
-                <div className="flex items-end"><button className="min-h-10 w-full rounded-full bg-ink px-5 text-sm font-bold text-white">Add model</button></div>
+                <div className="flex items-end"><button className="min-h-10 w-full rounded-full bg-[#0a2540] px-5 text-sm font-bold text-white">Add model</button></div>
               </form>
             </div>
 
-            <div className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
+            <div className="overflow-x-auto rounded-2xl border border-[#e3e8ee] bg-white shadow-sm">
               {board.models.length === 0 ? (
                 <p className="px-4 py-8 text-sm text-graphite">No models cataloged yet. Add the first equipment model above.</p>
               ) : (
                 <table className="w-full min-w-[960px] text-left text-sm">
-                  <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite">
+                  <thead className="border-b border-[#e3e8ee] bg-[#eef1f5]/40 text-xs uppercase tracking-wider text-graphite">
                     <tr>{["Category", "Manufacturer / model", "Cost", "Warranty", "Connectivity", "Status", "Edit"].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr>
                   </thead>
                   <tbody>
                     {board.models.map((m) => (
-                      <tr key={m.id} className="border-b border-mist/70 align-top last:border-0 hover:bg-lime/10">
+                      <tr key={m.id} className="border-b border-[#e3e8ee]/70 align-top last:border-0 hover:bg-[#edeeff]">
                         <td className="px-4 py-3"><Pill tone="mist">{MODEL_CATEGORY_LABELS[m.category as keyof typeof MODEL_CATEGORY_LABELS] ?? m.category}</Pill></td>
                         <td className="px-4 py-3"><span className="font-bold">{m.model_name}</span><span className="block text-xs text-graphite">{m.manufacturer ?? "—"}{m.capacity_description ? ` · ${m.capacity_description}` : ""}</span></td>
                         <td className="px-4 py-3 text-xs font-semibold">{cents(m.acquisition_cost_cents)}{m.supplier ? <span className="block text-graphite">{m.supplier}</span> : null}</td>
@@ -101,8 +101,8 @@ export default async function EquipmentPage({ searchParams }: { searchParams: Pr
                         <td className="px-4 py-3"><Pill tone={MODEL_TONE[m.status] ?? "mist"}>{m.status}</Pill></td>
                         <td className="px-4 py-3">
                           <details className="group">
-                            <summary className="cursor-pointer list-none rounded-full bg-mist px-3 py-1 text-xs font-bold hover:bg-lime [&::-webkit-details-marker]:hidden">Edit</summary>
-                            <form method="post" action="/api/admin/equipment" className="mt-2 grid w-72 gap-2 rounded-xl border border-mist bg-mist/30 p-3">
+                            <summary className="cursor-pointer list-none rounded-full bg-[#eef1f5] px-3 py-1 text-xs font-bold hover:bg-[#edeeff] [&::-webkit-details-marker]:hidden">Edit</summary>
+                            <form method="post" action="/api/admin/equipment" className="mt-2 grid w-72 gap-2 rounded-xl border border-[#e3e8ee] bg-[#eef1f5]/30 p-3">
                               <input type="hidden" name="action" value="update_model" /><input type="hidden" name="model_id" value={m.id} />
                               <select name="category" defaultValue={m.category} className={`${selCls} w-full`}>
                                 {EQUIPMENT_MODEL_CATEGORIES.map((c) => <option key={c} value={c}>{MODEL_CATEGORY_LABELS[c]}</option>)}
@@ -117,7 +117,7 @@ export default async function EquipmentPage({ searchParams }: { searchParams: Pr
                                 {MODEL_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
                               </select>
                               <textarea name="notes" defaultValue={m.notes ?? ""} rows={2} className={`${inputCls} w-full`} placeholder="Notes" />
-                              <button className="min-h-9 rounded-full bg-ink px-4 text-xs font-bold text-white">Save model</button>
+                              <button className="min-h-9 rounded-full bg-[#0a2540] px-4 text-xs font-bold text-white">Save model</button>
                             </form>
                           </details>
                         </td>
@@ -132,7 +132,7 @@ export default async function EquipmentPage({ searchParams }: { searchParams: Pr
           {/* ─── Units (physical fleet) ─── */}
           <section aria-label="Equipment units" className="space-y-4">
             <h2 className="font-display text-lg font-bold">Units</h2>
-            <div className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
+            <div className="rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm">
               <h3 className="font-display text-base font-bold">Register a unit</h3>
               <form method="post" action="/api/admin/equipment" className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <input type="hidden" name="action" value="create_unit" />
@@ -160,13 +160,13 @@ export default async function EquipmentPage({ searchParams }: { searchParams: Pr
                   </select></div>
                 <div><label htmlFor="u-sched" className="mb-1 block text-xs font-bold">Service schedule</label><input id="u-sched" name="service_schedule" className={`${inputCls} w-full`} placeholder="Quarterly preventive" /></div>
                 <div className="sm:col-span-2 lg:col-span-4"><label htmlFor="u-notes" className="mb-1 block text-xs font-bold">Notes</label><input id="u-notes" name="notes" className={`${inputCls} w-full`} /></div>
-                <div className="flex items-end"><button className="min-h-10 w-full rounded-full bg-ink px-5 text-sm font-bold text-white">Register unit</button></div>
+                <div className="flex items-end"><button className="min-h-10 w-full rounded-full bg-[#0a2540] px-5 text-sm font-bold text-white">Register unit</button></div>
               </form>
               <p className="mt-3 text-xs text-graphite">New units start at <b>planned</b>. Lifecycle moves are recorded below and appended to the unit&apos;s audit trail. Only charger stations may link a kiosk.</p>
             </div>
 
             {/* Filters */}
-            <form method="get" action="/admin/equipment" className="flex flex-wrap items-end gap-3 rounded-2xl border border-mist bg-white p-4 shadow-sm">
+            <form method="get" action="/admin/equipment" className="flex flex-wrap items-end gap-3 rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm">
               <div><label htmlFor="f-cat" className="mb-1 block text-xs font-bold">Category</label>
                 <select id="f-cat" name="category" defaultValue={catFilter} className={selCls}>
                   <option value="">All categories</option>
@@ -177,26 +177,26 @@ export default async function EquipmentPage({ searchParams }: { searchParams: Pr
                   <option value="">All statuses</option>
                   {EQUIPMENT_LIFECYCLE.map((s) => <option key={s} value={s}>{EQUIPMENT_STATUS_LABELS[s]}</option>)}
                 </select></div>
-              <button className="min-h-10 rounded-full bg-ink px-5 text-sm font-bold text-white">Filter</button>
-              {(catFilter || statusFilter) && <a href="/admin/equipment" className="min-h-10 rounded-full bg-mist px-5 py-2.5 text-sm font-bold hover:bg-lime">Clear</a>}
+              <button className="min-h-10 rounded-full bg-[#0a2540] px-5 text-sm font-bold text-white">Filter</button>
+              {(catFilter || statusFilter) && <a href="/admin/equipment" className="min-h-10 rounded-full bg-[#eef1f5] px-5 py-2.5 text-sm font-bold hover:bg-[#edeeff]">Clear</a>}
               <p className="ml-auto text-xs text-graphite">{units.length} of {board.units.length} units shown</p>
             </form>
 
-            <div className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
+            <div className="overflow-x-auto rounded-2xl border border-[#e3e8ee] bg-white shadow-sm">
               {units.length === 0 ? (
                 <p className="px-4 py-8 text-sm text-graphite">
                   {board.units.length === 0 ? "No units registered yet — the first physical machine appears here once added." : "No units match these filters."}
                 </p>
               ) : (
                 <table className="w-full min-w-[1100px] text-left text-sm">
-                  <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite">
+                  <thead className="border-b border-[#e3e8ee] bg-[#eef1f5]/40 text-xs uppercase tracking-wider text-graphite">
                     <tr>{["Serial / label", "Category", "Model", "Venue", "Kiosk", "Status", "Ownership", "Cost", "Lifecycle"].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr>
                   </thead>
                   <tbody>
                     {units.map((u) => {
                       const next = nextStatuses(u.status);
                       return (
-                        <tr key={u.id} className="border-b border-mist/70 align-top last:border-0 hover:bg-lime/10">
+                        <tr key={u.id} className="border-b border-[#e3e8ee]/70 align-top last:border-0 hover:bg-[#edeeff]">
                           <td className="px-4 py-3">
                             <span className="font-bold">{u.serial_number ?? u.model_label ?? "—"}</span>
                             {u.serial_number && u.model_label ? <span className="block text-xs text-graphite">{u.model_label}</span> : null}
@@ -211,7 +211,7 @@ export default async function EquipmentPage({ searchParams }: { searchParams: Pr
                                 <option value="">— warehouse —</option>
                                 {board.venues.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
                               </select>
-                              <button className="min-h-8 rounded-full bg-mist px-3 text-xs font-bold hover:bg-lime">Set</button>
+                              <button className="min-h-8 rounded-full bg-[#eef1f5] px-3 text-xs font-bold hover:bg-[#edeeff]">Set</button>
                             </form>
                             {u.venue && <p className="mt-0.5 text-xs text-graphite">{u.venue.name}</p>}
                           </td>
@@ -223,7 +223,7 @@ export default async function EquipmentPage({ searchParams }: { searchParams: Pr
                                   <option value="">— none —</option>
                                   {board.kiosks.map((k) => <option key={k.id} value={k.id}>{k.station_id}</option>)}
                                 </select>
-                                <button className="min-h-8 rounded-full bg-mist px-3 text-xs font-bold hover:bg-lime">Link</button>
+                                <button className="min-h-8 rounded-full bg-[#eef1f5] px-3 text-xs font-bold hover:bg-[#edeeff]">Link</button>
                               </form>
                             ) : "—"}
                             {u.kiosk && <p className="mt-0.5 text-xs text-graphite">{u.kiosk.station_id}</p>}
@@ -244,7 +244,7 @@ export default async function EquipmentPage({ searchParams }: { searchParams: Pr
                                 <select name="to" required aria-label={`Move ${u.serial_number ?? u.id}`} className="min-h-8 rounded-lg border border-silver/60 px-2 text-xs font-semibold">
                                   {next.map((s) => <option key={s} value={s}>{EQUIPMENT_STATUS_LABELS[s]}</option>)}
                                 </select>
-                                <button className="min-h-8 rounded-full bg-ink px-3 text-xs font-bold text-white">Move</button>
+                                <button className="min-h-8 rounded-full bg-[#0a2540] px-3 text-xs font-bold text-white">Move</button>
                               </form>
                             )}
                           </td>

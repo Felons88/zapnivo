@@ -126,7 +126,7 @@ export function EmailStudio({ staffRecipients, mailerConfigured }: { staffRecipi
             aria-selected={view === v.id}
             onClick={() => setView(v.id)}
             className={`rounded-full px-4 py-2 text-sm font-extrabold transition-colors ${
-              view === v.id ? "bg-ink text-white" : "border border-mist bg-white text-graphite hover:bg-mist hover:text-ink"
+              view === v.id ? "bg-[#0a2540] text-white" : "border border-[#e3e8ee] bg-white text-graphite hover:bg-[#eef1f5] hover:text-ink"
             }`}
           >
             {v.label}
@@ -154,7 +154,7 @@ export function EmailStudio({ staffRecipients, mailerConfigured }: { staffRecipi
                     onClick={() => selectTemplate(t)}
                     aria-current={t.name === spec.name}
                     className={`w-full rounded-xl px-3 py-2 text-left text-sm font-bold transition-colors ${
-                      t.name === spec.name ? "bg-ink text-white" : "bg-white text-graphite hover:bg-mist hover:text-ink border border-mist"
+                      t.name === spec.name ? "bg-[#0a2540] text-white" : "bg-white text-graphite hover:bg-[#eef1f5] hover:text-ink border border-[#e3e8ee]"
                     }`}
                   >
                     {t.displayName}
@@ -165,14 +165,14 @@ export function EmailStudio({ staffRecipients, mailerConfigured }: { staffRecipi
             </ul>
           </section>
         ))}
-        <p className="rounded-xl bg-mist/60 px-3 py-2 text-xs text-graphite">
+        <p className="rounded-xl bg-[#eef1f5]/60 px-3 py-2 text-xs text-graphite">
           Templates marked “planned” aren't wired to a trigger yet — previews still render once the template exists in email-templates.ts.
         </p>
       </aside>
 
       {/* ── Main pane ── */}
       <div className="min-w-0 space-y-5">
-        <section className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
+        <section className="rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <h2 className="font-display text-xl font-bold">{spec.displayName}</h2>
@@ -180,38 +180,38 @@ export function EmailStudio({ staffRecipients, mailerConfigured }: { staffRecipi
               <p className="mt-1 text-xs font-semibold text-silver">Trigger: {spec.triggerNote}</p>
             </div>
             <div className="flex items-center gap-2">
-              <div className="flex rounded-full border border-mist p-0.5 text-xs font-extrabold">
+              <div className="flex rounded-full border border-[#e3e8ee] p-0.5 text-xs font-extrabold">
                 {(Object.keys(WIDTHS) as (keyof typeof WIDTHS)[]).map((w) => (
                   <button key={w} type="button" onClick={() => setWidth(w)}
-                    className={`rounded-full px-3 py-1 ${width === w ? "bg-ink text-white" : "text-graphite"}`}>
+                    className={`rounded-full px-3 py-1 ${width === w ? "bg-[#0a2540] text-white" : "text-graphite"}`}>
                     {w === "desktop" ? "Desktop" : "Mobile"}
                   </button>
                 ))}
               </div>
               <button type="button" onClick={() => setDark((d) => !d)}
-                className={`rounded-full border px-3 py-1 text-xs font-extrabold ${dark ? "border-ink bg-ink text-white" : "border-mist bg-white text-graphite"}`}>
+                className={`rounded-full border px-3 py-1 text-xs font-extrabold ${dark ? "border-ink bg-[#0a2540] text-white" : "border-[#e3e8ee] bg-white text-graphite"}`}>
                 {dark ? "Dark preview" : "Light preview"}
               </button>
             </div>
           </div>
 
           {preview && !preview.available ? (
-            <div className="mt-5 rounded-xl border border-dashed border-silver/60 bg-mist/30 p-8 text-center">
+            <div className="mt-5 rounded-xl border border-dashed border-silver/60 bg-[#eef1f5]/30 p-8 text-center">
               <p className="font-display text-lg font-bold">Template not yet available</p>
               <p className="mx-auto mt-2 max-w-md text-sm text-graphite">
-                <code className="rounded bg-mist px-1.5 py-0.5 text-xs">{spec.name}</code> isn't in the email renderer yet
+                <code className="rounded bg-[#eef1f5] px-1.5 py-0.5 text-xs">{spec.name}</code> isn't in the email renderer yet
                 {preview.error ? <> — <code className="text-xs">{preview.error}</code></> : null}. This card fills in automatically once the template lands.
               </p>
             </div>
           ) : (
             <div className="mt-5">
               <div className="mb-3 flex items-center gap-2 text-xs font-bold">
-                <button type="button" onClick={() => setTab("preview")} className={`rounded-full px-3 py-1 ${tab === "preview" ? "bg-ink text-white" : "bg-mist text-graphite"}`}>Preview</button>
-                <button type="button" onClick={() => setTab("text")} className={`rounded-full px-3 py-1 ${tab === "text" ? "bg-ink text-white" : "bg-mist text-graphite"}`}>Plain text</button>
+                <button type="button" onClick={() => setTab("preview")} className={`rounded-full px-3 py-1 ${tab === "preview" ? "bg-[#0a2540] text-white" : "bg-[#eef1f5] text-graphite"}`}>Preview</button>
+                <button type="button" onClick={() => setTab("text")} className={`rounded-full px-3 py-1 ${tab === "text" ? "bg-[#0a2540] text-white" : "bg-[#eef1f5] text-graphite"}`}>Plain text</button>
                 {preview?.subject && <span className="ml-auto truncate text-graphite">Subject: <span className="font-extrabold text-ink">{preview.subject}</span></span>}
               </div>
               {tab === "preview" ? (
-                <div className={`overflow-x-auto rounded-xl p-4 transition-colors ${dark ? "bg-[#0d130e]" : "bg-mist/50"}`}>
+                <div className={`overflow-x-auto rounded-xl p-4 transition-colors ${dark ? "bg-[#0d130e]" : "bg-[#eef1f5]/50"}`}>
                   {dark && (
                     <p className="mb-3 text-xs font-semibold text-white/60">
                       Dark appearance is only a preview aid — email clients render dark mode differently and templates aren't forced.
@@ -229,7 +229,7 @@ export function EmailStudio({ staffRecipients, mailerConfigured }: { staffRecipi
                   ) : null}
                 </div>
               ) : (
-                <pre className="max-h-[560px] overflow-auto whitespace-pre-wrap rounded-xl bg-mist/50 p-4 text-xs leading-relaxed text-ink">
+                <pre className="max-h-[560px] overflow-auto whitespace-pre-wrap rounded-xl bg-[#eef1f5]/50 p-4 text-xs leading-relaxed text-ink">
                   {preview?.text ?? "No text fallback yet."}
                 </pre>
               )}
@@ -244,14 +244,14 @@ export function EmailStudio({ staffRecipients, mailerConfigured }: { staffRecipi
 
         {/* ── Variables + test send ── */}
         <div className="grid gap-5 lg:grid-cols-2">
-          <section className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
+          <section className="rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm">
             <h3 className="font-display text-lg font-bold">Variables</h3>
             <p className="mt-1 text-xs text-graphite">Edit sample values — the preview re-renders automatically.</p>
             <div className="mt-4 max-h-[26rem] space-y-3 overflow-y-auto pr-1">
               {varKeys.map((k) => (
                 <label key={k} className="block">
                   <span className="mb-1 flex items-center justify-between text-xs font-bold">
-                    <code className="rounded bg-mist px-1.5 py-0.5">{`{{${k}}}`}</code>
+                    <code className="rounded bg-[#eef1f5] px-1.5 py-0.5">{`{{${k}}}`}</code>
                     {spec.textVars.includes(k) && <span className="text-[10px] font-semibold uppercase tracking-wide text-silver">text</span>}
                   </span>
                   <input
@@ -266,7 +266,7 @@ export function EmailStudio({ staffRecipients, mailerConfigured }: { staffRecipi
             </div>
           </section>
 
-          <section className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
+          <section className="rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm">
             <h3 className="font-display text-lg font-bold">Test send</h3>
             <p className="mt-1 text-xs text-graphite">
               Sends “[TEST] {preview?.subject ?? spec.subject}” to a staff address only — customer emails are rejected.
@@ -296,12 +296,12 @@ export function EmailStudio({ staffRecipients, mailerConfigured }: { staffRecipi
                 type="button"
                 onClick={sendTest}
                 disabled={sending || !sendTo || !preview?.available}
-                className="min-h-10 rounded-full bg-ink px-5 text-sm font-bold text-white disabled:opacity-40"
+                className="min-h-10 rounded-full bg-[#0a2540] px-5 text-sm font-bold text-white disabled:opacity-40"
               >
                 {sending ? "Sending…" : "Send test email"}
               </button>
               {sendResult && (
-                <p className={`rounded-xl px-3 py-2 text-sm font-bold ${sendResult.ok ? "bg-lime/60 text-ink" : "bg-red-50 text-red-700"}`}>
+                <p className={`rounded-xl px-3 py-2 text-sm font-bold ${sendResult.ok ? "bg-[#edeeff] text-[#635bff]" : "bg-red-50 text-red-700"}`}>
                   {sendResult.msg}
                 </p>
               )}

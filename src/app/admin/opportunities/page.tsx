@@ -68,7 +68,7 @@ export default async function OpportunitiesPage() {
             </p>
 
             {/* ── Existing venues ── */}
-            <section className="rounded-2xl border border-mist bg-white p-4">
+            <section className="rounded-2xl border border-[#e3e8ee] bg-white p-4">
               <h2 className="text-lg font-bold">Existing venues</h2>
               <p className="mt-1 text-xs text-graphite">
                 Observed rentals/gross are real. Scenario columns are estimates based on network averages — labelled, not promised.
@@ -76,7 +76,7 @@ export default async function OpportunitiesPage() {
               <div className="mt-4 overflow-x-auto">
                 <table className="w-full min-w-[1080px] text-sm">
                   <thead>
-                    <tr className="border-b border-mist text-left text-xs uppercase tracking-wider text-graphite">
+                    <tr className="border-b border-[#e3e8ee] text-left text-xs uppercase tracking-wider text-graphite">
                       <th className="py-2 pr-4">Venue</th>
                       <th className="py-2 pr-4">Type</th>
                       <th className="py-2 pr-4 text-right">Kiosks</th>
@@ -89,7 +89,7 @@ export default async function OpportunitiesPage() {
                   </thead>
                   <tbody>
                     {data.venues.map((v) => (
-                      <tr key={v.id} className="border-b border-mist/60 align-top">
+                      <tr key={v.id} className="border-b border-[#e3e8ee]/60 align-top">
                         <td className="py-2.5 pr-4">
                           <p className="font-semibold">{v.name}</p>
                           <p className="text-xs text-graphite">{[v.city, v.published ? "published" : "unpublished"].filter(Boolean).join(" · ")}</p>
@@ -137,7 +137,7 @@ export default async function OpportunitiesPage() {
             </section>
 
             {/* ── Prospective applications ── */}
-            <section className="rounded-2xl border border-mist bg-white p-4">
+            <section className="rounded-2xl border border-[#e3e8ee] bg-white p-4">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <h2 className="text-lg font-bold">Prospective venues</h2>
                 <Link href="/admin/partners" className="text-xs font-bold text-forest underline">Open partner pipeline →</Link>
@@ -148,7 +148,7 @@ export default async function OpportunitiesPage() {
               <div className="mt-4 overflow-x-auto">
                 <table className="w-full min-w-[720px] text-sm">
                   <thead>
-                    <tr className="border-b border-mist text-left text-xs uppercase tracking-wider text-graphite">
+                    <tr className="border-b border-[#e3e8ee] text-left text-xs uppercase tracking-wider text-graphite">
                       <th className="py-2 pr-4">Business</th>
                       <th className="py-2 pr-4">Type</th>
                       <th className="py-2 pr-4">Location</th>
@@ -159,7 +159,7 @@ export default async function OpportunitiesPage() {
                   </thead>
                   <tbody>
                     {data.applications.map((a) => (
-                      <tr key={a.id} className="border-b border-mist/60 align-top">
+                      <tr key={a.id} className="border-b border-[#e3e8ee]/60 align-top">
                         <td className="py-2.5 pr-4 font-semibold">{a.name}</td>
                         <td className="py-2.5 pr-4 text-graphite">{a.venueType ?? "—"}</td>
                         <td className="py-2.5 pr-4 text-graphite">{a.city ?? "—"}</td>

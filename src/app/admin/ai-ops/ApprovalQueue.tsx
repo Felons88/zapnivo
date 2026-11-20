@@ -31,11 +31,11 @@ export function ApprovalQueue({ approvals }: { approvals: ApprovalRow[] }) {
       </div>
       {err && <p role="alert" className="rounded-xl bg-red-100 px-4 py-3 text-sm font-bold text-red-900">{err}</p>}
       {approvals.length === 0 ? (
-        <div className="rounded-2xl border border-mist bg-white px-4 py-8 text-sm text-graphite shadow-sm">No pending approvals.</div>
+        <div className="rounded-2xl border border-[#e3e8ee] bg-white px-4 py-8 text-sm text-graphite shadow-sm">No pending approvals.</div>
       ) : (
         <ul className="space-y-3">
           {approvals.map((a) => (
-            <li key={a.id} className="rounded-2xl border border-mist bg-white p-5 shadow-sm">
+            <li key={a.id} className="rounded-2xl border border-[#e3e8ee] bg-white p-5 shadow-sm">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <p className="font-display text-base font-bold">{a.action}</p>
@@ -43,18 +43,18 @@ export function ApprovalQueue({ approvals }: { approvals: ApprovalRow[] }) {
                 </div>
                 <div className="flex gap-2">
                   <button
-                    className="min-h-9 rounded-full bg-lime px-4 text-xs font-bold disabled:opacity-50"
+                    className="min-h-9 rounded-full bg-[#635bff] text-white px-4 text-xs font-bold disabled:opacity-50"
                     disabled={busy === a.id}
                     onClick={() => void decide(a.id, "approved")}
                   >{busy === a.id ? "…" : "Approve"}</button>
                   <button
-                    className="min-h-9 rounded-full bg-mist px-4 text-xs font-bold hover:bg-red-100 disabled:opacity-50"
+                    className="min-h-9 rounded-full bg-[#eef1f5] px-4 text-xs font-bold hover:bg-red-100 disabled:opacity-50"
                     disabled={busy === a.id}
                     onClick={() => void decide(a.id, "rejected")}
                   >Reject</button>
                 </div>
               </div>
-              <pre className="mt-3 max-h-40 overflow-auto rounded-lg bg-mist/50 p-3 text-[11px] text-graphite">{JSON.stringify(a.payload, null, 2)}</pre>
+              <pre className="mt-3 max-h-40 overflow-auto rounded-lg bg-[#eef1f5]/50 p-3 text-[11px] text-graphite">{JSON.stringify(a.payload, null, 2)}</pre>
             </li>
           ))}
         </ul>

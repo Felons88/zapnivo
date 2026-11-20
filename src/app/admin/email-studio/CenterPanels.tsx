@@ -16,7 +16,7 @@ import {
 
 /* ── shared bits ────────────────────────────────────────────────────────── */
 
-const card = "rounded-2xl border border-mist bg-white p-4 shadow-sm";
+const card = "rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm";
 const th = "px-3 py-2 text-left text-[11px] font-extrabold uppercase tracking-wide text-silver";
 const td = "px-3 py-2.5 text-sm align-top";
 
@@ -25,23 +25,23 @@ const senderName = (id: string | null | undefined) =>
 
 const STATUS_TONE: Record<string, string> = {
   queued: "bg-gold/50 text-ink",
-  sent: "bg-lime/60 text-ink",
+  sent: "bg-[#edeeff] text-[#635bff]",
   failed: "bg-red-50 text-red-700",
 };
 
 const TRIGGER_TONE: Record<string, string> = {
-  live: "bg-lime/60 text-ink",
-  planned: "bg-mist text-graphite",
+  live: "bg-[#edeeff] text-[#635bff]",
+  planned: "bg-[#eef1f5] text-graphite",
   no_template: "bg-gold/50 text-ink",
 };
 
 const INBOUND_TONE: Record<string, string> = {
-  accepted: "bg-lime/60 text-ink",
+  accepted: "bg-[#edeeff] text-[#635bff]",
   quarantined: "bg-gold/50 text-ink",
   rejected: "bg-red-50 text-red-700",
   duplicate: "bg-red-50 text-red-700",
   error: "bg-red-50 text-red-700",
-  ignored: "bg-mist text-graphite",
+  ignored: "bg-[#eef1f5] text-graphite",
 };
 
 const AUTH_METHOD_LABELS: Record<string, string> = {
@@ -50,7 +50,7 @@ const AUTH_METHOD_LABELS: Record<string, string> = {
 };
 
 function Pill({ tone, children }: { tone?: string; children: React.ReactNode }) {
-  return <span className={`inline-block rounded-full px-2.5 py-0.5 text-[11px] font-extrabold ${tone ?? "bg-mist text-graphite"}`}>{children}</span>;
+  return <span className={`inline-block rounded-full px-2.5 py-0.5 text-[11px] font-extrabold ${tone ?? "bg-[#eef1f5] text-graphite"}`}>{children}</span>;
 }
 
 function fmtDate(iso: string) {
@@ -78,7 +78,7 @@ export function SendersPanel() {
   useEffect(() => { void getJson<{ senders: StudioSenderRow[] }>("/api/admin/email-studio/senders").then(setState); }, []);
 
   if (state.loading) return <p className="text-sm text-graphite">Loading senders…</p>;
-  if (!state.data) return <p className="rounded-xl bg-mist/60 px-4 py-3 text-sm font-bold text-graphite">{state.note ?? "Sender registry unavailable."}</p>;
+  if (!state.data) return <p className="rounded-xl bg-[#eef1f5]/60 px-4 py-3 text-sm font-bold text-graphite">{state.note ?? "Sender registry unavailable."}</p>;
 
   return (
     <section className={card}>
@@ -90,7 +90,7 @@ export function SendersPanel() {
       <div className="mt-4 overflow-x-auto">
         <table className="w-full min-w-[720px] border-collapse">
           <thead>
-            <tr className="border-b border-mist">
+            <tr className="border-b border-[#e3e8ee]">
               <th className={th}>Sender</th>
               <th className={th}>From</th>
               <th className={th}>Reply-To</th>
@@ -100,10 +100,10 @@ export function SendersPanel() {
           </thead>
           <tbody>
             {state.data.senders.map((s) => (
-              <tr key={s.id} className="border-b border-mist/60 last:border-0">
+              <tr key={s.id} className="border-b border-[#e3e8ee]/60 last:border-0">
                 <td className={td}>
                   <span className="font-bold text-ink">{s.name}</span>
-                  <code className="ml-2 rounded bg-mist px-1.5 py-0.5 text-[11px]">{s.id}</code>
+                  <code className="ml-2 rounded bg-[#eef1f5] px-1.5 py-0.5 text-[11px]">{s.id}</code>
                 </td>
                 <td className={`${td} font-semibold`}>{s.email}</td>
                 <td className={`${td} text-graphite`}>{s.replyTo}</td>
@@ -120,7 +120,7 @@ export function SendersPanel() {
                   )}
                 </td>
                 <td className={td}>
-                  <Pill tone="bg-mist text-graphite">Configured sender</Pill>
+                  <Pill tone="bg-[#eef1f5] text-graphite">Configured sender</Pill>
                   <span className="mt-1 block text-[11px] font-semibold text-silver">Inbound: not verified</span>
                 </td>
               </tr>
@@ -151,7 +151,7 @@ export function TriggersPanel() {
   const statuses = useMemo(() => Array.from(new Set((state.data?.triggers ?? []).map((t) => normalizeTriggerStatus(t.status)))).sort(), [state.data]);
 
   if (state.loading) return <p className="text-sm text-graphite">Loading triggers…</p>;
-  if (!state.data) return <p className="rounded-xl bg-mist/60 px-4 py-3 text-sm font-bold text-graphite">{state.note ?? "Trigger registry unavailable."}</p>;
+  if (!state.data) return <p className="rounded-xl bg-[#eef1f5]/60 px-4 py-3 text-sm font-bold text-graphite">{state.note ?? "Trigger registry unavailable."}</p>;
 
   return (
     <section className={card}>
@@ -177,7 +177,7 @@ export function TriggersPanel() {
       <div className="mt-4 overflow-x-auto">
         <table className="w-full min-w-[760px] border-collapse">
           <thead>
-            <tr className="border-b border-mist">
+            <tr className="border-b border-[#e3e8ee]">
               <th className={th}>Event</th>
               <th className={th}>Sender</th>
               <th className={th}>Template</th>
@@ -190,13 +190,13 @@ export function TriggersPanel() {
             {rows.map((t) => {
               const norm = normalizeTriggerStatus(t.status);
               return (
-                <tr key={t.event} className="border-b border-mist/60 last:border-0">
+                <tr key={t.event} className="border-b border-[#e3e8ee]/60 last:border-0">
                   <td className={`${td} font-bold`}><code className="text-xs">{t.event}</code></td>
                   <td className={td}>
                     <span className="font-semibold">{senderName(t.sender)}</span>
                     <code className="ml-1 text-[11px] text-silver">{t.sender}</code>
                   </td>
-                  <td className={td}>{t.template ? <code className="rounded bg-mist px-1.5 py-0.5 text-[11px]">{t.template}</code> : <span className="text-xs text-silver">—</span>}</td>
+                  <td className={td}>{t.template ? <code className="rounded bg-[#eef1f5] px-1.5 py-0.5 text-[11px]">{t.template}</code> : <span className="text-xs text-silver">—</span>}</td>
                   <td className={`${td} text-graphite`}>{t.recipientKind}</td>
                   <td className={td}><Pill tone={TRIGGER_TONE[norm]}>{triggerStatusLabel(t.status)}</Pill></td>
                   <td className={`${td} max-w-[280px] text-xs text-graphite`}>{t.description}</td>
@@ -220,7 +220,7 @@ export function LogPanel() {
   useEffect(() => { void getJson<{ emails: StudioLogRow[] }>("/api/admin/email-studio/log").then(setState); }, []);
 
   if (state.loading) return <p className="text-sm text-graphite">Loading outbox…</p>;
-  if (!state.data) return <p className="rounded-xl bg-mist/60 px-4 py-3 text-sm font-bold text-graphite">{state.note ?? "Outbox unavailable."}</p>;
+  if (!state.data) return <p className="rounded-xl bg-[#eef1f5]/60 px-4 py-3 text-sm font-bold text-graphite">{state.note ?? "Outbox unavailable."}</p>;
   if (state.data.emails.length === 0) {
     return (
       <section className={card}>
@@ -237,7 +237,7 @@ export function LogPanel() {
       <div className="mt-4 overflow-x-auto">
         <table className="w-full min-w-[760px] border-collapse">
           <thead>
-            <tr className="border-b border-mist">
+            <tr className="border-b border-[#e3e8ee]">
               <th className={th}>To</th>
               <th className={th}>Subject</th>
               <th className={th}>Sender</th>
@@ -249,7 +249,7 @@ export function LogPanel() {
           </thead>
           <tbody>
             {state.data.emails.map((e) => (
-              <tr key={e.id} className="border-b border-mist/60 last:border-0">
+              <tr key={e.id} className="border-b border-[#e3e8ee]/60 last:border-0">
                 <td className={`${td} font-semibold`}>{e.to}</td>
                 <td className={`${td} max-w-[260px] truncate`} title={e.subject}>{e.subject}</td>
                 <td className={td}>
@@ -284,7 +284,7 @@ export function InboundPanel() {
   useEffect(() => { void getJson<{ emails: StudioInboundRow[]; queue?: StudioInboundQueue }>("/api/admin/email-studio/inbound").then(setState); }, []);
 
   if (state.loading) return <p className="text-sm text-graphite">Loading inbound email…</p>;
-  if (!state.data) return <p className="rounded-xl bg-mist/60 px-4 py-3 text-sm font-bold text-graphite">{state.note ?? "Inbound email log unavailable."}</p>;
+  if (!state.data) return <p className="rounded-xl bg-[#eef1f5]/60 px-4 py-3 text-sm font-bold text-graphite">{state.note ?? "Inbound email log unavailable."}</p>;
 
   const counts = inboundStatusCounts(state.data.emails);
   const countEntries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
@@ -299,10 +299,10 @@ export function InboundPanel() {
       {state.data.queue && (
         <div className="mt-3 flex flex-wrap gap-2">
           <Pill tone="bg-gold/50 text-ink">Queue: {state.data.queue.queued} queued</Pill>
-          <Pill tone="bg-mist text-graphite">{state.data.queue.processing} processing</Pill>
-          <Pill tone={state.data.queue.dead > 0 ? "bg-red-50 text-red-700" : "bg-mist text-graphite"}>{state.data.queue.dead} dead</Pill>
+          <Pill tone="bg-[#eef1f5] text-graphite">{state.data.queue.processing} processing</Pill>
+          <Pill tone={state.data.queue.dead > 0 ? "bg-red-50 text-red-700" : "bg-[#eef1f5] text-graphite"}>{state.data.queue.dead} dead</Pill>
           {state.data.queue.avgQueueWaitMs != null && (
-            <Pill tone="bg-mist text-graphite">avg wait {state.data.queue.avgQueueWaitMs < 1000 ? `${state.data.queue.avgQueueWaitMs} ms` : `${(state.data.queue.avgQueueWaitMs / 1000).toFixed(1)} s`}</Pill>
+            <Pill tone="bg-[#eef1f5] text-graphite">avg wait {state.data.queue.avgQueueWaitMs < 1000 ? `${state.data.queue.avgQueueWaitMs} ms` : `${(state.data.queue.avgQueueWaitMs / 1000).toFixed(1)} s`}</Pill>
           )}
         </div>
       )}
@@ -321,7 +321,7 @@ export function InboundPanel() {
         <div className="mt-4 overflow-x-auto">
           <table className="w-full min-w-[960px] border-collapse">
             <thead>
-              <tr className="border-b border-mist">
+              <tr className="border-b border-[#e3e8ee]">
                 <th className={th}>Time</th>
                 <th className={th}>From</th>
                 <th className={th}>To</th>
@@ -337,7 +337,7 @@ export function InboundPanel() {
               {state.data.emails.map((e) => {
                 const preview = bodyPreviewText(e);
                 return (
-                  <tr key={e.id} className="border-b border-mist/60 align-top last:border-0">
+                  <tr key={e.id} className="border-b border-[#e3e8ee]/60 align-top last:border-0">
                     <td className={`${td} whitespace-nowrap text-xs text-graphite`}>{fmtDate(e.createdAt)}</td>
                     <td className={`${td} max-w-[180px] truncate font-semibold`} title={e.fromEmail ?? ""}>{e.fromEmail ?? "—"}</td>
                     <td className={`${td} max-w-[160px] truncate text-graphite`} title={e.toAddress ?? ""}>{e.toAddress ?? "—"}</td>
@@ -346,18 +346,18 @@ export function InboundPanel() {
                       {(e.reason || preview) && (
                         <details className="mt-1">
                           <summary className="cursor-pointer text-[11px] font-bold text-ink">details</summary>
-                          <div className="mt-1 max-w-[320px] space-y-1 rounded-lg bg-mist/50 p-2 text-xs">
+                          <div className="mt-1 max-w-[320px] space-y-1 rounded-lg bg-[#eef1f5]/50 p-2 text-xs">
                             {e.reason && <p><span className="font-extrabold">Reason:</span> <span className="text-graphite">{e.reason}</span></p>}
                             {preview && <p className="whitespace-pre-wrap break-words text-graphite">{preview}</p>}
                           </div>
                         </details>
                       )}
                     </td>
-                    <td className={td}>{e.ticketNumber ? <code className="rounded bg-mist px-1.5 py-0.5 text-[11px]">{e.ticketNumber}</code> : <span className="text-xs text-silver">—</span>}</td>
+                    <td className={td}>{e.ticketNumber ? <code className="rounded bg-[#eef1f5] px-1.5 py-0.5 text-[11px]">{e.ticketNumber}</code> : <span className="text-xs text-silver">—</span>}</td>
                     <td className={td}><Pill tone={INBOUND_TONE[e.status]}>{inboundStatusLabel(e.status)}</Pill></td>
                     <td className={td}>
                       {e.authMethod ? (
-                        <code className="rounded bg-mist px-1.5 py-0.5 text-[11px]">{AUTH_METHOD_LABELS[e.authMethod] ?? e.authMethod}</code>
+                        <code className="rounded bg-[#eef1f5] px-1.5 py-0.5 text-[11px]">{AUTH_METHOD_LABELS[e.authMethod] ?? e.authMethod}</code>
                       ) : <span className="text-xs text-silver">—</span>}
                     </td>
                     <td className={`${td} text-xs font-semibold`}>{e.dmarcResult ?? "—"}</td>

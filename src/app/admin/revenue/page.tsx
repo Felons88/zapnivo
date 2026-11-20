@@ -16,7 +16,7 @@ const DAY_LABEL: Record<number, string> = { 7: "7 days", 30: "30 days", 90: "90 
 const money = (c: number | null) => (c == null ? "—" : fmt(c));
 const SEV_ORDER: Record<AssuranceSeverity, number> = { critical: 0, warning: 1, info: 2 };
 const SEV_STYLE: Record<AssuranceSeverity, string> = {
-  critical: "bg-red-100 text-red-800", warning: "bg-gold/30 text-ink", info: "bg-mist text-graphite",
+  critical: "bg-red-100 text-red-800", warning: "bg-gold/30 text-ink", info: "bg-[#eef1f5] text-graphite",
 };
 const CHECK_LABEL: Record<string, string> = {
   captured_without_entitlement: "Captured payments without an entitled rental",
@@ -34,8 +34,8 @@ function ExceptionsCard({ checks }: { checks: AssuranceCheck[] }) {
   const shown = all.slice(0, 200);
 
   return (
-    <section className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
-      <div className="border-b border-mist px-4 py-4">
+    <section className="overflow-x-auto rounded-2xl border border-[#e3e8ee] bg-white shadow-sm">
+      <div className="border-b border-[#e3e8ee] px-4 py-4">
         <h2 className="font-display text-lg font-bold">Reconciliation exception queue</h2>
         <p className="mt-1 text-xs text-graphite">
           {all.length} exception{all.length === 1 ? "" : "s"} across {checks.filter((c) => c.status === "ok").length} completed check{checks.filter((c) => c.status === "ok").length === 1 ? "" : "s"}
@@ -43,7 +43,7 @@ function ExceptionsCard({ checks }: { checks: AssuranceCheck[] }) {
         </p>
       </div>
       {unavailable.length > 0 && (
-        <div className="border-b border-mist bg-gold/20 px-4 py-3 text-xs text-graphite">
+        <div className="border-b border-[#e3e8ee] bg-gold/20 px-4 py-3 text-xs text-graphite">
           {unavailable.map((c) => (
             <p key={c.kind}><span className="font-bold">{CHECK_LABEL[c.kind] ?? c.label}:</span> unavailable{c.reason ? ` — ${c.reason}` : ""}.</p>
           ))}
@@ -55,12 +55,12 @@ function ExceptionsCard({ checks }: { checks: AssuranceCheck[] }) {
         </p>
       ) : (
         <table className="w-full min-w-[860px] text-left text-sm">
-          <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite">
+          <thead className="border-b border-[#e3e8ee] bg-[#eef1f5]/40 text-xs uppercase tracking-wider text-graphite">
             <tr>{["Severity", "Check", "Entity", "Detail", ""].map((h, i) => <th key={i} className="px-4 py-3 font-extrabold">{h}</th>)}</tr>
           </thead>
           <tbody>
             {shown.map((e, i) => (
-              <tr key={`${e.kind}-${e.entityId}-${i}`} className="border-b border-mist/60 last:border-0">
+              <tr key={`${e.kind}-${e.entityId}-${i}`} className="border-b border-[#e3e8ee]/60 last:border-0">
                 <td className="px-4 py-3"><span className={`rounded-full px-2.5 py-0.5 text-[11px] font-extrabold uppercase ${SEV_STYLE[e.severity]}`}>{e.severity}</span></td>
                 <td className="px-4 py-3 text-graphite">{CHECK_LABEL[e.kind] ?? e.kind}</td>
                 <td className="px-4 py-3 font-bold">{e.label}</td>
@@ -106,7 +106,7 @@ export default async function RevenueAssurancePage({ searchParams }: { searchPar
             <span className="text-xs font-extrabold uppercase tracking-wider text-graphite">Period</span>
             {([7, 30, 90] as const).map((d) => (
               <Link key={d} href={`/admin/revenue?days=${d}`}
-                className={`rounded-full px-4 py-1.5 text-sm font-bold ${d === days ? "bg-ink text-white" : "bg-white text-graphite border border-mist hover:text-ink"}`}>
+                className={`rounded-full px-4 py-1.5 text-sm font-bold ${d === days ? "bg-[#0a2540] text-white" : "bg-white text-graphite border border-[#e3e8ee] hover:text-ink"}`}>
                 {DAY_LABEL[d]}
               </Link>
             ))}
@@ -124,7 +124,7 @@ export default async function RevenueAssurancePage({ searchParams }: { searchPar
             <Metric label="Commission outstanding" value={money(m.commissionOutstandingCents)} sub={`${m.payoutScheduledCount ?? "—"} payout${m.payoutScheduledCount === 1 ? "" : "s"} scheduled/approved`} />
           </section>
 
-          <section className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
+          <section className="rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm">
             <h2 className="font-display text-lg font-bold">Definitions</h2>
             <dl className="mt-4 grid gap-4 text-sm sm:grid-cols-2">
               <div><dt className="font-bold">Captured</dt><dd className="text-graphite">A payment with a real captured amount in the window. Authorizations and released holds never count.</dd></div>
@@ -142,7 +142,7 @@ export default async function RevenueAssurancePage({ searchParams }: { searchPar
           <p className="text-xs text-graphite">
             Commission checks are a sampled recomputation against agreed rates — ledgers for venues without a commission rate are skipped, not flagged.
             Settlement coverage is approximate (venue + month granularity). Any check that could not run is marked unavailable above rather than reported as zero.
-            Raw data: <code className="rounded bg-mist px-1">GET /api/admin/revenue?days={days}</code>
+            Raw data: <code className="rounded bg-[#eef1f5] px-1">GET /api/admin/revenue?days={days}</code>
           </p>
         </div>
       )}

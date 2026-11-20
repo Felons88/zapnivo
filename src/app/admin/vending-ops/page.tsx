@@ -17,8 +17,8 @@ const Unavailable = ({ label }: { label: string }) => (
 
 function SectionShell({ title, sub, children }: { title: string; sub?: string; children: ReactNode }) {
   return (
-    <section className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
-      <div className="border-b border-mist px-4 py-4">
+    <section className="overflow-x-auto rounded-2xl border border-[#e3e8ee] bg-white shadow-sm">
+      <div className="border-b border-[#e3e8ee] px-4 py-4">
         <h2 className="font-display text-lg font-bold">{title}</h2>
         {sub && <p className="mt-1 text-xs text-graphite">{sub}</p>}
       </div>
@@ -30,7 +30,7 @@ function SectionShell({ title, sub, children }: { title: string; sub?: string; c
 const Bar = ({ label, value, max }: { label: string; value: number; max: number }) => (
   <div className="flex items-center gap-3 text-sm">
     <span className="w-40 shrink-0 truncate font-semibold">{label}</span>
-    <span className="h-3 flex-1 overflow-hidden rounded-full bg-mist">
+    <span className="h-3 flex-1 overflow-hidden rounded-full bg-[#eef1f5]">
       <span className="block h-full rounded-full bg-forest" style={{ width: `${max > 0 ? Math.max(4, Math.round((value / max) * 100)) : 0}%` }} />
     </span>
     <span className="w-10 text-right font-bold">{value}</span>
@@ -77,7 +77,7 @@ export default async function VendingOps() {
                 <div className="space-y-3 px-4 py-3">
                   {Object.entries(d.placement.stageCounts).sort((a, b) => b[1] - a[1]).map(([stage, n]) => <Bar key={stage} label={stage.replace(/_/g, " ")} value={n} max={maxStage} />)}
                   {d.placement.recent.length > 0 && (
-                    <ul className="mt-4 space-y-1 border-t border-mist pt-3 text-xs text-graphite">
+                    <ul className="mt-4 space-y-1 border-t border-[#e3e8ee] pt-3 text-xs text-graphite">
                       {d.placement.recent.map((r) => <li key={r.id} className="flex justify-between gap-3"><span className="truncate font-semibold text-ink">{r.business_name ?? "Unnamed application"}</span><span>{r.stage?.replace(/_/g, " ") ?? "—"}</span></li>)}
                     </ul>
                   )}
@@ -90,16 +90,16 @@ export default async function VendingOps() {
                 <p className="px-4 py-8 text-sm text-graphite">No vending machines recorded yet.</p>
               ) : (
                 <table className="w-full text-left text-sm">
-                  <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite"><tr>{["Status", "Units"].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr></thead>
+                  <thead className="border-b border-[#e3e8ee] bg-[#eef1f5]/40 text-xs uppercase tracking-wider text-graphite"><tr>{["Status", "Units"].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr></thead>
                   <tbody>
                     {Object.entries(d.units.byStatus).sort((a, b) => b[1] - a[1]).map(([s, n]) => (
-                      <tr key={s} className="border-b border-mist/70 last:border-0"><td className="px-4 py-2.5 font-semibold">{s.replace(/_/g, " ")}</td><td className="px-4 py-2.5 font-bold">{n}</td></tr>
+                      <tr key={s} className="border-b border-[#e3e8ee]/70 last:border-0"><td className="px-4 py-2.5 font-semibold">{s.replace(/_/g, " ")}</td><td className="px-4 py-2.5 font-bold">{n}</td></tr>
                     ))}
                   </tbody>
                 </table>
               )}
               {d.units && d.units.total > 0 && (
-                <p className="border-t border-mist px-4 py-3 text-xs text-graphite">
+                <p className="border-t border-[#e3e8ee] px-4 py-3 text-xs text-graphite">
                   By category: {Object.entries(d.units.byCategory).sort((a, b) => b[1] - a[1]).map(([c, n]) => `${c.replace(/_/g, " ")} ${n}`).join(" · ")}
                 </p>
               )}

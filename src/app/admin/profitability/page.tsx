@@ -19,7 +19,7 @@ const trendLabel = (d: string) => (d === "up" ? "rising" : d === "down" ? "falli
 
 function KioskRow({ k }: { k: KioskEconomics }) {
   return (
-    <tr className="border-b border-mist/60 align-top">
+    <tr className="border-b border-[#e3e8ee]/60 align-top">
       <td className="py-2.5 pr-4">
         <p className="font-semibold">{k.stationId ?? k.kioskId.slice(0, 8)}</p>
         <p className="text-xs text-graphite">
@@ -70,7 +70,7 @@ export default async function ProfitabilityPage({ searchParams }: { searchParams
         </p>
 
         {feedback.result && (
-          <div role="status" className={`rounded-xl px-5 py-3 text-sm font-bold ${feedback.result === "error" ? "bg-red-100 text-red-900" : "bg-lime text-ink"}`}>
+          <div role="status" className={`rounded-xl px-5 py-3 text-sm font-bold ${feedback.result === "error" ? "bg-red-100 text-red-900" : "bg-[#635bff] text-white"}`}>
             {feedback.result === "error" ? feedback.detail ?? "The action failed." : `Assumption ${feedback.detail ?? ""} ${feedback.result}.`}
           </div>
         )}
@@ -112,7 +112,7 @@ export default async function ProfitabilityPage({ searchParams }: { searchParams
             </section>
 
             {/* ── Per-kiosk table ── */}
-            <section className="rounded-2xl border border-mist bg-white p-4">
+            <section className="rounded-2xl border border-[#e3e8ee] bg-white p-4">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <h2 className="text-lg font-bold">Per-kiosk economics</h2>
                 <p className="text-xs font-bold uppercase tracking-wider text-graphite">observed + assumption-based estimate</p>
@@ -120,7 +120,7 @@ export default async function ProfitabilityPage({ searchParams }: { searchParams
               <div className="mt-4 overflow-x-auto">
                 <table className="w-full min-w-[980px] text-sm">
                   <thead>
-                    <tr className="border-b border-mist text-left text-xs uppercase tracking-wider text-graphite">
+                    <tr className="border-b border-[#e3e8ee] text-left text-xs uppercase tracking-wider text-graphite">
                       <th className="py-2 pr-4">Kiosk / venue</th>
                       <th className="py-2 pr-4 text-right">Rentals</th>
                       <th className="py-2 pr-4 text-right">Gross</th>
@@ -148,7 +148,7 @@ export default async function ProfitabilityPage({ searchParams }: { searchParams
             </section>
 
             {/* ── Assumption editor ── */}
-            <section className="rounded-2xl border border-mist bg-white p-4">
+            <section className="rounded-2xl border border-[#e3e8ee] bg-white p-4">
               <h2 className="text-lg font-bold">Economics assumptions</h2>
               <p className="mt-1 text-xs text-graphite">
                 Stored in <code>admin_finance_assumptions</code> — editable inputs, not transactions. Every figure above that uses them is labelled assumption-based.
@@ -160,7 +160,7 @@ export default async function ProfitabilityPage({ searchParams }: { searchParams
                 <div className="mt-4 overflow-x-auto">
                   <table className="w-full min-w-[860px] text-sm">
                     <thead>
-                      <tr className="border-b border-mist text-left text-xs uppercase tracking-wider text-graphite">
+                      <tr className="border-b border-[#e3e8ee] text-left text-xs uppercase tracking-wider text-graphite">
                         <th className="py-2 pr-4">Key</th>
                         <th className="py-2 pr-4">Label</th>
                         <th className="py-2 pr-4">Unit</th>
@@ -171,7 +171,7 @@ export default async function ProfitabilityPage({ searchParams }: { searchParams
                     </thead>
                     <tbody>
                       {assumptions.items.map((item) => (
-                        <tr key={item.key} className="border-b border-mist/60">
+                        <tr key={item.key} className="border-b border-[#e3e8ee]/60">
                           <td className="py-2 pr-4 font-mono text-xs">{item.key}</td>
                           <td className="py-2 pr-4">
                             {item.label}
@@ -191,7 +191,7 @@ export default async function ProfitabilityPage({ searchParams }: { searchParams
                                 />
                                 <input type="hidden" name="label" value={item.label} />
                                 <input type="hidden" name="unit" value={item.unit ?? ""} />
-                                <button className="min-h-8 rounded-full bg-lime px-3 text-xs font-bold text-ink">Save</button>
+                                <button className="min-h-8 rounded-full bg-[#635bff] px-3 text-xs font-bold text-white">Save</button>
                               </form>
                             ) : (
                               <span className="font-semibold">{String(item.value)}</span>

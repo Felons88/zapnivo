@@ -29,7 +29,7 @@ export function EvalsClient({ suites, runs }: { suites: Suite[]; runs: Run[] }) 
           <thead><tr className="text-left text-graphite"><th className="py-1">Name</th><th>Agent</th><th>Status</th><th className="text-right">Actions</th></tr></thead>
           <tbody>
             {suites.map((s) => (
-              <tr key={s.id} className="border-t border-mist/40">
+              <tr key={s.id} className="border-t border-[#e3e8ee]/40">
                 <td className="py-2">{s.name}</td>
                 <td>{s.agent_id ?? "—"}</td>
                 <td>{s.active ? "active" : "inactive"}</td>
@@ -55,7 +55,7 @@ export function EvalsClient({ suites, runs }: { suites: Suite[]; runs: Run[] }) 
           <thead><tr className="text-left text-graphite"><th className="py-1">When</th><th>Suite</th><th>Score</th><th>Passed</th><th>Latency</th></tr></thead>
           <tbody>
             {runs.map((r) => (
-              <tr key={r.id} className="border-t border-mist/40">
+              <tr key={r.id} className="border-t border-[#e3e8ee]/40">
                 <td className="py-2">{new Date(r.created_at).toLocaleString()}</td>
                 <td className="font-mono text-xs">{r.suite_id.slice(0, 8)}</td>
                 <td>{r.score != null ? Math.round(r.score) : "—"}</td>

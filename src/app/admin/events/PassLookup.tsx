@@ -40,7 +40,7 @@ export function PassLookup() {
   const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" }) : "—");
 
   return (
-    <div className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
+    <div className="rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm">
       <h2 className="font-display text-lg font-bold">Pass lookup</h2>
       <p className="mt-1 text-xs text-graphite">Enter the full pass code — it's hashed before lookup; codes are never stored in plain text.</p>
       <form onSubmit={lookup} className="mt-4 flex flex-wrap gap-3">
@@ -49,7 +49,7 @@ export function PassLookup() {
       </form>
       {error && <p className="mt-3 text-sm font-bold text-red-700">{error}</p>}
       {result && (
-        <div className="mt-4 rounded-xl border border-mist bg-mist/30 p-4 text-sm">
+        <div className="mt-4 rounded-xl border border-[#e3e8ee] bg-[#eef1f5]/30 p-4 text-sm">
           <p><strong>Event:</strong> {result.event?.name ?? result.pass.event_id} ({result.event?.status ?? "?"})</p>
           <p><strong>Pass:</strong> {result.pass.status} · {result.pass.units_used}/{result.pass.units_granted} units used</p>
           <p><strong>Paid:</strong> {result.pass.paid_at ? when(result.pass.paid_at) : "no"} · <strong>Expires:</strong> {when(result.pass.expires_at)}</p>

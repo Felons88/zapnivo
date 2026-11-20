@@ -26,7 +26,7 @@ export default async function EmailDetail({ params }: { params: Promise<{ id: st
   const ticket = t as { ticket_number: string } | null;
 
   const Row = ({ k, v }: { k: string; v: React.ReactNode }) => (
-    <div className="flex items-baseline justify-between gap-4 border-b border-mist/70 py-2 last:border-0"><dt className="text-sm text-graphite">{k}</dt><dd className="text-right text-sm font-bold">{v}</dd></div>
+    <div className="flex items-baseline justify-between gap-4 border-b border-[#e3e8ee]/70 py-2 last:border-0"><dt className="text-sm text-graphite">{k}</dt><dd className="text-right text-sm font-bold">{v}</dd></div>
   );
 
   return (
@@ -37,7 +37,7 @@ export default async function EmailDetail({ params }: { params: Promise<{ id: st
           <span className="text-xs font-bold uppercase tracking-widest text-graphite">Staff only · outbox record</span>
         </div>
 
-        <section className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
+        <section className="rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="font-display text-xl font-bold">{mail.subject}</h2>
             <Pill tone={mail.status === "sent" ? "lime" : mail.status === "failed" ? "red" : "gold"}>{mail.status}</Pill>
@@ -55,7 +55,7 @@ export default async function EmailDetail({ params }: { params: Promise<{ id: st
           )}
         </section>
 
-        <section className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
+        <section className="rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm">
           <h3 className="font-display text-lg font-bold">Message body</h3>
           <p className="mt-3 whitespace-pre-wrap text-sm leading-7">{mail.body}</p>
         </section>

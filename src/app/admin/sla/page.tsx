@@ -29,17 +29,17 @@ export default async function SlaPage() {
             <Metric label="Avg resolution" value={hrs(s.avgResolutionHours)} sub={`${s.resolved} resolved`} />
             <Metric label="Breaches" value={s.firstResponseBreaches + s.resolutionBreaches} sub={`${s.firstResponseBreaches} first response · ${s.resolutionBreaches} resolution`} />
           </section>
-          <section className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
+          <section className="rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm">
             <h2 className="font-display text-lg font-bold">Internal targets</h2>
             <p className="mt-2 text-sm text-graphite">{(Object.entries(SLA_HOURS) as [string, { first: number; resolve: number }][]).map(([p, v]) => `${p}: ${v.first}h first response, ${v.resolve}h resolution`).join(" · ")}. Internal only; not published to partners.</p>
           </section>
-          <section className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
-            <div className="border-b border-mist px-4 py-4"><h2 className="font-display text-lg font-bold">By organization</h2></div>
+          <section className="overflow-x-auto rounded-2xl border border-[#e3e8ee] bg-white shadow-sm">
+            <div className="border-b border-[#e3e8ee] px-4 py-4"><h2 className="font-display text-lg font-bold">By organization</h2></div>
             {s.perOrg.length === 0 ? <p className="px-4 py-8 text-sm text-graphite">No partner tickets yet.</p> : (
               <table className="w-full min-w-[520px] text-left text-sm">
-                <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite"><tr>{["Organization", "Tickets", "Open", "Breached"].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr></thead>
+                <thead className="border-b border-[#e3e8ee] bg-[#eef1f5]/40 text-xs uppercase tracking-wider text-graphite"><tr>{["Organization", "Tickets", "Open", "Breached"].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr></thead>
                 <tbody>{s.perOrg.map((o) => (
-                  <tr key={o.orgId ?? "none"} className="border-b border-mist/70 last:border-0">
+                  <tr key={o.orgId ?? "none"} className="border-b border-[#e3e8ee]/70 last:border-0">
                     <td className="px-4 py-3 font-bold">{o.orgId ? names.get(o.orgId) ?? "Unknown organization" : "Unassigned"}</td>
                     <td className="px-4 py-3">{o.total}</td><td className="px-4 py-3">{o.open}</td><td className="px-4 py-3 font-bold">{o.breaches}</td>
                   </tr>))}</tbody>

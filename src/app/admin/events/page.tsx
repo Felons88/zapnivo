@@ -41,7 +41,7 @@ export default async function AdminEvents({ searchParams }: { searchParams: Prom
     <AdminGate title="Events & groups" nav="fleet">
       {!db ? <EmptyCard title="Data not connected">Connect Supabase.</EmptyCard> : (
         <div className="space-y-4">
-          {sp.done && <p className="rounded-xl bg-lime px-4 py-2.5 text-sm font-bold text-ink">Done ({sp.done}).</p>}
+          {sp.done && <p className="rounded-xl bg-[#635bff] px-4 py-2.5 text-sm font-bold text-white">Done ({sp.done}).</p>}
 
           <section className="grid gap-4 sm:grid-cols-3">
             <Metric label="Events" value={events.length} />
@@ -51,11 +51,11 @@ export default async function AdminEvents({ searchParams }: { searchParams: Prom
 
           <PassLookup />
 
-          <section className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
-            <div className="border-b border-mist px-4 py-4"><h2 className="font-display text-lg font-bold">Event programs</h2></div>
+          <section className="overflow-x-auto rounded-2xl border border-[#e3e8ee] bg-white shadow-sm">
+            <div className="border-b border-[#e3e8ee] px-4 py-4"><h2 className="font-display text-lg font-bold">Event programs</h2></div>
             {events.length === 0 ? <p className="px-4 py-8 text-sm text-graphite">No events yet.</p> : (
               <table className="w-full min-w-[900px] text-left text-sm">
-                <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite">
+                <thead className="border-b border-[#e3e8ee] bg-[#eef1f5]/40 text-xs uppercase tracking-wider text-graphite">
                   <tr>{["Event", "Organizer", "Window", "Price", "Status", "Actions"].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr>
                 </thead>
                 <tbody>
@@ -66,7 +66,7 @@ export default async function AdminEvents({ searchParams }: { searchParams: Prom
                       paused: ["active", "closed", "cancelled"], closed: [], cancelled: [],
                     };
                     return (
-                      <tr key={e.id} className="border-b border-mist/70 last:border-0">
+                      <tr key={e.id} className="border-b border-[#e3e8ee]/70 last:border-0">
                         <td className="px-4 py-3 font-bold">{e.name}<div className="text-xs font-normal text-graphite">{e.max_redemptions ? `cap ${e.max_redemptions}` : "uncapped"}</div></td>
                         <td className="px-4 py-3 text-xs text-graphite">{org?.email ?? e.organizer_id.slice(0, 8)}</td>
                         <td className="px-4 py-3 text-xs">{when(e.starts_at)} → {when(e.ends_at)}</td>
@@ -74,7 +74,7 @@ export default async function AdminEvents({ searchParams }: { searchParams: Prom
                           <form method="post" action="/api/admin/events" className="flex items-center gap-1">
                             <input type="hidden" name="action" value="set_price" /><input type="hidden" name="event_id" value={e.id} />
                             <input name="price_cents" required type="number" min={1} defaultValue={e.price_cents ?? ""} placeholder="cents" className={`${input} w-24`} />
-                            <button className="min-h-9 rounded-full bg-mist px-3 text-xs font-bold hover:bg-lime">Set</button>
+                            <button className="min-h-9 rounded-full bg-[#eef1f5] px-3 text-xs font-bold hover:bg-[#edeeff]">Set</button>
                           </form>
                         </td>
                         <td className="px-4 py-3"><Pill tone={e.status === "active" ? "lime" : "mist"}>{e.status}</Pill></td>
@@ -83,7 +83,7 @@ export default async function AdminEvents({ searchParams }: { searchParams: Prom
                             {(next[e.status] ?? []).map((to) => (
                               <form key={to} method="post" action="/api/admin/events">
                                 <input type="hidden" name="action" value="set_status" /><input type="hidden" name="event_id" value={e.id} /><input type="hidden" name="to" value={to} />
-                                <button className={`min-h-8 rounded-full px-3 text-xs font-bold ${to === "cancelled" ? "border border-red-300 text-red-700" : "bg-mist hover:bg-lime"}`}>{to}</button>
+                                <button className={`min-h-8 rounded-full px-3 text-xs font-bold ${to === "cancelled" ? "border border-red-300 text-red-700" : "bg-[#eef1f5] hover:bg-[#edeeff]"}`}>{to}</button>
                               </form>
                             ))}
                           </div>
@@ -96,17 +96,17 @@ export default async function AdminEvents({ searchParams }: { searchParams: Prom
             )}
           </section>
 
-          <section className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
-            <div className="border-b border-mist px-4 py-4"><h2 className="font-display text-lg font-bold">Rental groups — credit pools</h2></div>
-            <p className="border-b border-mist px-4 py-2 text-xs text-graphite">Self-serve funding isn&apos;t available yet — staff adjustments here are the only funding path and are fully audited.</p>
+          <section className="overflow-x-auto rounded-2xl border border-[#e3e8ee] bg-white shadow-sm">
+            <div className="border-b border-[#e3e8ee] px-4 py-4"><h2 className="font-display text-lg font-bold">Rental groups — credit pools</h2></div>
+            <p className="border-b border-[#e3e8ee] px-4 py-2 text-xs text-graphite">Self-serve funding isn&apos;t available yet — staff adjustments here are the only funding path and are fully audited.</p>
             {groups.length === 0 ? <p className="px-4 py-8 text-sm text-graphite">No groups yet.</p> : (
               <table className="w-full min-w-[760px] text-left text-sm">
-                <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite">
+                <thead className="border-b border-[#e3e8ee] bg-[#eef1f5]/40 text-xs uppercase tracking-wider text-graphite">
                   <tr>{["Group", "Status", "Members cap", "Pool", "Adjust (± cents)"].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr>
                 </thead>
                 <tbody>
                   {groups.map((g) => (
-                    <tr key={g.id} className="border-b border-mist/70 last:border-0">
+                    <tr key={g.id} className="border-b border-[#e3e8ee]/70 last:border-0">
                       <td className="px-4 py-3 font-bold">{g.name}<div className="text-xs font-normal text-graphite">{g.organizer_id.slice(0, 8)}</div></td>
                       <td className="px-4 py-3"><Pill tone={g.status === "active" ? "lime" : "mist"}>{g.status}</Pill></td>
                       <td className="px-4 py-3">{g.max_members}</td>

@@ -64,25 +64,25 @@ export default async function ReceptionistPage({ searchParams }: { searchParams:
       ) : (
         <div className="space-y-5">
           <section className="flex flex-wrap items-center justify-between gap-4 rounded-2xl bg-[#142126] p-4 text-white ">
-            <div><p className="eyebrow text-lime">Communications desk</p><h2 className="mt-1 text-xl font-bold tracking-tight">One place to receive and respond.</h2><p className="mt-1 max-w-2xl text-xs text-[#b7c8c2]">Review email drafts, assign correspondence, and respond to inbound texts from the same workspace.</p></div>
+            <div><p className="eyebrow text-[#635bff]">Communications desk</p><h2 className="mt-1 text-xl font-bold tracking-tight">One place to receive and respond.</h2><p className="mt-1 max-w-2xl text-xs text-[#b7c8c2]">Review email drafts, assign correspondence, and respond to inbound texts from the same workspace.</p></div>
             <Link href="/admin/support" className="rounded-lg border border-white/25 px-4 py-2.5 text-sm font-bold hover:bg-white/10">Customer support →</Link>
           </section>
-          <nav aria-label="Communication channels" className="flex gap-2 border-b border-mist pb-3">
-            <Link href="/admin/receptionist" className={"rounded-lg px-4 py-2 text-sm font-bold " + (channel === "email" ? "bg-ink text-white" : "bg-white text-graphite")}>Email threads</Link>
-            <Link href="/admin/receptionist?channel=phone" className={"rounded-lg px-4 py-2 text-sm font-bold " + (channel === "phone" ? "bg-ink text-white" : "bg-white text-graphite")}>Phone &amp; SMS</Link>
+          <nav aria-label="Communication channels" className="flex gap-2 border-b border-[#e3e8ee] pb-3">
+            <Link href="/admin/receptionist" className={"rounded-lg px-4 py-2 text-sm font-bold " + (channel === "email" ? "bg-[#0a2540] text-white" : "bg-white text-graphite")}>Email threads</Link>
+            <Link href="/admin/receptionist?channel=phone" className={"rounded-lg px-4 py-2 text-sm font-bold " + (channel === "phone" ? "bg-[#0a2540] text-white" : "bg-white text-graphite")}>Phone &amp; SMS</Link>
           </nav>
           {channel === "phone" ? phoneError ? <EmptyCard title="Phone messages unavailable">The SMS log or opt-out list could not load. Try again shortly.</EmptyCard> : <PhoneDesk rows={phoneRows} optedOutPhones={optedOutPhones} selectedPhone={sp.phone} q={sp.q} result={sp.result} /> : <>
           <div className="grid gap-3 sm:grid-cols-3">
-            <div className="rounded-xl border border-mist bg-white p-4"><p className="eyebrow text-forest">Current folder</p><p className="mt-2 text-xl font-bold">{FOLDER_LABELS[folder]}</p></div>
-            <div className="rounded-xl border border-mist bg-white p-4"><p className="eyebrow text-forest">Conversations</p><p className="mt-2 text-xl font-bold">{threads.length}</p></div>
-            <div className="rounded-xl border border-mist bg-white p-4"><p className="eyebrow text-forest">Workflow</p><p className="mt-2 text-sm font-bold">Draft · review · reply · assign</p></div>
+            <div className="rounded-xl border border-[#e3e8ee] bg-white p-4"><p className="eyebrow text-forest">Current folder</p><p className="mt-2 text-xl font-bold">{FOLDER_LABELS[folder]}</p></div>
+            <div className="rounded-xl border border-[#e3e8ee] bg-white p-4"><p className="eyebrow text-forest">Conversations</p><p className="mt-2 text-xl font-bold">{threads.length}</p></div>
+            <div className="rounded-xl border border-[#e3e8ee] bg-white p-4"><p className="eyebrow text-forest">Workflow</p><p className="mt-2 text-sm font-bold">Draft · review · reply · assign</p></div>
           </div>
         <div className="grid gap-4 lg:grid-cols-[170px_minmax(280px,360px)_minmax(0,1fr)]">
           {/* Folders */}
-          <nav aria-label="Folders" className="flex gap-2 overflow-x-auto lg:flex-col lg:overflow-visible lg:rounded-2xl lg:border lg:border-mist lg:bg-white lg:p-2">
+          <nav aria-label="Folders" className="flex gap-2 overflow-x-auto lg:flex-col lg:overflow-visible lg:rounded-2xl lg:border lg:border-[#e3e8ee] lg:bg-white lg:p-2">
             {FOLDERS.map((f) => (
               <a key={f} href={href({ folder: f, thread: undefined })}
-                className={`shrink-0 rounded-full px-4 py-2 text-sm font-bold lg:rounded-xl ${folder === f ? "bg-ink text-white" : "bg-white text-graphite hover:bg-mist"}`}>
+                className={`shrink-0 rounded-full px-4 py-2 text-sm font-bold lg:rounded-xl ${folder === f ? "bg-[#0a2540] text-white" : "bg-white text-graphite hover:bg-[#eef1f5]"}`}>
                 {FOLDER_LABELS[f]}
               </a>
             ))}
@@ -94,7 +94,7 @@ export default async function ReceptionistPage({ searchParams }: { searchParams:
               <input type="hidden" name="folder" value={folder} />
               <input name="q" defaultValue={sp.q} aria-label="Search correspondence" placeholder="Search sender or subject…" className="min-h-10 min-w-[160px] flex-1 rounded-lg border border-silver/70 bg-white px-4 text-sm" />
               <select name="category" defaultValue={category ?? ""} aria-label="Filter by category" className="min-h-10 max-w-32 rounded-lg border border-silver/70 bg-white px-2 text-xs"><option value="">All topics</option>{RECEPTIONIST_CATEGORIES.map((c) => <option key={c} value={c}>{c.replace(/_/g, " ")}</option>)}</select>
-              <button className="rounded-lg bg-ink px-3 text-xs font-bold text-white">Find</button>
+              <button className="rounded-lg bg-[#0a2540] px-3 text-xs font-bold text-white">Find</button>
             </form>
             {threads.length === 0 ? (
               <EmptyCard title="Nothing here">No correspondence in this folder.</EmptyCard>
@@ -103,7 +103,7 @@ export default async function ReceptionistPage({ searchParams }: { searchParams:
                 {threads.map((t) => (
                   <li key={t.id}>
                     <a href={href({ thread: t.id })}
-                      className={`block rounded-2xl border bg-white p-3 shadow-sm transition hover:border-ink ${detail?.thread.id === t.id ? "border-ink ring-1 ring-ink" : "border-mist"}`}>
+                      className={`block rounded-2xl border bg-white p-3 shadow-sm transition hover:border-ink ${detail?.thread.id === t.id ? "border-ink ring-1 ring-ink" : "border-[#e3e8ee]"}`}>
                       <div className="flex items-center justify-between gap-2">
                         <p className="truncate text-sm font-bold">{t.sender_email}</p>
                         <span className="shrink-0 text-[11px] text-graphite">{new Date(t.last_message_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>

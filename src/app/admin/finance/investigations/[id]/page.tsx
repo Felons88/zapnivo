@@ -71,7 +71,7 @@ export default async function CasePage({ params }: { params: Promise<{ id: strin
         <p className="text-sm"><Link href="/admin/finance/investigations" className="font-bold text-forest underline">← All investigations</Link></p>
 
         {/* Header */}
-        <section className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
+        <section className="rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm">
           <div className="flex flex-wrap items-center gap-2">
             <Pill tone={TONE[c.status] ?? "mist"}>{label(c.status)}</Pill>
             <Pill tone={TONE[c.severity] ?? "mist"}>{c.severity} severity</Pill>
@@ -87,7 +87,7 @@ export default async function CasePage({ params }: { params: Promise<{ id: strin
             <div><dt className="eyebrow text-[10px] text-graphite">Station</dt><dd className="font-bold">{c.station_id ?? "—"}</dd></div>
           </dl>
           {c.decision_rationale && (
-            <p className="mt-4 rounded-lg bg-mist/50 p-3 text-sm"><b>Decision rationale:</b> {c.decision_rationale}</p>
+            <p className="mt-4 rounded-lg bg-[#eef1f5]/50 p-3 text-sm"><b>Decision rationale:</b> {c.decision_rationale}</p>
           )}
         </section>
 
@@ -103,36 +103,36 @@ export default async function CasePage({ params }: { params: Promise<{ id: strin
               <EmptyCard title="No evidence yet">Run “Re-collect evidence” to build the dossier from live records.</EmptyCard>
             ) : (
               <>
-                <section className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
+                <section className="rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm">
                   <h3 className="font-display text-lg font-bold">Verified facts</h3>
                   <p className="mb-3 text-xs text-graphite">Pulled from system records — each cites its source row.</p>
                   <FactList facts={dossier.verified_facts} empty="No verified facts collected." />
                 </section>
 
-                <section className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
+                <section className="rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm">
                   <h3 className="font-display text-lg font-bold">Customer statements</h3>
                   <p className="mb-3 text-xs text-graphite">What the customer said — unverified claims, kept separate from facts.</p>
                   <FactList facts={dossier.customer_statements} empty="No customer statements on file." />
                 </section>
 
-                <section className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
+                <section className="rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm">
                   <h3 className="font-display text-lg font-bold">System observations</h3>
                   <FactList facts={dossier.system_observations} empty="No observations." />
                 </section>
 
                 <div className="grid gap-4 md:grid-cols-2">
-                  <section className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
+                  <section className="rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm">
                     <h3 className="font-display text-lg font-bold">Missing records</h3>
                     <p className="mb-3 text-xs text-graphite">Gaps in the data — never counted against the customer.</p>
                     <MissingList items={dossier.missing_records} />
                   </section>
-                  <section className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
+                  <section className="rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm">
                     <h3 className="font-display text-lg font-bold">Conflicts</h3>
                     <FactList facts={dossier.conflicts} empty="No conflicts detected." />
                   </section>
                 </div>
 
-                <section className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
+                <section className="rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm">
                   <h3 className="font-display text-lg font-bold">Policy notes</h3>
                   <ul className="list-disc space-y-1 pl-5 text-sm text-graphite">
                     {dossier.policy_notes.map((p, i) => <li key={i}>{p}</li>)}
@@ -174,7 +174,7 @@ export default async function CasePage({ params }: { params: Promise<{ id: strin
                 {rec.credit_restore && (
                   <p className="mt-3 rounded-lg bg-gold/30 p-3 text-sm"><b>Credit restoration suggested:</b> {rec.credit_restore.note}</p>
                 )}
-                <div className="mt-4 rounded-xl bg-mist/50 p-4">
+                <div className="mt-4 rounded-xl bg-[#eef1f5]/50 p-4">
                   <p className="text-xs font-extrabold uppercase tracking-wider text-graphite">Draft customer explanation</p>
                   <p className="mt-1 text-sm italic">“{rec.customer_explanation_draft}”</p>
                 </div>
@@ -183,12 +183,12 @@ export default async function CasePage({ params }: { params: Promise<{ id: strin
 
             {/* Risk indicators */}
             {signals.length > 0 && (
-              <section className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
+              <section className="rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm">
                 <h3 className="font-display text-lg font-bold">Risk indicators</h3>
                 <p className="mb-3 text-xs text-graphite">Pattern signals for human review — not accusations, never auto-applied.</p>
                 <ul className="space-y-3">
                   {signals.map((s, i) => (
-                    <li key={i} className="rounded-xl border border-mist p-3">
+                    <li key={i} className="rounded-xl border border-[#e3e8ee] p-3">
                       <div className="flex items-center gap-2">
                         <Pill tone={s.severity === "high" ? "red" : s.severity === "warn" ? "gold" : "mist"}>{s.severity}</Pill>
                         <span className="text-sm font-bold">{label(s.kind)}</span>
@@ -204,12 +204,12 @@ export default async function CasePage({ params }: { params: Promise<{ id: strin
         </div>
 
         {/* Audit timeline */}
-        <section className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
+        <section className="rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm">
           <h3 className="font-display text-lg font-bold">Case timeline</h3>
           {events.length === 0 ? (
             <p className="mt-2 text-sm text-graphite">No events yet.</p>
           ) : (
-            <ol className="mt-4 space-y-3 border-l-2 border-mist pl-5">
+            <ol className="mt-4 space-y-3 border-l-2 border-[#e3e8ee] pl-5">
               {events.map((e) => (
                 <li key={e.id} className="text-sm">
                   <span className="font-bold">{label(e.action)}</span>

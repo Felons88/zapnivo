@@ -70,7 +70,7 @@ export default async function AdminAds({ searchParams }: { searchParams: Promise
         <EmptyCard title="Advertising data not connected">Connect Supabase to see live inquiries and campaigns.</EmptyCard>
       ) : (
         <div className="space-y-4">
-          {feedback.result && <p role="status" className={`rounded-xl px-4 py-3 text-sm font-bold ${feedback.result === "saved" ? "bg-lime" : "bg-red-100 text-red-900"}`}>{feedback.result === "saved" ? "Saved." : "Could not save — check the values and try again."}</p>}
+          {feedback.result && <p role="status" className={`rounded-xl px-4 py-3 text-sm font-bold ${feedback.result === "saved" ? "bg-[#635bff] text-white" : "bg-red-100 text-red-900"}`}>{feedback.result === "saved" ? "Saved." : "Could not save — check the values and try again."}</p>}
 
           <section aria-label="Advertising summary" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
             <Metric label="Inquiries" value={inqRows.filter((i) => i.state === "new").length} sub={`${inqRows.length} total`} />
@@ -90,7 +90,7 @@ export default async function AdminAds({ searchParams }: { searchParams: Promise
                 const cr = creativesByCampaign.get(c.id) ?? [];
                 const submitted = cr.filter((x) => x.status === "submitted");
                 return (
-                  <article key={c.id} className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
+                  <article key={c.id} className="rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm">
                     <div className="flex flex-wrap items-start justify-between gap-4">
                       <div>
                         <h3 className="font-display text-lg font-bold">{c.name}</h3>
@@ -109,7 +109,7 @@ export default async function AdminAds({ searchParams }: { searchParams: Promise
                     {cr.length > 0 && (
                       <ul className="mt-4 space-y-2">
                         {cr.map((x) => (
-                          <li key={x.id} className="flex items-center justify-between rounded-lg bg-mist/50 px-3 py-2 text-sm">
+                          <li key={x.id} className="flex items-center justify-between rounded-lg bg-[#eef1f5]/50 px-3 py-2 text-sm">
                             <span className="font-semibold">{x.headline ?? `${x.kind} creative`}</span>
                             <span className="flex items-center gap-2 text-xs text-graphite"><Pill tone={x.status === "approved" ? "lime" : x.status === "rejected" ? "red" : "gold"}>{x.status}</Pill>{x.review_note ? <span className="max-w-48 truncate">{x.review_note}</span> : null}</span>
                           </li>
@@ -119,12 +119,12 @@ export default async function AdminAds({ searchParams }: { searchParams: Promise
                     <div className="mt-4 flex flex-wrap gap-2">
                       <form method="post" action="/api/admin/advertising" className="flex items-center gap-2">
                         <input type="hidden" name="action" value="campaign_review" /><input type="hidden" name="id" value={c.id} /><input type="hidden" name="decision" value="approve" />
-                        <button className="min-h-9 rounded-full bg-lime px-4 text-xs font-bold hover:brightness-95" disabled={submitted.length === 0 && cr.every((x) => x.status === "draft")}>Approve{submitted.length ? ` (${submitted.length} creative${submitted.length > 1 ? "s" : ""})` : ""}</button>
+                        <button className="min-h-9 rounded-full bg-[#635bff] text-white px-4 text-xs font-bold hover:brightness-95" disabled={submitted.length === 0 && cr.every((x) => x.status === "draft")}>Approve{submitted.length ? ` (${submitted.length} creative${submitted.length > 1 ? "s" : ""})` : ""}</button>
                       </form>
                       <form method="post" action="/api/admin/advertising" className="flex items-center gap-2">
                         <input type="hidden" name="action" value="campaign_review" /><input type="hidden" name="id" value={c.id} /><input type="hidden" name="decision" value="reject" />
                         <input name="note" placeholder="Reason (optional)" className="min-h-9 rounded-lg border border-silver/60 px-2 text-xs" />
-                        <button className="min-h-9 rounded-full bg-mist px-3 text-xs font-bold hover:bg-red-100">Reject</button>
+                        <button className="min-h-9 rounded-full bg-[#eef1f5] px-3 text-xs font-bold hover:bg-red-100">Reject</button>
                       </form>
                     </div>
                   </article>
@@ -134,18 +134,18 @@ export default async function AdminAds({ searchParams }: { searchParams: Promise
           </section>
 
           {/* ── Live campaigns ────────────────────────────────────── */}
-          <section aria-label="Campaigns" className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
-            <div className="border-b border-mist px-4 py-4"><h2 className="font-display text-lg font-bold">All campaigns</h2></div>
+          <section aria-label="Campaigns" className="overflow-x-auto rounded-2xl border border-[#e3e8ee] bg-white shadow-sm">
+            <div className="border-b border-[#e3e8ee] px-4 py-4"><h2 className="font-display text-lg font-bold">All campaigns</h2></div>
             {campRows.length === 0 ? (
               <p className="px-4 py-8 text-sm text-graphite">No campaigns yet. Playback is only reported when a station confirms it.</p>
             ) : (
               <table className="w-full min-w-[960px] text-left text-sm">
-                <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite">
+                <thead className="border-b border-[#e3e8ee] bg-[#eef1f5]/40 text-xs uppercase tracking-wider text-graphite">
                   <tr>{["Campaign", "Advertiser", "Status", "Payment", "Budget", "Runs", "Actions"].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr>
                 </thead>
                 <tbody>
                   {campRows.map((c) => (
-                    <tr key={c.id} className="border-b border-mist/70 last:border-0 hover:bg-lime/10">
+                    <tr key={c.id} className="border-b border-[#e3e8ee]/70 last:border-0 hover:bg-[#edeeff]">
                       <td className="px-4 py-3 font-bold">{c.name}</td>
                       <td className="px-4 py-3 text-xs font-semibold">{advertiserName(c)}</td>
                       <td className="px-4 py-3"><Pill tone={c.status in STATE_TONE ? STATE_TONE[c.status as keyof typeof STATE_TONE] : "mist"}>{c.status.replace("_", " ")}</Pill></td>
@@ -154,10 +154,10 @@ export default async function AdminAds({ searchParams }: { searchParams: Promise
                       <td className="px-4 py-3 text-xs text-graphite">{when(c.starts_at)} → {when(c.ends_at)}</td>
                       <td className="px-4 py-3">
                         <div className="flex flex-wrap gap-1">
-                          {c.status === "approved" && <form method="post" action="/api/admin/advertising"><input type="hidden" name="action" value="campaign_status" /><input type="hidden" name="id" value={c.id} /><input type="hidden" name="status" value="scheduled" /><button className="min-h-8 rounded-full bg-mist px-2.5 text-[11px] font-bold">Schedule</button></form>}
-                          {c.status === "scheduled" && <form method="post" action="/api/admin/advertising"><input type="hidden" name="action" value="campaign_status" /><input type="hidden" name="id" value={c.id} /><input type="hidden" name="status" value="live" /><button className="min-h-8 rounded-full bg-lime px-2.5 text-[11px] font-bold">Go live</button></form>}
-                          {c.status === "live" && <form method="post" action="/api/admin/advertising"><input type="hidden" name="action" value="campaign_status" /><input type="hidden" name="id" value={c.id} /><input type="hidden" name="status" value="paused" /><button className="min-h-8 rounded-full bg-mist px-2.5 text-[11px] font-bold">Pause</button></form>}
-                          {c.status === "paused" && <form method="post" action="/api/admin/advertising"><input type="hidden" name="action" value="campaign_status" /><input type="hidden" name="id" value={c.id} /><input type="hidden" name="status" value="live" /><button className="min-h-8 rounded-full bg-lime px-2.5 text-[11px] font-bold">Resume</button></form>}
+                          {c.status === "approved" && <form method="post" action="/api/admin/advertising"><input type="hidden" name="action" value="campaign_status" /><input type="hidden" name="id" value={c.id} /><input type="hidden" name="status" value="scheduled" /><button className="min-h-8 rounded-full bg-[#eef1f5] px-2.5 text-[11px] font-bold">Schedule</button></form>}
+                          {c.status === "scheduled" && <form method="post" action="/api/admin/advertising"><input type="hidden" name="action" value="campaign_status" /><input type="hidden" name="id" value={c.id} /><input type="hidden" name="status" value="live" /><button className="min-h-8 rounded-full bg-[#635bff] text-white px-2.5 text-[11px] font-bold">Go live</button></form>}
+                          {c.status === "live" && <form method="post" action="/api/admin/advertising"><input type="hidden" name="action" value="campaign_status" /><input type="hidden" name="id" value={c.id} /><input type="hidden" name="status" value="paused" /><button className="min-h-8 rounded-full bg-[#eef1f5] px-2.5 text-[11px] font-bold">Pause</button></form>}
+                          {c.status === "paused" && <form method="post" action="/api/admin/advertising"><input type="hidden" name="action" value="campaign_status" /><input type="hidden" name="id" value={c.id} /><input type="hidden" name="status" value="live" /><button className="min-h-8 rounded-full bg-[#635bff] text-white px-2.5 text-[11px] font-bold">Resume</button></form>}
                           {(c.status === "live" || c.status === "scheduled" || c.status === "paused") && <form method="post" action="/api/admin/advertising"><input type="hidden" name="action" value="campaign_review" /><input type="hidden" name="id" value={c.id} /><input type="hidden" name="decision" value="taken_down" /><button className="min-h-8 rounded-full bg-red-100 px-2.5 text-[11px] font-bold text-red-900">Take down</button></form>}
                         </div>
                       </td>
@@ -169,8 +169,8 @@ export default async function AdminAds({ searchParams }: { searchParams: Promise
           </section>
 
           {/* ── Rate cards ────────────────────────────────────────── */}
-          <section aria-label="Rate cards" className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
-            <div className="border-b border-mist px-4 py-4 flex flex-wrap items-center justify-between gap-3">
+          <section aria-label="Rate cards" className="overflow-x-auto rounded-2xl border border-[#e3e8ee] bg-white shadow-sm">
+            <div className="border-b border-[#e3e8ee] px-4 py-4 flex flex-wrap items-center justify-between gap-3">
               <h2 className="font-display text-lg font-bold">Rate cards</h2>
               <form method="post" action="/api/admin/advertising" className="flex flex-wrap items-center gap-2 text-xs">
                 <input type="hidden" name="action" value="rate_card_create" />
@@ -184,19 +184,19 @@ export default async function AdminAds({ searchParams }: { searchParams: Promise
                 <input name="min_spend_cents" type="number" min="0" step="1" placeholder="Min spend ¢" className="min-h-9 w-24 rounded-lg border border-silver/60 px-2" aria-label="Minimum spend cents" />
                 <input name="duration_days" type="number" min="1" max="365" placeholder="Days" className="min-h-9 w-16 rounded-lg border border-silver/60 px-2" aria-label="Duration days" />
                 <input name="note" placeholder="Note" className="min-h-9 w-36 rounded-lg border border-silver/60 px-2" aria-label="Note" />
-                <button className="min-h-9 rounded-full bg-mist px-3 font-bold hover:bg-lime">Add rate</button>
+                <button className="min-h-9 rounded-full bg-[#eef1f5] px-3 font-bold hover:bg-[#edeeff]">Add rate</button>
               </form>
             </div>
             {rateRows.length === 0 ? (
               <p className="px-4 py-8 text-sm text-graphite">No rate cards yet. Advertisers see “contact us” pricing until rates are published here.</p>
             ) : (
               <table className="w-full min-w-[760px] text-left text-sm">
-                <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite">
+                <thead className="border-b border-[#e3e8ee] bg-[#eef1f5]/40 text-xs uppercase tracking-wider text-graphite">
                   <tr>{["Placement", "Model", "Unit price", "Min spend", "Duration", "Status", "Note"].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr>
                 </thead>
                 <tbody>
                   {rateRows.map((r) => (
-                    <tr key={r.id} className="border-b border-mist/70 last:border-0">
+                    <tr key={r.id} className="border-b border-[#e3e8ee]/70 last:border-0">
                       <td className="px-4 py-3 font-semibold">{r.placement.replace("_", " ")}</td>
                       <td className="px-4 py-3 text-xs uppercase">{r.pricing_model}</td>
                       <td className="px-4 py-3">{fmt(r.unit_price_cents)}{r.pricing_model === "fixed" ? "/day" : r.pricing_model === "cpm" ? "/1k" : "/click"}</td>
@@ -212,18 +212,18 @@ export default async function AdminAds({ searchParams }: { searchParams: Promise
           </section>
 
           {/* ── Sponsored charging ────────────────────────────────── */}
-          <section aria-label="Sponsored charging" className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
-            <div className="border-b border-mist px-4 py-4"><h2 className="font-display text-lg font-bold">Sponsored charging</h2></div>
+          <section aria-label="Sponsored charging" className="overflow-x-auto rounded-2xl border border-[#e3e8ee] bg-white shadow-sm">
+            <div className="border-b border-[#e3e8ee] px-4 py-4"><h2 className="font-display text-lg font-bold">Sponsored charging</h2></div>
             {sponsorRows.length === 0 ? (
               <p className="px-4 py-8 text-sm text-graphite">No sponsorships yet. Venue-funded charging credits submitted by partners appear here for approval.</p>
             ) : (
               <table className="w-full min-w-[820px] text-left text-sm">
-                <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite">
+                <thead className="border-b border-[#e3e8ee] bg-[#eef1f5]/40 text-xs uppercase tracking-wider text-graphite">
                   <tr>{["Campaign", "Sponsor", "Credit", "Budget", "Per customer", "Window", "Status", "Actions"].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr>
                 </thead>
                 <tbody>
                   {sponsorRows.map((s) => (
-                    <tr key={s.id} className="border-b border-mist/70 last:border-0 hover:bg-lime/10">
+                    <tr key={s.id} className="border-b border-[#e3e8ee]/70 last:border-0 hover:bg-[#edeeff]">
                       <td className="px-4 py-3 font-bold">{s.name}</td>
                       <td className="px-4 py-3 text-xs font-semibold">{s.sponsor_name}</td>
                       <td className="px-4 py-3 text-xs">{s.credit_minutes} min</td>
@@ -234,7 +234,7 @@ export default async function AdminAds({ searchParams }: { searchParams: Promise
                       <td className="px-4 py-3">
                         {s.status === "pending" && (
                           <div className="flex gap-1">
-                            <form method="post" action="/api/admin/advertising"><input type="hidden" name="action" value="sponsor_review" /><input type="hidden" name="id" value={s.id} /><input type="hidden" name="decision" value="approve" /><button className="min-h-8 rounded-full bg-lime px-2.5 text-[11px] font-bold">Approve</button></form>
+                            <form method="post" action="/api/admin/advertising"><input type="hidden" name="action" value="sponsor_review" /><input type="hidden" name="id" value={s.id} /><input type="hidden" name="decision" value="approve" /><button className="min-h-8 rounded-full bg-[#635bff] text-white px-2.5 text-[11px] font-bold">Approve</button></form>
                             <form method="post" action="/api/admin/advertising"><input type="hidden" name="action" value="sponsor_review" /><input type="hidden" name="id" value={s.id} /><input type="hidden" name="decision" value="reject" /><button className="min-h-8 rounded-full bg-red-100 px-2.5 text-[11px] font-bold text-red-900">Reject</button></form>
                           </div>
                         )}
@@ -247,8 +247,8 @@ export default async function AdminAds({ searchParams }: { searchParams: Promise
           </section>
 
           {/* ── Membership plans ──────────────────────────────────── */}
-          <section aria-label="Membership plans" className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
-            <div className="border-b border-mist px-4 py-4 flex flex-wrap items-center justify-between gap-3">
+          <section aria-label="Membership plans" className="overflow-x-auto rounded-2xl border border-[#e3e8ee] bg-white shadow-sm">
+            <div className="border-b border-[#e3e8ee] px-4 py-4 flex flex-wrap items-center justify-between gap-3">
               <h2 className="font-display text-lg font-bold">Membership plans</h2>
               <form method="post" action="/api/admin/advertising" className="flex flex-wrap items-center gap-2 text-xs">
                 <input type="hidden" name="action" value="plan_create" />
@@ -261,19 +261,19 @@ export default async function AdminAds({ searchParams }: { searchParams: Promise
                 <input name="benefit_rental_minutes" type="number" min="0" placeholder="Minutes" className="min-h-9 w-20 rounded-lg border border-silver/60 px-2" aria-label="Rental minutes benefit" />
                 <input name="benefit_rentals" type="number" min="0" placeholder="Rentals" className="min-h-9 w-20 rounded-lg border border-silver/60 px-2" aria-label="Rentals benefit" />
                 <label className="flex items-center gap-1 font-semibold"><input type="checkbox" name="active" value="on" /> active</label>
-                <button className="min-h-9 rounded-full bg-mist px-3 font-bold hover:bg-lime">Add plan</button>
+                <button className="min-h-9 rounded-full bg-[#eef1f5] px-3 font-bold hover:bg-[#edeeff]">Add plan</button>
               </form>
             </div>
             {planRows.length === 0 ? (
               <p className="px-4 py-8 text-sm text-graphite">No membership plans yet. Plans stay hidden from customers until activated.</p>
             ) : (
               <table className="w-full min-w-[720px] text-left text-sm">
-                <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite">
+                <thead className="border-b border-[#e3e8ee] bg-[#eef1f5]/40 text-xs uppercase tracking-wider text-graphite">
                   <tr>{["Plan", "Price", "Interval", "Benefit", "Status", ""].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr>
                 </thead>
                 <tbody>
                   {planRows.map((p) => (
-                    <tr key={p.id} className="border-b border-mist/70 last:border-0">
+                    <tr key={p.id} className="border-b border-[#e3e8ee]/70 last:border-0">
                       <td className="px-4 py-3"><p className="font-bold">{p.name}</p><p className="text-xs text-graphite">{p.id}</p></td>
                       <td className="px-4 py-3">{fmt(p.price_cents)}</td>
                       <td className="px-4 py-3 text-xs">{p.interval}</td>
@@ -282,7 +282,7 @@ export default async function AdminAds({ searchParams }: { searchParams: Promise
                       <td className="px-4 py-3">
                         <form method="post" action="/api/admin/advertising">
                           <input type="hidden" name="action" value="plan_toggle" /><input type="hidden" name="id" value={p.id} /><input type="hidden" name="active" value={p.active ? "off" : "on"} />
-                          <button className="min-h-8 rounded-full bg-mist px-2.5 text-[11px] font-bold">{p.active ? "Deactivate" : "Activate"}</button>
+                          <button className="min-h-8 rounded-full bg-[#eef1f5] px-2.5 text-[11px] font-bold">{p.active ? "Deactivate" : "Activate"}</button>
                         </form>
                       </td>
                     </tr>
@@ -293,23 +293,23 @@ export default async function AdminAds({ searchParams }: { searchParams: Promise
           </section>
 
           {/* ── Inquiries (existing) ──────────────────────────────── */}
-          <section aria-label="Inquiries" className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
-            <div className="border-b border-mist px-4 py-4"><h2 className="font-display text-lg font-bold">Inquiries</h2></div>
+          <section aria-label="Inquiries" className="overflow-x-auto rounded-2xl border border-[#e3e8ee] bg-white shadow-sm">
+            <div className="border-b border-[#e3e8ee] px-4 py-4"><h2 className="font-display text-lg font-bold">Inquiries</h2></div>
             {inqRows.length === 0 ? (
               <p className="px-4 py-8 text-sm text-graphite">No inquiries yet. Advertising inquiries submitted via /advertise appear here.</p>
             ) : (
               <table className="w-full min-w-[880px] text-left text-sm">
-                <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite">
+                <thead className="border-b border-[#e3e8ee] bg-[#eef1f5]/40 text-xs uppercase tracking-wider text-graphite">
                   <tr>{["Company", "Contact", "Goals", "Budget", "State", "Received"].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr>
                 </thead>
                 <tbody>
                   {inqRows.map((i) => (
-                    <tr key={i.id} className="border-b border-mist/70 last:border-0 hover:bg-lime/10">
+                    <tr key={i.id} className="border-b border-[#e3e8ee]/70 last:border-0 hover:bg-[#edeeff]">
                       <td className="px-4 py-3 font-bold">{i.company_name}</td>
                       <td className="px-4 py-3"><p className="font-semibold">{i.contact_name}</p><p className="text-xs text-graphite">{i.email}</p></td>
                       <td className="max-w-xs px-4 py-3"><p className="truncate text-xs text-graphite">{i.goals}</p></td>
                       <td className="px-4 py-3 text-xs font-semibold">{i.budget ?? "—"}</td>
-                      <td className="px-4 py-3"><form method="post" action="/api/admin/advertising" className="flex items-center gap-2"><input type="hidden" name="action" value="inquiry_state" /><input type="hidden" name="id" value={i.id} /><select name="state" defaultValue={i.state} aria-label={`Inquiry status for ${i.company_name}`} className="min-h-9 rounded-lg border border-silver/60 px-2 text-xs font-semibold">{["new", "reviewing", "closed"].map((s) => <option key={s} value={s}>{s}</option>)}</select><button className="min-h-9 rounded-full bg-mist px-3 text-xs font-bold hover:bg-lime">Save</button></form></td>
+                      <td className="px-4 py-3"><form method="post" action="/api/admin/advertising" className="flex items-center gap-2"><input type="hidden" name="action" value="inquiry_state" /><input type="hidden" name="id" value={i.id} /><select name="state" defaultValue={i.state} aria-label={`Inquiry status for ${i.company_name}`} className="min-h-9 rounded-lg border border-silver/60 px-2 text-xs font-semibold">{["new", "reviewing", "closed"].map((s) => <option key={s} value={s}>{s}</option>)}</select><button className="min-h-9 rounded-full bg-[#eef1f5] px-3 text-xs font-bold hover:bg-[#edeeff]">Save</button></form></td>
                       <td className="px-4 py-3 text-xs text-graphite">{when(i.created_at)}</td>
                     </tr>
                   ))}

@@ -35,25 +35,25 @@ export default async function Users() {
           </section>
 
           {isAdmin ? (
-            <section className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
+            <section className="rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm">
               <h2 className="font-display text-lg font-bold">Invite a team member</h2>
               <form method="post" action="/api/admin/users" className="mt-4 flex flex-wrap items-end gap-3">
                 <input type="hidden" name="action" value="invite_staff" />
                 <div><label htmlFor="u-email" className="mb-1 block text-xs font-bold">Email</label><input id="u-email" name="email" type="email" required className={input} placeholder="agent@zapnivo.com" /></div>
                 <div><label htmlFor="u-name" className="mb-1 block text-xs font-bold">Name</label><input id="u-name" name="name" className={input} /></div>
                 <div><label htmlFor="u-role" className="mb-1 block text-xs font-bold">Role</label><select id="u-role" name="role" className={input}><option value="staff">Staff (agent)</option><option value="admin">Admin</option></select></div>
-                <button className="min-h-10 rounded-full bg-ink px-5 text-sm font-bold text-white">Send invite</button>
+                <button className="min-h-10 rounded-full bg-[#0a2540] px-5 text-sm font-bold text-white">Send invite</button>
               </form>
               <p className="mt-3 text-xs text-graphite">Admins can manage accounts, approve refunds and see all finance data. Staff handle support and operations. Every change is audit-logged.</p>
             </section>
           ) : <p className="rounded-xl bg-gold/30 px-4 py-3 text-sm font-bold">Read-only — only admins can invite users or change roles.</p>}
 
-          <section className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
+          <section className="overflow-x-auto rounded-2xl border border-[#e3e8ee] bg-white shadow-sm">
             <table className="w-full min-w-[960px] text-left text-sm">
-              <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite"><tr>{["User", "Role", "Organization", "Joined", "Support identity", isAdmin ? "Change role" : ""].map((h, i) => <th key={i} className="px-4 py-3 font-extrabold">{h}</th>)}</tr></thead>
+              <thead className="border-b border-[#e3e8ee] bg-[#eef1f5]/40 text-xs uppercase tracking-wider text-graphite"><tr>{["User", "Role", "Organization", "Joined", "Support identity", isAdmin ? "Change role" : ""].map((h, i) => <th key={i} className="px-4 py-3 font-extrabold">{h}</th>)}</tr></thead>
               <tbody>
                 {rows.map((r) => (
-                  <tr key={r.id} className="border-b border-mist/70 last:border-0">
+                  <tr key={r.id} className="border-b border-[#e3e8ee]/70 last:border-0">
                     <td className="px-4 py-3"><p className="font-bold">{r.full_name ?? r.email.split("@")[0]}</p><p className="text-xs text-graphite">{r.email}</p></td>
                     <td className="px-4 py-3"><Pill tone={ROLE_TONE[r.role] ?? "mist"}>{r.role}</Pill></td>
                     <td className="px-4 py-3 text-xs font-semibold">{org(r.organizations)}</td>
@@ -64,7 +64,7 @@ export default async function Users() {
                           <input type="hidden" name="action" value="set_support_identity" /><input type="hidden" name="id" value={r.id} />
                           <input name="full_name" defaultValue={r.full_name ?? ""} required aria-label={`Support name for ${r.email}`} placeholder="First and last name" className="min-h-8 w-40 rounded-lg border border-silver/60 px-2 text-xs" />
                           <select name="support_title" defaultValue={r.support_title ?? (r.role === "admin" ? "manager" : "support_agent")} aria-label={`Support title for ${r.email}`} className="min-h-8 rounded-lg border border-silver/60 px-2 text-xs font-semibold"><option value="support_agent">Support agent</option><option value="manager">Manager</option></select>
-                          <button className="min-h-8 rounded-full bg-mist px-3 text-xs font-bold hover:bg-lime">Save</button>
+                          <button className="min-h-8 rounded-full bg-[#eef1f5] px-3 text-xs font-bold hover:bg-[#edeeff]">Save</button>
                         </form>
                       ) : <span className="text-xs font-semibold">{r.full_name ?? "Name needed"} · {(r.support_title ?? (r.role === "admin" ? "manager" : "support_agent")) === "manager" ? "Manager" : "Support agent"}</span>)}
                     </td>
@@ -73,7 +73,7 @@ export default async function Users() {
                         <form method="post" action="/api/admin/users" className="flex items-center gap-2">
                           <input type="hidden" name="action" value="set_role" /><input type="hidden" name="id" value={r.id} />
                           <select name="role" defaultValue={r.role} aria-label={`Role for ${r.email}`} className="min-h-8 rounded-lg border border-silver/60 px-2 text-xs font-semibold">{["admin", "staff", "partner", "customer"].map((x) => <option key={x}>{x}</option>)}</select>
-                          <button className="min-h-8 rounded-full bg-mist px-3 text-xs font-bold hover:bg-lime">Save</button>
+                          <button className="min-h-8 rounded-full bg-[#eef1f5] px-3 text-xs font-bold hover:bg-[#edeeff]">Save</button>
                         </form>
                       )}
                     </td>
@@ -97,7 +97,7 @@ export default async function Users() {
                       <td className="px-3 py-2">
                         {isAdmin ? (
                           <span className="flex gap-2">
-                            <form method="post" action="/api/admin/privacy"><input type="hidden" name="id" value={r.id} /><input type="hidden" name="action" value="complete" /><button className="min-h-8 rounded-full bg-ink px-3 text-xs font-bold text-white">{r.kind === "deletion" ? "Delete & complete" : "Complete"}</button></form>
+                            <form method="post" action="/api/admin/privacy"><input type="hidden" name="id" value={r.id} /><input type="hidden" name="action" value="complete" /><button className="min-h-8 rounded-full bg-[#0a2540] px-3 text-xs font-bold text-white">{r.kind === "deletion" ? "Delete & complete" : "Complete"}</button></form>
                             <form method="post" action="/api/admin/privacy"><input type="hidden" name="id" value={r.id} /><input type="hidden" name="action" value="cancel" /><button className="min-h-8 rounded-full border border-silver px-3 text-xs font-bold">Cancel</button></form>
                           </span>
                         ) : <span className="text-xs text-graphite">admin only</span>}
@@ -110,13 +110,13 @@ export default async function Users() {
             </section>
           )}
 
-          <section aria-label="My alerts" className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
+          <section aria-label="My alerts" className="rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm">
             <h2 className="font-display text-lg font-bold">My alert preferences</h2>
             <form method="post" action="/api/admin/prefs" className="mt-4 space-y-3 text-sm">
               {([["offline_alerts", "Station offline alerts"], ["low_battery_alerts", "Low power-bank battery alerts"], ["new_partner_inquiries", "New partner inquiries"]] as const).map(([k, label]) => (
                 <label key={k} className="flex items-center gap-3 font-semibold"><input type="checkbox" name={k} defaultChecked={prefs[k]} className="h-4 w-4" />{label}</label>
               ))}
-              <button className="min-h-10 rounded-full bg-ink px-5 text-sm font-bold text-white">Save preferences</button>
+              <button className="min-h-10 rounded-full bg-[#0a2540] px-5 text-sm font-bold text-white">Save preferences</button>
             </form>
           </section>
         </div>

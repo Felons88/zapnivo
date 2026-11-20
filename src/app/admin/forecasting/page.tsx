@@ -95,7 +95,7 @@ export default async function ForecastingPage({ searchParams }: { searchParams: 
           <nav className="flex gap-2 text-xs font-bold" aria-label="Forecast horizon">
             {[7, 30].map((h) => (
               <Link key={h} href={`/admin/forecasting?horizon=${h}`}
-                className={`rounded-full px-4 py-1.5 ${horizon === h ? "bg-ink text-white" : "bg-white text-graphite ring-1 ring-mist"}`}>
+                className={`rounded-full px-4 py-1.5 ${horizon === h ? "bg-[#0a2540] text-white" : "bg-white text-graphite ring-1 ring-mist"}`}>
                 {h}-day forecast
               </Link>
             ))}
@@ -121,7 +121,7 @@ export default async function ForecastingPage({ searchParams }: { searchParams: 
               <Metric label="30-day avg (latest)" value={a.ma30.filter((m) => m.value !== null).at(-1)?.value ?? "—"} />
             </div>
 
-            <section className="rounded-2xl border border-mist bg-white p-4">
+            <section className="rounded-2xl border border-[#e3e8ee] bg-white p-4">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <h2 className="text-lg font-bold">Network demand — history &amp; {horizon}-day estimate</h2>
                 <p className="text-xs font-bold uppercase tracking-wider text-graphite">
@@ -135,19 +135,19 @@ export default async function ForecastingPage({ searchParams }: { searchParams: 
             </section>
 
             {a.status === "ok" && data.networkForecast.length > 0 && (
-              <section className="rounded-2xl border border-mist bg-white p-4">
+              <section className="rounded-2xl border border-[#e3e8ee] bg-white p-4">
                 <h2 className="text-lg font-bold">{horizon}-day network forecast</h2>
                 <div className="mt-4 overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="border-b border-mist text-left text-xs uppercase tracking-wider text-graphite">
+                      <tr className="border-b border-[#e3e8ee] text-left text-xs uppercase tracking-wider text-graphite">
                         <th className="py-2 pr-4">Date</th><th className="py-2 pr-4">Day</th>
                         <th className="py-2 pr-4 text-right">Estimate</th><th className="py-2 pr-4 text-right">Low</th><th className="py-2 text-right">High</th>
                       </tr>
                     </thead>
                     <tbody>
                       {data.networkForecast.map((f) => (
-                        <tr key={f.day} className="border-b border-mist/60">
+                        <tr key={f.day} className="border-b border-[#e3e8ee]/60">
                           <td className="py-2 pr-4 font-semibold">{f.day}</td>
                           <td className="py-2 pr-4 text-graphite">{DOW[dayOfWeek(f.day)]}</td>
                           <td className="py-2 pr-4 text-right font-bold">{f.estimate}</td>
@@ -166,13 +166,13 @@ export default async function ForecastingPage({ searchParams }: { searchParams: 
               </section>
             )}
 
-            <section className="rounded-2xl border border-mist bg-white p-4">
+            <section className="rounded-2xl border border-[#e3e8ee] bg-white p-4">
               <h2 className="text-lg font-bold">Per-station estimates</h2>
               <p className="mt-1 text-xs text-graphite">Top stations by observed starts in the window. Trend arrows are the fitted slope — direction only, not a promise.</p>
               <div className="mt-4 overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-mist text-left text-xs uppercase tracking-wider text-graphite">
+                    <tr className="border-b border-[#e3e8ee] text-left text-xs uppercase tracking-wider text-graphite">
                       <th className="py-2 pr-4">Station</th><th className="py-2 pr-4 text-right">Starts</th>
                       <th className="py-2 pr-4 text-right">Avg/day</th><th className="py-2 pr-4">Trend</th>
                       <th className="py-2 pr-4 text-right">Next {horizon}d est.</th><th className="py-2">Status</th>
@@ -183,7 +183,7 @@ export default async function ForecastingPage({ searchParams }: { searchParams: 
                       const t = trendArrow(s.analysis.trend?.slopePerDay);
                       const nextSum = s.forecast.length ? s.forecast.reduce((sum, f) => sum + f.estimate, 0) : null;
                       return (
-                        <tr key={s.stationId} className="border-b border-mist/60">
+                        <tr key={s.stationId} className="border-b border-[#e3e8ee]/60">
                           <td className="py-2 pr-4 font-semibold">{s.label}</td>
                           <td className="py-2 pr-4 text-right">{s.analysis.total}</td>
                           <td className="py-2 pr-4 text-right">{s.analysis.meanPerDay}</td>
@@ -205,7 +205,7 @@ export default async function ForecastingPage({ searchParams }: { searchParams: 
 
             {/* ── Forecast validation (rolling-origin backtest) ── */}
             {backtest && (
-              <section className="rounded-2xl border border-mist bg-white p-4">
+              <section className="rounded-2xl border border-[#e3e8ee] bg-white p-4">
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
                   <h2 className="text-lg font-bold">Forecast validation</h2>
                   <p className="text-xs font-bold uppercase tracking-wider text-graphite">
@@ -232,7 +232,7 @@ export default async function ForecastingPage({ searchParams }: { searchParams: 
                     <div className="mt-4 overflow-x-auto">
                       <table className="w-full text-sm">
                         <thead>
-                          <tr className="border-b border-mist text-left text-xs uppercase tracking-wider text-graphite">
+                          <tr className="border-b border-[#e3e8ee] text-left text-xs uppercase tracking-wider text-graphite">
                             <th className="py-2 pr-4">Model</th>
                             <th className="py-2 pr-4 text-right">Origins</th>
                             <th className="py-2 pr-4 text-right">Mean MAE</th>
@@ -241,7 +241,7 @@ export default async function ForecastingPage({ searchParams }: { searchParams: 
                         </thead>
                         <tbody>
                           {Object.entries(backtest.byModel).map(([model, s]) => (
-                            <tr key={model} className="border-b border-mist/60">
+                            <tr key={model} className="border-b border-[#e3e8ee]/60">
                               <td className="py-2 pr-4 font-semibold">{model === "seasonal-trend" ? "seasonal index × trend" : model === "linear-trend" ? "linear trend" : "last-day naive"}</td>
                               <td className="py-2 pr-4 text-right">{s?.origins ?? 0}</td>
                               <td className="py-2 pr-4 text-right">{s?.meanMae ?? "—"}</td>
@@ -250,7 +250,7 @@ export default async function ForecastingPage({ searchParams }: { searchParams: 
                               </td>
                             </tr>
                           ))}
-                          <tr className="border-b border-mist/60">
+                          <tr className="border-b border-[#e3e8ee]/60">
                             <td className="py-2 pr-4 font-semibold">naive-last baseline</td>
                             <td className="py-2 pr-4 text-right">{backtest.origins.length}</td>
                             <td className="py-2 pr-4 text-right">{backtest.meanNaiveMae ?? "—"}</td>
@@ -264,7 +264,7 @@ export default async function ForecastingPage({ searchParams }: { searchParams: 
                     <p className="mt-3 text-xs text-graphite">{backtest.caveat}</p>
                   </>
                 )}
-                <p className="mt-3 rounded-xl bg-mist/50 px-4 py-3 text-xs text-graphite">
+                <p className="mt-3 rounded-xl bg-[#eef1f5]/50 px-4 py-3 text-xs text-graphite">
                   <b className="text-ink">Caveat:</b> backtest scores how the same model would have done on past windows of this series.
                   It is evidence about fit, not a guarantee — forecasts are statistical estimates, never guaranteed revenue.
                   Verdict thresholds: reliable ≤25% relative MAE, moderate ≤50%, unreliable above; fewer than 8 scored origins → insufficient data.
@@ -272,7 +272,7 @@ export default async function ForecastingPage({ searchParams }: { searchParams: 
               </section>
             )}
 
-            <section className="rounded-2xl border border-mist bg-paper p-4 text-sm text-graphite">
+            <section className="rounded-2xl border border-[#e3e8ee] bg-paper p-4 text-sm text-graphite">
               <h2 className="text-lg font-bold text-ink">How to read this</h2>
               <ul className="mt-2 list-disc space-y-1 pl-5">
                 <li>{a.caveat}</li>

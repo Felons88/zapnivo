@@ -36,12 +36,12 @@ export function TemplateEditor({ kind, defaultValue }: { kind: string; defaultVa
           onChange={(e) => setBody(e.target.value)}
           className="w-full rounded-lg border border-silver/70 px-3 py-2 text-xs"
         />
-        <p className="mt-1 rounded-lg bg-mist/50 px-2 py-1.5 text-[11px] text-graphite">
+        <p className="mt-1 rounded-lg bg-[#eef1f5]/50 px-2 py-1.5 text-[11px] text-graphite">
           <span className="font-extrabold uppercase tracking-wider">Preview: </span>
           <span className="font-semibold text-ink">{shown}</span>
         </p>
       </div>
-      <button className="mt-5 min-h-8 rounded-full bg-mist px-3 text-xs font-bold hover:bg-lime">Save</button>
+      <button className="mt-5 min-h-8 rounded-full bg-[#eef1f5] px-3 text-xs font-bold hover:bg-[#edeeff]">Save</button>
     </form>
   );
 }

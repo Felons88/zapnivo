@@ -45,13 +45,13 @@ export default async function Rentals({ searchParams }: { searchParams: Promise<
       ) : (
         <div className="space-y-4">
           {feedback.result && (
-            <div role="status" className={`rounded-xl px-5 py-3 text-sm font-bold ${feedback.result === "error" || feedback.result === "flagged" ? "bg-red-100 text-red-900" : "bg-lime text-ink"}`}>
+            <div role="status" className={`rounded-xl px-5 py-3 text-sm font-bold ${feedback.result === "error" || feedback.result === "flagged" ? "bg-red-100 text-red-900" : "bg-[#635bff] text-white"}`}>
               {feedback.detail ?? "Done."}
             </div>
           )}
-          <form action="/admin/rentals" className="flex flex-wrap gap-2 rounded-2xl border border-mist bg-white p-4 shadow-sm">
+          <form action="/admin/rentals" className="flex flex-wrap gap-2 rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm">
             <input name="q" defaultValue={q} aria-label="Find rental reference" placeholder="Find rental reference (ZR-…)" className="min-h-10 min-w-0 flex-1 rounded-lg border border-silver/70 px-3 text-sm" />
-            <button className="rounded-lg bg-ink px-4 text-sm font-bold text-white">Search</button>
+            <button className="rounded-lg bg-[#0a2540] px-4 text-sm font-bold text-white">Search</button>
             {q && <a href="/admin/rentals" className="self-center px-2 text-sm font-bold text-graphite underline">Clear</a>}
           </form>
           {!q && <section aria-label="Rental summary" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -61,13 +61,13 @@ export default async function Rentals({ searchParams }: { searchParams: Promise<
             <Metric label="Captured" value={fmt(captured)} sub="Sum of captured payments" />
           </section>}
 
-          <section aria-label="Rental records" className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
-            <div className="border-b border-mist px-4 py-4"><h2 className="font-display text-lg font-bold">{q ? `Rentals matching “${q}”` : "Recent rental records"}</h2></div>
+          <section aria-label="Rental records" className="overflow-x-auto rounded-2xl border border-[#e3e8ee] bg-white shadow-sm">
+            <div className="border-b border-[#e3e8ee] px-4 py-4"><h2 className="font-display text-lg font-bold">{q ? `Rentals matching “${q}”` : "Recent rental records"}</h2></div>
             {rows.length === 0 ? (
               <p className="px-4 py-8 text-sm text-graphite">No rentals yet. The first rental appears here the moment a customer dispenses.</p>
             ) : (
               <table className="w-full min-w-[880px] text-left text-sm">
-                <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite">
+                <thead className="border-b border-[#e3e8ee] bg-[#eef1f5]/40 text-xs uppercase tracking-wider text-graphite">
                   <tr>{["Reference", "Station", "State", "Started", "Returned", "Due back", "Payment", "Actions"].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr>
                 </thead>
                 <tbody>
@@ -75,7 +75,7 @@ export default async function Rentals({ searchParams }: { searchParams: Promise<
                     const p = payBy.get(r.id);
                     const overdue = r.non_return_deadline && !r.returned_at && new Date(r.non_return_deadline) < new Date();
                     return (
-                      <tr key={r.id} className="border-b border-mist/70 last:border-0 hover:bg-lime/10">
+                      <tr key={r.id} className="border-b border-[#e3e8ee]/70 last:border-0 hover:bg-[#edeeff]">
                         <td className="px-4 py-3 font-bold"><Link className="text-forest underline hover:text-ink" href={`/admin/rentals/${r.id}`}>{r.reference}</Link></td>
                         <td className="px-4 py-3"><p className="font-semibold">{r.kiosks?.venues?.name ?? r.kiosks?.station_id ?? "—"}</p><p className="text-xs text-graphite">{r.kiosks?.venues?.city ?? ""}</p></td>
                         <td className="px-4 py-3"><Pill tone={overdue ? "red" : STATE_TONE[r.state] ?? "mist"}>{overdue ? "overdue" : r.state.replace("_", " ")}</Pill></td>
@@ -85,7 +85,7 @@ export default async function Rentals({ searchParams }: { searchParams: Promise<
                         <td className="px-4 py-3 text-xs font-semibold">{p ? `${fmt(p.amount_captured_cents ?? p.amount_authorized_cents ?? 0)} · ${p.state}` : "—"}</td>
                         <td className="px-4 py-3">
                           {(r.state === "authorized" || r.state === "dispense_pending") && (
-                            <form method="post" action={`/api/rentals/${r.id}`}><input type="hidden" name="action" value="dispense" /><button className="min-h-8 rounded-full bg-lime px-3 text-xs font-bold text-ink">Confirm dispense</button></form>
+                            <form method="post" action={`/api/rentals/${r.id}`}><input type="hidden" name="action" value="dispense" /><button className="min-h-8 rounded-full bg-[#635bff] px-3 text-xs font-bold text-white">Confirm dispense</button></form>
                           )}
                           {(r.state === "active" || r.state === "unreturned") && (
                             <form method="post" action={`/api/rentals/${r.id}`}><input type="hidden" name="action" value="return" /><button className="min-h-8 rounded-full border border-silver/60 px-3 text-xs font-bold hover:border-ink">Record return</button></form>

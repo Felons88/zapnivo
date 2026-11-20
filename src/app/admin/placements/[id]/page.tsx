@@ -78,12 +78,12 @@ export default async function PlacementDetail({ params, searchParams }: { params
     <AdminGate title={app.business_name} nav="placements">
       <div className="space-y-4">
         <Link href="/admin/placements" className="text-sm font-bold underline underline-offset-4">← All placements</Link>
-        {msg && <div role="status" className={`rounded-xl px-5 py-3 text-sm font-bold ${fb.result === "error" ? "bg-red-100 text-red-900" : "bg-lime text-ink"}`}>{msg}</div>}
+        {msg && <div role="status" className={`rounded-xl px-5 py-3 text-sm font-bold ${fb.result === "error" ? "bg-red-100 text-red-900" : "bg-[#635bff] text-white"}`}>{msg}</div>}
 
         <div className="grid gap-4 lg:grid-cols-3">
           {/* ── Pipeline controls ── */}
           <section className="space-y-4 lg:col-span-1">
-            <div className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
+            <div className="rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm">
               <div className="flex items-center justify-between">
                 <h2 className="font-display text-lg font-bold">Stage</h2>
                 <Pill tone={stage === "declined" ? "red" : stage === "active" || stage === "installed" ? "ink" : "lime"}>{STAGE_LABELS[stage]}</Pill>
@@ -102,7 +102,7 @@ export default async function PlacementDetail({ params, searchParams }: { params
                         <input type="hidden" name="application_id" value={app.id} />
                         <input type="hidden" name="stage" value={to} />
                         <input name="note" maxLength={500} placeholder={`Note (optional) → ${STAGE_LABELS[to]}`} className={`${input} flex-1`} />
-                        <button disabled={disabled} title={disabled ? "Admins only" : undefined} className="min-h-10 shrink-0 rounded-full bg-ink px-4 text-xs font-bold text-white disabled:cursor-not-allowed disabled:bg-mist disabled:text-graphite">
+                        <button disabled={disabled} title={disabled ? "Admins only" : undefined} className="min-h-10 shrink-0 rounded-full bg-[#0a2540] px-4 text-xs font-bold text-white disabled:cursor-not-allowed disabled:bg-[#eef1f5] disabled:text-graphite">
                           {STAGE_LABELS[to]}{sensitive ? " · admin" : ""}
                         </button>
                       </form>
@@ -113,7 +113,7 @@ export default async function PlacementDetail({ params, searchParams }: { params
               )}
             </div>
 
-            <div className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
+            <div className="rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm">
               <h2 className="font-display text-lg font-bold">Assignment &amp; follow-up</h2>
               <form method="post" action="/api/admin/placements" className="mt-4 space-y-3">
                 <input type="hidden" name="action" value="update_meta" />
@@ -133,14 +133,14 @@ export default async function PlacementDetail({ params, searchParams }: { params
                   <label htmlFor="m-next" className="mb-1 block text-xs font-bold">Next action</label>
                   <input id="m-next" name="next_action" maxLength={500} defaultValue={app.next_action ?? ""} placeholder="e.g. Send proposal draft" className={input} />
                 </div>
-                <button className="min-h-10 w-full rounded-full bg-ink px-5 text-sm font-bold text-white">Save details</button>
+                <button className="min-h-10 w-full rounded-full bg-[#0a2540] px-5 text-sm font-bold text-white">Save details</button>
               </form>
             </div>
           </section>
 
           {/* ── Application info ── */}
           <section className="space-y-4 lg:col-span-2">
-            <div className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
+            <div className="rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm">
               <h2 className="font-display text-lg font-bold">Application</h2>
               <dl className="mt-4 grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
                 {([
@@ -157,7 +157,7 @@ export default async function PlacementDetail({ params, searchParams }: { params
                 ) : null)}
               </dl>
               {(app.space_notes || app.questions) && (
-                <div className="mt-4 space-y-2 rounded-xl bg-mist/50 p-4 text-sm">
+                <div className="mt-4 space-y-2 rounded-xl bg-[#eef1f5]/50 p-4 text-sm">
                   {app.space_notes && <p><b>Space:</b> {app.space_notes}</p>}
                   {app.questions && <p><b>Questions:</b> {app.questions}</p>}
                 </div>
@@ -166,7 +166,7 @@ export default async function PlacementDetail({ params, searchParams }: { params
             </div>
 
             {/* ── Assessment ── */}
-            <div className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
+            <div className="rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm">
               <h2 className="font-display text-lg font-bold">Venue assessment <span className="ml-2 align-middle text-[10px] font-extrabold uppercase tracking-widest text-silver">informational · never auto-approves</span></h2>
               {assessment && (
                 <dl className="mt-4 grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
@@ -203,13 +203,13 @@ export default async function PlacementDetail({ params, searchParams }: { params
                   </select>
                 </div>
                 <div className="flex items-end">
-                  <button className="min-h-10 w-full rounded-full bg-ink px-5 text-sm font-bold text-white">{assessment ? "Update assessment" : "Save assessment"}</button>
+                  <button className="min-h-10 w-full rounded-full bg-[#0a2540] px-5 text-sm font-bold text-white">{assessment ? "Update assessment" : "Save assessment"}</button>
                 </div>
               </form>
             </div>
 
             {/* ── Activity timeline ── */}
-            <div className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
+            <div className="rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm">
               <h2 className="font-display text-lg font-bold">Activity</h2>
               <form method="post" action="/api/admin/placements" className="mt-4 flex flex-wrap items-center gap-2">
                 <input type="hidden" name="action" value="add_note" />
@@ -218,12 +218,12 @@ export default async function PlacementDetail({ params, searchParams }: { params
                   {(Object.keys(ACTIVITY_KIND_LABELS) as ActivityKind[]).map((k) => <option key={k} value={k}>{ACTIVITY_KIND_LABELS[k]}</option>)}
                 </select>
                 <input name="body" required maxLength={4000} placeholder="Log a call, email, meeting or note…" className="min-h-10 min-w-56 flex-1 rounded-lg border border-silver/70 bg-white px-3 text-sm" />
-                <button className="min-h-10 rounded-full bg-ink px-4 text-xs font-bold text-white">Add</button>
+                <button className="min-h-10 rounded-full bg-[#0a2540] px-4 text-xs font-bold text-white">Add</button>
               </form>
               <ol className="mt-5 space-y-3">
                 {activities.length === 0 && <li className="text-sm text-graphite">No activity yet.</li>}
                 {activities.map((a) => (
-                  <li key={a.id} className="border-l-2 border-mist pl-4">
+                  <li key={a.id} className="border-l-2 border-[#e3e8ee] pl-4">
                     <p className="text-xs font-extrabold uppercase tracking-wider text-graphite">{ACTIVITY_KIND_LABELS[a.kind] ?? a.kind} · {when(a.created_at)} · {(Array.isArray(a.profiles) ? a.profiles[0] : a.profiles)?.email ?? "staff"}</p>
                     <p className="mt-0.5 whitespace-pre-line text-sm">{a.body}</p>
                   </li>

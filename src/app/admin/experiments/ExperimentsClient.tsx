@@ -16,7 +16,7 @@ function VariantEditor({ rows, setRows }: { rows: { key: string; weight: string;
     <div className="space-y-2 sm:col-span-2">
       <p className="text-xs font-extrabold uppercase tracking-wider text-graphite">Variants (min 2 — first is typically control)</p>
       {rows.map((v, i) => (
-        <div key={i} className="grid gap-2 rounded-xl border border-mist bg-mist/30 p-3 sm:grid-cols-[1fr_90px_1fr_auto]">
+        <div key={i} className="grid gap-2 rounded-xl border border-[#e3e8ee] bg-[#eef1f5]/30 p-3 sm:grid-cols-[1fr_90px_1fr_auto]">
           <input value={v.key} onChange={(e) => set(i, { key: e.target.value })} placeholder="variant key" required className="rounded-lg border border-silver/60 px-3 py-2 text-sm" />
           <input value={v.weight} onChange={(e) => set(i, { weight: e.target.value })} placeholder="weight" type="number" min="1" step="1" required className="rounded-lg border border-silver/60 px-3 py-2 text-sm" />
           <input value={v.config} onChange={(e) => set(i, { config: e.target.value })} placeholder='config JSON, e.g. {"headline":"…"}' className="rounded-lg border border-silver/60 px-3 py-2 font-mono text-xs" />
@@ -65,7 +65,7 @@ export function ExperimentsClient({ experiments }: { experiments: ExperimentRow[
     <div className="space-y-4">
       {error && <div role="alert" className="rounded-xl bg-red-100 px-5 py-3 text-sm font-bold text-red-900">{error}</div>}
 
-      <form onSubmit={create} className="grid gap-4 rounded-2xl border border-mist bg-white p-4 shadow-sm sm:grid-cols-2">
+      <form onSubmit={create} className="grid gap-4 rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm sm:grid-cols-2">
         <h2 className="text-base font-extrabold sm:col-span-2">New experiment (created as draft)</h2>
         <label className="text-sm font-semibold">Key<input name="key" required pattern="[a-z0-9][a-z0-9_-]{0,62}" placeholder="hero_cta_copy" className="mt-1 block w-full rounded-lg border border-silver/60 px-3 py-2" /></label>
         <label className="text-sm font-semibold">Name<input name="name" required placeholder="Hero CTA copy test" className="mt-1 block w-full rounded-lg border border-silver/60 px-3 py-2" /></label>
@@ -80,15 +80,15 @@ export function ExperimentsClient({ experiments }: { experiments: ExperimentRow[
         <label className="text-sm font-semibold">End (optional)<input name="end_at" type="datetime-local" className="mt-1 block w-full rounded-lg border border-silver/60 px-3 py-2" /></label>
         <VariantEditor rows={variants} setRows={setVariants} />
         <div className="sm:col-span-2">
-          <button disabled={busy === "create"} className="min-h-10 rounded-full bg-lime px-5 text-sm font-bold text-ink disabled:opacity-50">{busy === "create" ? "Creating…" : "Create draft experiment"}</button>
+          <button disabled={busy === "create"} className="min-h-10 rounded-full bg-[#635bff] px-5 text-sm font-bold text-white disabled:opacity-50">{busy === "create" ? "Creating…" : "Create draft experiment"}</button>
           <p className="mt-2 text-xs text-graphite">Drafts must be approved before they can start collecting assignments. Security, consent and pricing-disclosure audiences are never allowed.</p>
         </div>
       </form>
 
       {experiments.length === 0 ? (
-        <p className="rounded-2xl border border-mist bg-white px-4 py-8 text-sm text-graphite shadow-sm">No experiments yet. Create a draft above — it stays invisible to visitors until approved and running.</p>
+        <p className="rounded-2xl border border-[#e3e8ee] bg-white px-4 py-8 text-sm text-graphite shadow-sm">No experiments yet. Create a draft above — it stays invisible to visitors until approved and running.</p>
       ) : experiments.map((e) => (
-        <section key={e.id} className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
+        <section key={e.id} className="rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <div className="flex items-center gap-3">
@@ -103,7 +103,7 @@ export function ExperimentsClient({ experiments }: { experiments: ExperimentRow[
               {TRANSITIONS[e.status].map((to) => (
                 <button key={to} disabled={busy !== null}
                   onClick={() => post(`/api/admin/experiments/${e.id}/transition`, { to }, `${e.id}:${to}`)}
-                  className={`min-h-9 rounded-full px-4 text-xs font-bold disabled:opacity-40 ${to === "concluded" ? "border border-silver/60" : "bg-lime text-ink"}`}>
+                  className={`min-h-9 rounded-full px-4 text-xs font-bold disabled:opacity-40 ${to === "concluded" ? "border border-silver/60" : "bg-[#635bff] text-white"}`}>
                   {busy === `${e.id}:${to}` ? "…" : to[0].toUpperCase() + to.slice(1)}
                 </button>
               ))}
@@ -112,14 +112,14 @@ export function ExperimentsClient({ experiments }: { experiments: ExperimentRow[
 
           <div className="mt-4 overflow-x-auto">
             <table className="w-full min-w-[560px] text-left text-sm">
-              <thead className="border-b border-mist text-xs uppercase tracking-wider text-graphite">
+              <thead className="border-b border-[#e3e8ee] text-xs uppercase tracking-wider text-graphite">
                 <tr>{["Variant", "Weight", "Assigned", "Exposed", "Converted", "Conv. rate"].map((h) => <th key={h} className="py-2 pr-4 font-extrabold">{h}</th>)}</tr>
               </thead>
               <tbody>
                 {e.variants.map((v) => {
                   const r = e.results.find((x) => x.variant_key === v.key);
                   return (
-                    <tr key={v.key} className="border-b border-mist/60 last:border-0">
+                    <tr key={v.key} className="border-b border-[#e3e8ee]/60 last:border-0">
                       <td className="py-2 pr-4 font-bold">{v.key}</td>
                       <td className="py-2 pr-4">{v.weight}</td>
                       <td className="py-2 pr-4">{r?.assigned ?? 0}</td>

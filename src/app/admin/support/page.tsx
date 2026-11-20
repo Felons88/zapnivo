@@ -76,28 +76,28 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<{ 
         <>
           <InboxLive intervalMs={20000} accessToken={accessToken} />
           {result && (
-            <p role="status" className={`mb-4 rounded-xl px-4 py-3 text-sm font-semibold ${result === "ok" ? "bg-lime/30" : result === "partial" ? "bg-gold/20" : "bg-red-100 text-red-900"}`}>{(sp.detail ?? "").slice(0, 300)}</p>
+            <p role="status" className={`mb-4 rounded-xl px-4 py-3 text-sm font-semibold ${result === "ok" ? "bg-[#edeeff]" : result === "partial" ? "bg-gold/20" : "bg-red-100 text-red-900"}`}>{(sp.detail ?? "").slice(0, 300)}</p>
           )}
           <div className="mb-4 flex flex-wrap items-center gap-2">
             {savedViews.map((v) => (
               <span key={v.id} className="inline-flex items-center overflow-hidden rounded-full border border-silver/70 bg-white text-sm">
-                <Link href={`/admin/support?${v.query}`} className="px-3 py-1.5 font-bold hover:bg-mist">{v.name}</Link>
+                <Link href={`/admin/support?${v.query}`} className="px-3 py-1.5 font-bold hover:bg-[#eef1f5]">{v.name}</Link>
                 <form method="POST" action="/api/admin/views"><input type="hidden" name="action" value="delete" /><input type="hidden" name="id" value={v.id} /><input type="hidden" name="returnQuery" value={currentQuery} />
-                  <button type="submit" aria-label={`Delete saved view ${v.name}`} className="px-2 py-1.5 text-graphite hover:bg-mist">×</button></form>
+                  <button type="submit" aria-label={`Delete saved view ${v.name}`} className="px-2 py-1.5 text-graphite hover:bg-[#eef1f5]">×</button></form>
               </span>
             ))}
             {canSaveViews ? (
               <form method="POST" action="/api/admin/views" className="flex gap-2">
                 <input type="hidden" name="action" value="save" /><input type="hidden" name="query" value={currentQuery} /><input type="hidden" name="returnQuery" value={currentQuery} />
                 <input name="name" required maxLength={60} aria-label="Saved view name" placeholder="Name this view…" className="min-h-9 rounded-full border border-silver/70 px-3 text-sm" />
-                <button type="submit" className="min-h-9 rounded-full bg-white px-3 text-sm font-bold ring-1 ring-silver/70 hover:bg-mist">Save this view</button>
+                <button type="submit" className="min-h-9 rounded-full bg-white px-3 text-sm font-bold ring-1 ring-silver/70 hover:bg-[#eef1f5]">Save this view</button>
               </form>
             ) : (
               <span className="text-xs text-graphite">Saved views need a real staff account; this development session can&apos;t save them.</span>
             )}
           </div>
           <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap gap-2">{VIEWS.map((v) => <Link key={v.id} href={q({ view: v.id })} className={`rounded-full px-3 py-1.5 text-sm font-bold ${view === v.id ? "bg-ink text-white" : "bg-white hover:bg-mist"}`}>{v.label}</Link>)}</div>
+            <div className="flex flex-wrap gap-2">{VIEWS.map((v) => <Link key={v.id} href={q({ view: v.id })} className={`rounded-full px-3 py-1.5 text-sm font-bold ${view === v.id ? "bg-[#0a2540] text-white" : "bg-white hover:bg-[#eef1f5]"}`}>{v.label}</Link>)}</div>
             <form action="/admin/support" className="flex gap-2">
               {queue && <input type="hidden" name="queue" value={queue} />}<input type="hidden" name="view" value={view} />
               <input name="q" defaultValue={sp.q} aria-label="Search tickets" placeholder="Search number, email, rental…" className="min-h-10 rounded-full border border-silver/70 px-4 text-sm" />
@@ -108,15 +108,15 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<{ 
             <EmptyCard title="Nothing here">No tickets match this view. New requests from /support/new and partner requests appear here instantly.</EmptyCard>
           ) : (
             <>
-            <div className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
+            <div className="overflow-x-auto rounded-2xl border border-[#e3e8ee] bg-white shadow-sm">
               <table className="w-full min-w-[940px] text-left text-sm">
-                <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite"><tr><th className="w-10 px-4 py-3"><span className="sr-only">Select</span></th>{["Ticket", "Requester", "Queue", "Priority", "Status", "Handling", "SLA", "Updated"].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr></thead>
+                <thead className="border-b border-[#e3e8ee] bg-[#eef1f5]/40 text-xs uppercase tracking-wider text-graphite"><tr><th className="w-10 px-4 py-3"><span className="sr-only">Select</span></th>{["Ticket", "Requester", "Queue", "Priority", "Status", "Handling", "SLA", "Updated"].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr></thead>
                 <tbody>
                   {tickets.map((t) => {
                     const sla = slaStatus(t, now);
                     const showSla = t.aiState !== "ai_active" && t.state !== "resolved" && t.state !== "closed";
                     return (
-                      <tr key={t.id} className="border-b border-mist/70 last:border-0 hover:bg-lime/10">
+                      <tr key={t.id} className="border-b border-[#e3e8ee]/70 last:border-0 hover:bg-[#edeeff]">
                         <td className="px-4 py-3"><input type="checkbox" name="numbers" form="bulk-form" value={t.number} aria-label={`Select ${t.number}`} /></td>
                         <td className="max-w-xs px-4 py-3"><Link href={`/admin/support/${t.number}`} className="font-bold underline-offset-4 hover:underline">{t.number}</Link><p className="truncate text-graphite">{t.subject}</p></td>
                         <td className="px-4 py-3"><p className="font-semibold">{t.name}</p><p className="text-xs text-graphite">{t.requesterType === "partner" ? `Partner${t.venueLabel ? ` · ${t.venueLabel}` : ""}` : t.email}</p></td>

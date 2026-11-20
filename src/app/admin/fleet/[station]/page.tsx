@@ -10,7 +10,7 @@ import { serviceClient } from "@/lib/supabase";
 
 export const metadata: Metadata = { title: "Station", robots: { index: false, follow: false } };
 const STATE_TONE = { online: "lime", offline: "red", maintenance: "gold", provisioning: "cyan", disabled: "mist" } as const;
-const SLOT_TONE = { ready: "bg-lime text-ink", charging: "bg-cyan text-ink", empty: "bg-mist text-graphite", fault: "bg-red-100 text-red-800" } as const;
+const SLOT_TONE = { ready: "bg-[#635bff] text-white", charging: "bg-cyan text-ink", empty: "bg-[#eef1f5] text-graphite", fault: "bg-red-100 text-red-800" } as const;
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "—");
 const input = "min-h-10 w-full rounded-lg border border-silver/70 px-3 text-sm";
 
@@ -48,7 +48,7 @@ export default async function StationDetail({ params, searchParams }: { params: 
     <AdminGate title={kiosk.station_id} nav="fleet">
       <div className="space-y-4">
         <Link href="/admin/fleet" className="text-sm font-bold underline underline-offset-4">← All stations</Link>
-        {fb.result && <div role="status" className={`rounded-xl px-5 py-3 text-sm font-bold ${fb.result === "error" ? "bg-red-100 text-red-900" : "bg-lime text-ink"}`}>{fb.result === "error" ? fb.detail ?? "That action failed." : "Saved."}</div>}
+        {fb.result && <div role="status" className={`rounded-xl px-5 py-3 text-sm font-bold ${fb.result === "error" ? "bg-red-100 text-red-900" : "bg-[#635bff] text-white"}`}>{fb.result === "error" ? fb.detail ?? "That action failed." : "Saved."}</div>}
 
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <Metric label="State" value={<Pill tone={STATE_TONE[kiosk.state] ?? "mist"}>{kiosk.state}</Pill>} sub={kiosk.disabled_reason ?? undefined} />
@@ -58,7 +58,7 @@ export default async function StationDetail({ params, searchParams }: { params: 
         </section>
 
         <div className="grid gap-4 lg:grid-cols-[1fr_auto]">
-          <section aria-label="Slots" className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
+          <section aria-label="Slots" className="rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm">
             <h2 className="font-display text-lg font-bold">Slots &amp; battery health</h2>
             {slots.length === 0 ? <p className="mt-4 text-sm text-graphite">No slot data yet — slots populate when the kiosk reports events.</p> : (
               <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -66,7 +66,7 @@ export default async function StationDetail({ params, searchParams }: { params: 
                   const b = bank(s);
                   const low = b?.battery_pct != null && b.battery_pct < 20;
                   return (
-                    <div key={s.slot_number} className={`rounded-xl p-3 ${SLOT_TONE[s.state] ?? "bg-mist"}`}>
+                    <div key={s.slot_number} className={`rounded-xl p-3 ${SLOT_TONE[s.state] ?? "bg-[#eef1f5]"}`}>
                       <p className="text-[10px] font-extrabold uppercase tracking-widest opacity-70">Slot {s.slot_number}</p>
                       <p className="mt-1 font-display text-lg font-bold capitalize">{s.state}</p>
                       <p className="text-xs font-semibold">{b ? `${b.serial}${b.battery_pct != null ? ` · ${b.battery_pct}%${low ? " ⚠" : ""}` : ""}` : "—"}</p>
@@ -77,22 +77,22 @@ export default async function StationDetail({ params, searchParams }: { params: 
             )}
           </section>
 
-          <section aria-label="QR code" className="rounded-2xl border border-mist bg-white p-4 text-center shadow-sm">
+          <section aria-label="QR code" className="rounded-2xl border border-[#e3e8ee] bg-white p-4 text-center shadow-sm">
             <h2 className="font-display text-lg font-bold">Station QR</h2>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={`/api/admin/qr/${kiosk.station_id}`} alt={`QR code for ${kiosk.station_id}`} width={180} height={180} className="mx-auto mt-4 rounded-lg border border-mist" />
+            <img src={`/api/admin/qr/${kiosk.station_id}`} alt={`QR code for ${kiosk.station_id}`} width={180} height={180} className="mx-auto mt-4 rounded-lg border border-[#e3e8ee]" />
             <a href={`/api/admin/qr/${kiosk.station_id}`} target="_blank" rel="noreferrer" className="mt-3 inline-block rounded-full border border-silver/60 px-4 py-2 text-xs font-bold hover:border-ink">Open to print ↗</a>
           </section>
         </div>
 
         <div className="grid gap-4 lg:grid-cols-2">
-          <section aria-label="Remote control" className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
+          <section aria-label="Remote control" className="rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm">
             <h2 className="font-display text-lg font-bold">Remote control</h2>
             <form method="post" action="/api/admin/fleet" className="mt-4 space-y-3">
               <input type="hidden" name="action" value="set_kiosk_state" /><input type="hidden" name="kiosk_id" value={kiosk.id} /><input type="hidden" name="return_to" value={ret} />
               <input type="hidden" name="to" value={kiosk.state === "disabled" ? "enable" : "disable"} />
               {kiosk.state !== "disabled" && <div><label htmlFor="reason" className="mb-1 block text-xs font-bold">Reason</label><input id="reason" name="reason" className={input} placeholder="e.g. Hardware fault reported by venue" /></div>}
-              <button className={`min-h-10 rounded-full px-5 text-sm font-bold ${kiosk.state === "disabled" ? "bg-lime text-ink" : "bg-red-600 text-white"}`}>{kiosk.state === "disabled" ? "Enable station" : "Disable station"}</button>
+              <button className={`min-h-10 rounded-full px-5 text-sm font-bold ${kiosk.state === "disabled" ? "bg-[#635bff] text-white" : "bg-red-600 text-white"}`}>{kiosk.state === "disabled" ? "Enable station" : "Disable station"}</button>
             </form>
             <p className="mt-3 text-xs text-graphite">Changes the station state immediately and queues a hardware command. Commands stay <b>queued</b> until a kiosk adapter confirms them — nothing is claimed as acknowledged.</p>
             {viewer.role === "admin" && (
@@ -111,34 +111,34 @@ export default async function StationDetail({ params, searchParams }: { params: 
             {cmds.length > 0 && <ul className="mt-4 space-y-1 text-xs">{cmds.map((c) => <li key={c.id} className="flex justify-between"><span className="font-bold">{c.command}</span><span className="text-graphite">{c.status} · {when(c.created_at)}</span></li>)}</ul>}
           </section>
 
-          <section aria-label="Maintenance" className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
+          <section aria-label="Maintenance" className="rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm">
             <h2 className="font-display text-lg font-bold">Log maintenance</h2>
             <form method="post" action="/api/admin/fleet" className="mt-4 space-y-3">
               <input type="hidden" name="action" value="log_maintenance" /><input type="hidden" name="kiosk_id" value={kiosk.id} /><input type="hidden" name="return_to" value={ret} />
               <textarea name="notes" required rows={3} className={`${input} py-2`} placeholder="What was inspected, replaced, or fixed?" aria-label="Maintenance notes" />
               {kiosk.state === "maintenance" && <label className="flex items-center gap-2 text-xs font-bold"><input type="checkbox" name="return_online" /> Return station to online</label>}
-              <button className="min-h-10 rounded-full bg-ink px-5 text-sm font-bold text-white">Log visit</button>
+              <button className="min-h-10 rounded-full bg-[#0a2540] px-5 text-sm font-bold text-white">Log visit</button>
             </form>
             {visits.length > 0 && <ul className="mt-4 space-y-2 text-sm">{visits.map((v) => <li key={v.id}><span className="text-xs text-graphite">{when(v.visited_at)}</span><p>{v.notes}</p></li>)}</ul>}
           </section>
 
-          <section aria-label="Notes" className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
+          <section aria-label="Notes" className="rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm">
             <h2 className="font-display text-lg font-bold">Internal notes</h2>
             <form method="post" action="/api/admin/fleet" className="mt-4 space-y-3">
               <input type="hidden" name="action" value="add_note" /><input type="hidden" name="entity" value="kiosk" /><input type="hidden" name="entity_id" value={kiosk.id} /><input type="hidden" name="return_to" value={ret} />
               <textarea name="body" required rows={2} className={`${input} py-2`} placeholder="Staff-only note" aria-label="Note" />
-              <button className="min-h-10 rounded-full bg-ink px-5 text-sm font-bold text-white">Add note</button>
+              <button className="min-h-10 rounded-full bg-[#0a2540] px-5 text-sm font-bold text-white">Add note</button>
             </form>
             {notes.length > 0 && <ul className="mt-4 space-y-3 text-sm">{notes.map((n) => <li key={n.id}><p>{n.body}</p><p className="text-xs text-graphite">{author(n.profiles)} · {when(n.created_at)}</p></li>)}</ul>}
           </section>
 
-          <section aria-label="Installation files" className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
+          <section aria-label="Installation files" className="rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm">
             <h2 className="font-display text-lg font-bold">Installation photos &amp; documents</h2>
             <form method="post" action="/api/admin/fleet" encType="multipart/form-data" className="mt-4 space-y-3">
               <input type="hidden" name="action" value="upload_file" /><input type="hidden" name="kiosk_id" value={kiosk.id} /><input type="hidden" name="return_to" value={ret} />
               <input type="file" name="file" required accept="image/jpeg,image/png,image/webp,application/pdf" aria-label="File" className="text-sm" />
               <input name="caption" className={input} placeholder="Caption (optional)" aria-label="Caption" />
-              <button className="min-h-10 rounded-full bg-ink px-5 text-sm font-bold text-white">Upload</button>
+              <button className="min-h-10 rounded-full bg-[#0a2540] px-5 text-sm font-bold text-white">Upload</button>
             </form>
             {files.length > 0 && <ul className="mt-4 space-y-2 text-sm">{files.map((f) => <li key={f.id} className="flex items-center justify-between gap-3"><span className="truncate">{f.caption ?? f.kind} <span className="text-xs text-graphite">· {when(f.created_at)}</span></span>{f.url && <a href={f.url} target="_blank" rel="noreferrer" className="shrink-0 rounded-full border border-silver/60 px-3 py-1 text-xs font-bold hover:border-ink">View ↗</a>}</li>)}</ul>}
           </section>

@@ -43,7 +43,7 @@ export function StatTile({
 export function Panel({ title, action, children, className = "" }: { title: string; action?: { href: string; label: string }; children: ReactNode; className?: string }) {
   return (
     <section className={`rounded-xl border border-[#dfe6df] bg-white ${className}`}>
-      <div className="flex items-center justify-between gap-3 border-b border-mist px-4 py-2.5">
+      <div className="flex items-center justify-between gap-3 border-b border-[#e3e8ee] px-4 py-2.5">
         <h2 className="text-sm font-extrabold uppercase tracking-wider text-ink">{title}</h2>
         {action ? (
           <Link href={action.href} className="text-xs font-bold text-forest hover:underline">
@@ -104,7 +104,7 @@ export function FunnelChart({
   const card = dark ? "border-white/10 bg-[#0f1c22]" : "border-[#dfe6df] bg-white";
   const heading = dark ? "text-white" : "text-ink";
   const sub = dark ? "text-[#8fa6a8]" : "text-graphite";
-  const track = dark ? "bg-white/10" : "bg-mist/70";
+  const track = dark ? "bg-white/10" : "bg-[#eef1f5]/70";
   const bar = dark ? "#d4f76a" : FOREST;
   return (
     <section aria-label={title} className={`rounded-xl border px-4 py-3 ${card}`}>
@@ -165,7 +165,7 @@ export function LeaderboardChart({
   const card = dark ? "border-white/10 bg-[#0f1c22]" : "border-[#dfe6df] bg-white";
   const heading = dark ? "text-white" : "text-ink";
   const sub = dark ? "text-[#8fa6a8]" : "text-graphite";
-  const track = dark ? "bg-white/10" : "bg-mist/70";
+  const track = dark ? "bg-white/10" : "bg-[#eef1f5]/70";
   const bar = dark ? "#4d9de0" : FOREST;
   const flag = dark ? "bg-[#3a2e08] text-[#e8c95a]" : "bg-[#fff6d6] text-[#5b4300]";
   return (
@@ -224,7 +224,7 @@ export function Meter({ value, max, label, tone = "forest" }: { value: number; m
         <span className="font-semibold text-graphite">{label}</span>
         <span className="font-bold tabular-nums text-ink">{pct}%</span>
       </div>
-      <div className="mt-1 h-2 overflow-hidden rounded-full bg-mist">
+      <div className="mt-1 h-2 overflow-hidden rounded-full bg-[#eef1f5]">
         <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: fill }} />
       </div>
     </div>

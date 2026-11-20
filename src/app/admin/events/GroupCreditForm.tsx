@@ -37,7 +37,7 @@ export function GroupCreditForm({ groupId, balance }: { groupId: string; balance
         <label className="mb-1 block text-[10px] font-extrabold uppercase text-graphite">Note</label>
         <input value={note} onChange={(e) => setNote(e.target.value)} maxLength={300} placeholder="why (audited)" className={`${inputCls} !min-h-9 px-2 text-xs`} />
       </div>
-      <button disabled={busy} className="min-h-9 rounded-full bg-ink px-4 text-xs font-bold text-white">Apply</button>
+      <button disabled={busy} className="min-h-9 rounded-full bg-[#0a2540] px-4 text-xs font-bold text-white">Apply</button>
       <span className="text-xs text-graphite">balance ${(balance / 100).toFixed(2)}</span>
       {msg && <span className={`w-full text-xs font-bold ${msg.ok ? "text-forest" : "text-red-700"}`}>{msg.text}</span>}
     </form>

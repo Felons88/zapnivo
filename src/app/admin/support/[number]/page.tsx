@@ -52,14 +52,14 @@ export default async function TicketPage({ params }: { params: Promise<{ number:
             <TicketLive ticketId={t.id} intervalMs={15000} accessToken={accessToken} />
             <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
               <Link href="/admin/support" className="font-bold text-graphite hover:text-ink">← All conversations</Link>
-              <div className="flex flex-wrap gap-2"><a href="#ticket-conversation" className="rounded-lg border border-mist bg-white px-3 py-2 font-bold hover:bg-lime/30">Conversation</a><a href="#ticket-controls" className="rounded-lg border border-mist bg-white px-3 py-2 font-bold hover:bg-lime/30">Case controls</a><a href="#ticket-compose" className="rounded-lg bg-ink px-3 py-2 font-bold text-white hover:bg-forest">Write a reply ↓</a></div>
+              <div className="flex flex-wrap gap-2"><a href="#ticket-conversation" className="rounded-lg border border-[#e3e8ee] bg-white px-3 py-2 font-bold hover:bg-[#edeeff]">Conversation</a><a href="#ticket-controls" className="rounded-lg border border-[#e3e8ee] bg-white px-3 py-2 font-bold hover:bg-[#edeeff]">Case controls</a><a href="#ticket-compose" className="rounded-lg bg-[#0a2540] px-3 py-2 font-bold text-white hover:bg-forest">Write a reply ↓</a></div>
             </div>
             <section aria-label="Case overview" className="rounded-2xl border border-[#dbe5dc] bg-white p-5 shadow-sm md:p-7">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div><p className="eyebrow text-forest">Support case / {t.number}</p><h2 className="mt-2 text-2xl font-bold tracking-tight md:text-2xl">{t.subject || t.category}</h2><p className="mt-2 text-sm text-graphite">From {t.name} · opened {when(t.createdAt)} · {t.queue} queue</p></div>
                 <div className="flex flex-wrap gap-2"><Pill tone={t.state === "resolved" || t.state === "closed" ? "lime" : "gold"}>{t.state.replace(/_/g, " ")}</Pill><Pill tone={t.priority === "urgent" ? "red" : t.priority === "high" ? "gold" : "mist"}>{t.priority} priority</Pill></div>
               </div>
-              <div className="mt-5 grid gap-3 border-t border-mist pt-4 text-xs sm:grid-cols-3">
+              <div className="mt-5 grid gap-3 border-t border-[#e3e8ee] pt-4 text-xs sm:grid-cols-3">
                 <div><p className="font-bold uppercase tracking-wider text-graphite">Owner</p><p className="mt-1 font-semibold">{t.assignedTo ? "Assigned" : "Unassigned"}</p></div>
                 <div><p className="font-bold uppercase tracking-wider text-graphite">First response</p><p className="mt-1 font-semibold">{t.firstResponseAt ? "Met" : humanDue(t.firstResponseDueAt, now)}</p></div>
                 <div><p className="font-bold uppercase tracking-wider text-graphite">Resolution target</p><p className="mt-1 font-semibold">{t.resolvedAt ? "Resolved" : humanDue(t.resolutionDueAt, now)}</p></div>
@@ -68,9 +68,9 @@ export default async function TicketPage({ params }: { params: Promise<{ number:
             <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
             <div className="min-w-0 space-y-5">
               {t.queue === "safety" && <p role="alert" className="rounded-xl bg-red-100 p-4 text-sm font-bold text-red-900">SAFETY REPORT. Possible battery hazard. Contact the requester, arrange retrieval of the unit, and log the incident in Fleet. Do not close until the unit is secured.</p>}
-              {t.aiSummary && <div className="rounded-xl border border-lime bg-[#f0f7e3] p-4 text-sm"><p className="text-xs font-extrabold uppercase tracking-wider text-forest">Agent brief · AI generated</p><p className="mt-2 leading-6">{t.aiSummary}</p></div>}
-              <section id="ticket-conversation" className="scroll-mt-40 overflow-hidden rounded-2xl border border-mist bg-white">
-                <div className="flex items-center justify-between border-b border-mist px-5 py-4"><div><p className="eyebrow text-forest">Conversation</p><h3 className="mt-1 text-lg font-bold">{data.messages.length} message{data.messages.length === 1 ? "" : "s"}</h3></div><span className="text-xs text-graphite">Oldest first</span></div>
+              {t.aiSummary && <div className="rounded-xl border border-[#635bff] bg-[#f0f7e3] p-4 text-sm"><p className="text-xs font-extrabold uppercase tracking-wider text-forest">Agent brief · AI generated</p><p className="mt-2 leading-6">{t.aiSummary}</p></div>}
+              <section id="ticket-conversation" className="scroll-mt-40 overflow-hidden rounded-2xl border border-[#e3e8ee] bg-white">
+                <div className="flex items-center justify-between border-b border-[#e3e8ee] px-5 py-4"><div><p className="eyebrow text-forest">Conversation</p><h3 className="mt-1 text-lg font-bold">{data.messages.length} message{data.messages.length === 1 ? "" : "s"}</h3></div><span className="text-xs text-graphite">Oldest first</span></div>
               <ol className="space-y-0 divide-y divide-mist/70 px-5" aria-label="Conversation">
                 {data.messages.map((m) => (
                   <li key={m.id} className={m.internal ? "my-3 rounded-xl border border-gold/60 bg-gold/15 p-4" : "py-3"}>
@@ -105,7 +105,7 @@ export default async function TicketPage({ params }: { params: Promise<{ number:
                 <p className="mt-1 text-xs text-graphite">{t.requesterType === "partner" ? `Partner${t.venueLabel ? ` · ${t.venueLabel}` : ""}` : "Customer"}{t.stationLabel ? ` · ${t.stationLabel}` : ""}</p>
                 <div className="mt-3 flex flex-wrap gap-1.5"><Pill tone="mist">{t.queue}</Pill><Pill tone={t.priority === "urgent" ? "red" : t.priority === "high" ? "gold" : "mist"}>{t.priority}</Pill><Pill tone={t.aiState === "ai_active" ? "lime" : t.aiState === "needs_human" ? "gold" : "ink"}>{t.aiState.replace("_", " ")}</Pill></div>
                 {customer && (
-                  <dl className="mt-3 space-y-1 border-t border-mist pt-3 text-xs text-graphite">
+                  <dl className="mt-3 space-y-1 border-t border-[#e3e8ee] pt-3 text-xs text-graphite">
                     <div className="flex justify-between"><dt>Record</dt><dd className="font-bold text-ink">{customer.profile ? `account · ${customer.profile.role}` : "guest"}</dd></div>
                     <div className="flex justify-between"><dt>Lifetime captured</dt><dd className="font-bold text-ink">{fmt(customer.totals.capturedCents)}{customer.totals.refundedCents > 0 ? ` (${fmt(customer.totals.refundedCents)} refunded)` : ""}</dd></div>
                     <div className="flex justify-between"><dt>Rentals</dt><dd className="font-bold text-ink">{customer.rentals.length}{customer.totals.activeRentals ? ` · ${customer.totals.activeRentals} out` : ""}</dd></div>
@@ -122,7 +122,7 @@ export default async function TicketPage({ params }: { params: Promise<{ number:
                       const isThisTicket = !!t.rentalRef && r.reference === t.rentalRef;
                       const od = !!r.non_return_deadline && !r.returned_at && new Date(r.non_return_deadline) < new Date();
                       return (
-                        <li key={r.id} className={`rounded-lg p-2.5 text-xs ${isThisTicket ? "border-2 border-lime bg-lime/10" : "bg-mist/50"}`}>
+                        <li key={r.id} className={`rounded-lg p-2.5 text-xs ${isThisTicket ? "border-2 border-[#635bff] bg-[#edeeff]" : "bg-[#eef1f5]/50"}`}>
                           <p className="flex items-center justify-between gap-2">
                             <b>{r.reference}{isThisTicket && <span className="ml-1 font-bold text-forest">· this ticket</span>}</b>
                             <Pill tone={od ? "red" : r.state === "active" ? "lime" : r.state === "unreturned" ? "red" : r.state === "returned" ? "mist" : "cyan"}>{od ? "overdue" : r.state.replace("_", " ")}</Pill>
@@ -145,7 +145,7 @@ export default async function TicketPage({ params }: { params: Promise<{ number:
                   <h2 className="font-display text-lg font-bold">Rental {data.rental.reference}</h2>
                   <p className="mt-2"><Pill tone={data.rental.tone === "warn" ? "gold" : data.rental.tone === "ok" ? "lime" : "cyan"}>{data.rental.status}</Pill></p>
                   <dl className="mt-3 space-y-1 text-graphite"><div>Station: {data.rental.station}</div><div>Charge: {data.rental.charge}</div>{data.rental.expectedCents != null && <div>Published rate for period: {fmt(data.rental.expectedCents)}</div>}<div>Refundable balance: {fmt(data.remainingCents ?? 0)}</div></dl>
-                  <p className="mt-3 rounded-lg bg-mist/70 p-2 text-xs leading-5 text-graphite">{data.rental.explanation}</p>
+                  <p className="mt-3 rounded-lg bg-[#eef1f5]/70 p-2 text-xs leading-5 text-graphite">{data.rental.explanation}</p>
                 </div>
               )}
               <div className="rounded-xl bg-white p-4 shadow-sm">

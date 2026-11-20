@@ -52,13 +52,13 @@ function Feedback({ result, detail }: { result?: string; detail?: string }) {
     : result === "meta" ? "Placement details saved."
     : result === "assessment" ? "Assessment saved."
     : detail || "Saved.";
-  return <div role="status" className={`rounded-xl px-5 py-3 text-sm font-bold ${ok ? "bg-lime text-ink" : "bg-red-100 text-red-900"}`}>{text}</div>;
+  return <div role="status" className={`rounded-xl px-5 py-3 text-sm font-bold ${ok ? "bg-[#635bff] text-white" : "bg-red-100 text-red-900"}`}>{text}</div>;
 }
 
 function Card({ c }: { c: PlacementCard }) {
   const fu = followUpState(c.followUpAt, new Date(), c.stage);
   return (
-    <Link href={`/admin/placements/${c.id}`} className="block rounded-xl border border-mist bg-white p-3 shadow-sm transition-colors hover:border-forest">
+    <Link href={`/admin/placements/${c.id}`} className="block rounded-xl border border-[#e3e8ee] bg-white p-3 shadow-sm transition-colors hover:border-forest">
       <div className="flex items-start justify-between gap-2">
         <p className="font-display text-sm font-bold leading-tight">{c.businessName}</p>
         {c.hasAssessment && <span title="Venue assessment on file" className="shrink-0 rounded-full bg-cyan/20 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-forest">assessed</span>}
@@ -133,13 +133,13 @@ export default async function PlacementsPage({ searchParams }: { searchParams: P
 
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2" role="tablist" aria-label="View">
-            <Link href={viewHref("board")} className={`rounded-full px-4 py-2 text-xs font-extrabold ${view === "board" ? "bg-ink text-white" : "bg-white text-graphite ring-1 ring-mist"}`}>Board</Link>
-            <Link href={viewHref("table")} className={`rounded-full px-4 py-2 text-xs font-extrabold ${view === "table" ? "bg-ink text-white" : "bg-white text-graphite ring-1 ring-mist"}`}>Table</Link>
+            <Link href={viewHref("board")} className={`rounded-full px-4 py-2 text-xs font-extrabold ${view === "board" ? "bg-[#0a2540] text-white" : "bg-white text-graphite ring-1 ring-mist"}`}>Board</Link>
+            <Link href={viewHref("table")} className={`rounded-full px-4 py-2 text-xs font-extrabold ${view === "table" ? "bg-[#0a2540] text-white" : "bg-white text-graphite ring-1 ring-mist"}`}>Table</Link>
           </div>
           <form method="get" action="/admin/placements" className="flex items-center gap-2">
             {view === "table" && <input type="hidden" name="view" value="table" />}
             <input name="q" defaultValue={params.q ?? ""} placeholder="Search business, city, assignee…" aria-label="Search placements" className="min-h-10 w-64 rounded-lg border border-silver/70 bg-white px-3 text-sm" />
-            <button className="min-h-10 rounded-full bg-ink px-4 text-xs font-bold text-white">Search</button>
+            <button className="min-h-10 rounded-full bg-[#0a2540] px-4 text-xs font-bold text-white">Search</button>
           </form>
         </div>
 
@@ -148,8 +148,8 @@ export default async function PlacementsPage({ searchParams }: { searchParams: P
             {board.map((col) => {
               if (stageFilter && col.stage !== stageFilter) return null;
               return (
-                <div key={col.stage} className={`w-72 shrink-0 rounded-2xl border bg-mist/30 ${col.stage === "declined" ? "border-red-200" : "border-mist"}`}>
-                  <div className="flex items-center justify-between border-b border-mist/70 px-4 py-3">
+                <div key={col.stage} className={`w-72 shrink-0 rounded-2xl border bg-[#eef1f5]/30 ${col.stage === "declined" ? "border-red-200" : "border-[#e3e8ee]"}`}>
+                  <div className="flex items-center justify-between border-b border-[#e3e8ee]/70 px-4 py-3">
                     <h2 className="font-display text-sm font-bold">{col.label}</h2>
                     <Pill tone={STAGE_TONE[col.stage]}>{col.cards.length}</Pill>
                   </div>
@@ -162,8 +162,8 @@ export default async function PlacementsPage({ searchParams }: { searchParams: P
             })}
           </section>
         ) : (
-          <section aria-label="Placement table" className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
-            <div className="flex flex-wrap items-center gap-2 border-b border-mist px-4 py-4">
+          <section aria-label="Placement table" className="overflow-x-auto rounded-2xl border border-[#e3e8ee] bg-white shadow-sm">
+            <div className="flex flex-wrap items-center gap-2 border-b border-[#e3e8ee] px-4 py-4">
               <h2 className="font-display text-lg font-bold">All placements</h2>
               <form method="get" action="/admin/placements" className="ml-auto flex items-center gap-2">
                 <input type="hidden" name="view" value="table" />
@@ -176,14 +176,14 @@ export default async function PlacementsPage({ searchParams }: { searchParams: P
                     {PLACEMENT_BOARD_STAGES.map((s) => <option key={s} value={s}>{STAGE_LABELS[s]}</option>)}
                   </select>
                 </label>
-                <button className="min-h-9 rounded-full bg-mist px-3 text-xs font-bold hover:bg-lime">Filter</button>
+                <button className="min-h-9 rounded-full bg-[#eef1f5] px-3 text-xs font-bold hover:bg-[#edeeff]">Filter</button>
               </form>
             </div>
             {rows.length === 0 ? (
               <p className="px-4 py-8 text-sm text-graphite">No placements match.</p>
             ) : (
               <table className="w-full min-w-[1000px] text-left text-sm">
-                <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite">
+                <thead className="border-b border-[#e3e8ee] bg-[#eef1f5]/40 text-xs uppercase tracking-wider text-graphite">
                   <tr>
                     {([["business", "Business"], ["stage", "Stage"], ["assignee", "Assignee"], ["follow_up", "Follow-up"], ["days", "Days in stage"], ["created", "Applied"]] as [SortKey, string][]).map(([k, label]) => (
                       <th key={k} className="px-4 py-3 font-extrabold">
@@ -197,7 +197,7 @@ export default async function PlacementsPage({ searchParams }: { searchParams: P
                   {rows.map((c) => {
                     const fu = followUpState(c.followUpAt, new Date(), c.stage);
                     return (
-                      <tr key={c.id} className="border-b border-mist/70 last:border-0 hover:bg-lime/10">
+                      <tr key={c.id} className="border-b border-[#e3e8ee]/70 last:border-0 hover:bg-[#edeeff]">
                         <td className="px-4 py-3">
                           <Link href={`/admin/placements/${c.id}`} className="font-bold text-forest underline underline-offset-2">{c.businessName}</Link>
                           <p className="text-xs text-graphite">{c.city}, {c.state} · {c.venueType}</p>

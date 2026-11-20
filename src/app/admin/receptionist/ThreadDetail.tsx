@@ -50,7 +50,7 @@ export function ThreadDetail({ thread, messages, audit, draft, staff, currentUse
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="rounded-2xl border border-mist bg-white p-5 shadow-sm">
+      <div className="rounded-2xl border border-[#e3e8ee] bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div className="min-w-0">
             <p className="eyebrow text-forest">Email conversation</p>
@@ -64,9 +64,9 @@ export function ThreadDetail({ thread, messages, audit, draft, staff, currentUse
             {thread.ai_confidence != null && <Pill tone="cyan">AI {Math.round(thread.ai_confidence * 100)}%</Pill>}
           </div>
         </div>
-        <div className="mt-4 flex flex-wrap gap-2 border-t border-mist pt-4">
-          <Link href={"/admin/customers/" + encodeURIComponent(thread.sender_email)} className="rounded-lg bg-[#edf3ea] px-3 py-2 text-xs font-bold hover:bg-lime/40">Customer profile →</Link>
-          <Link href="/admin/support" className="rounded-lg border border-mist px-3 py-2 text-xs font-bold hover:bg-mist">Support inbox</Link>
+        <div className="mt-4 flex flex-wrap gap-2 border-t border-[#e3e8ee] pt-4">
+          <Link href={"/admin/customers/" + encodeURIComponent(thread.sender_email)} className="rounded-lg bg-[#edf3ea] px-3 py-2 text-xs font-bold hover:bg-[#edeeff]">Customer profile →</Link>
+          <Link href="/admin/support" className="rounded-lg border border-[#e3e8ee] px-3 py-2 text-xs font-bold hover:bg-[#eef1f5]">Support inbox</Link>
         </div>
         {thread.escalation_reason && (
           <p className="mt-2 rounded-lg bg-gold/20 px-3 py-2 text-xs font-semibold">Escalation: {thread.escalation_reason}</p>
@@ -92,7 +92,7 @@ export function ThreadDetail({ thread, messages, audit, draft, staff, currentUse
             {transitions.map((t) => (
               <button key={t} disabled={pending}
                 onClick={() => act(() => post(`${base}/status`, { status: t }), `Moved to ${t}.`)}
-                className="rounded-full border border-silver/70 px-3 py-1 text-[11px] font-bold hover:bg-mist">
+                className="rounded-full border border-silver/70 px-3 py-1 text-[11px] font-bold hover:bg-[#eef1f5]">
                 → {t.replace(/_/g, " ")}
               </button>
             ))}
@@ -114,7 +114,7 @@ export function ThreadDetail({ thread, messages, audit, draft, staff, currentUse
           <button
             disabled={pending || !draftBody.trim()}
             onClick={() => act(() => post(`${base}/approve-draft`, { body: draftBody }), "Draft sent.")}
-            className="mt-2 rounded-full bg-ink px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
+            className="mt-2 rounded-full bg-[#0a2540] px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
           >
             {pending ? "Sending…" : "Approve & send"}
           </button>
@@ -122,11 +122,11 @@ export function ThreadDetail({ thread, messages, audit, draft, staff, currentUse
       )}
 
       {/* Messages */}
-      <section className="rounded-2xl border border-mist bg-white p-5" aria-label="Email conversation">
-        <div className="mb-4 flex items-center justify-between border-b border-mist pb-3"><h3 className="text-lg font-bold">Conversation</h3><span className="text-xs text-graphite">{messages.length} messages</span></div>
+      <section className="rounded-2xl border border-[#e3e8ee] bg-white p-5" aria-label="Email conversation">
+        <div className="mb-4 flex items-center justify-between border-b border-[#e3e8ee] pb-3"><h3 className="text-lg font-bold">Conversation</h3><span className="text-xs text-graphite">{messages.length} messages</span></div>
       <div className="space-y-3">
         {messages.map((m) => (
-          <div key={m.id} className={`rounded-2xl border p-4 ${m.direction === "internal" ? "border-cyan/40 bg-cyan/10" : "border-mist bg-white"}`}>
+          <div key={m.id} className={`rounded-2xl border p-4 ${m.direction === "internal" ? "border-cyan/40 bg-cyan/10" : "border-[#e3e8ee] bg-white"}`}>
             <div className="mb-2 flex flex-wrap items-center gap-2 text-xs">
               <Pill tone={KIND_TONE[m.direction] ?? "mist"}>{m.direction}</Pill>
               <span className="font-bold">{m.sender_kind}</span>
@@ -142,13 +142,13 @@ export function ThreadDetail({ thread, messages, audit, draft, staff, currentUse
 
       {/* Reply + note */}
       <div className="grid gap-3 2xl:grid-cols-2">
-        <div className="rounded-2xl border border-mist bg-white p-4">
+        <div className="rounded-2xl border border-[#e3e8ee] bg-white p-4">
           <p className="mb-2 text-xs font-extrabold uppercase tracking-wider text-graphite">Reply as hello@zapnivo.com</p>
           <textarea value={reply} onChange={(e) => setReply(e.target.value)} rows={5}
             placeholder="Write a reply…" className="w-full rounded-xl border border-silver/70 p-3 text-sm" aria-label="Reply" />
           <button disabled={pending || !reply.trim()}
             onClick={() => act(async () => { const ok = await post(`${base}/reply`, { body: reply }); if (ok) setReply(""); return ok; }, "Reply sent.")}
-            className="mt-2 rounded-full bg-ink px-4 py-2 text-sm font-bold text-white disabled:opacity-50">
+            className="mt-2 rounded-full bg-[#0a2540] px-4 py-2 text-sm font-bold text-white disabled:opacity-50">
             Send reply
           </button>
         </div>
@@ -158,16 +158,16 @@ export function ThreadDetail({ thread, messages, audit, draft, staff, currentUse
             placeholder="Note for the team…" className="w-full rounded-xl border border-silver/70 bg-white p-3 text-sm" aria-label="Internal note" />
           <button disabled={pending || !note.trim()}
             onClick={() => act(async () => { const ok = await post(`${base}/note`, { body: note }); if (ok) setNote(""); return ok; }, "Note added.")}
-            className="mt-2 rounded-full border border-ink px-4 py-2 text-sm font-bold hover:bg-mist disabled:opacity-50">
+            className="mt-2 rounded-full border border-ink px-4 py-2 text-sm font-bold hover:bg-[#eef1f5] disabled:opacity-50">
             Add note
           </button>
         </div>
       </div>
 
-      {msg && <p role="status" className="rounded-xl bg-lime/30 px-4 py-2 text-sm font-semibold">{msg}</p>}
+      {msg && <p role="status" className="rounded-xl bg-[#edeeff] px-4 py-2 text-sm font-semibold">{msg}</p>}
 
       {/* Audit */}
-      <details className="rounded-2xl border border-mist bg-white p-4">
+      <details className="rounded-2xl border border-[#e3e8ee] bg-white p-4">
         <summary className="cursor-pointer text-xs font-extrabold uppercase tracking-wider text-graphite">Audit history ({audit.length})</summary>
         <ul className="mt-3 space-y-2">
           {audit.map((a) => (
@@ -175,7 +175,7 @@ export function ThreadDetail({ thread, messages, audit, draft, staff, currentUse
               <span className="font-bold">{a.action}</span>
               <span className="text-graphite"> · {a.actor} · {new Date(a.created_at).toLocaleString()}</span>
               {Object.keys(a.detail ?? {}).length > 0 && (
-                <code className="ml-2 rounded bg-mist px-1.5 py-0.5 text-[10px]">{JSON.stringify(a.detail).slice(0, 200)}</code>
+                <code className="ml-2 rounded bg-[#eef1f5] px-1.5 py-0.5 text-[10px]">{JSON.stringify(a.detail).slice(0, 200)}</code>
               )}
             </li>
           ))}

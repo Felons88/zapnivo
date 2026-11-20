@@ -37,7 +37,7 @@ export default async function Partners({ searchParams }: { searchParams: Promise
         <EmptyCard title="Partner data not connected">Connect Supabase to see live applications and venues.</EmptyCard>
       ) : (
         <div className="space-y-4">
-          {(feedback.result || feedback.stm) && <div role="status" className={`rounded-xl px-5 py-3 text-sm font-bold ${feedback.result === "error" ? "bg-red-100 text-red-900" : "bg-lime text-ink"}`}>
+          {(feedback.result || feedback.stm) && <div role="status" className={`rounded-xl px-5 py-3 text-sm font-bold ${feedback.result === "error" ? "bg-red-100 text-red-900" : "bg-[#635bff] text-white"}`}>
             {feedback.result === "error" ? feedback.detail : feedback.result === "org" ? "Organization created." : feedback.result === "invited" ? "Partner invitation sent and account linked to the organization." : feedback.result === "linked" ? "Existing account linked to the organization." : feedback.result === "application" ? "Application status saved." : feedback.result === "venue" ? "Venue owner saved." : feedback.result === "converted" ? "Approved application added as an unpublished venue. Register its kiosk on Fleet." : feedback.result === "map" ? "Venue map settings saved." : feedback.stm === "none" ? "No statements exist for that month." : feedback.stm ? `${feedback.stm} statement email(s) queued.` : "Saved."}
           </div>}
 
@@ -49,29 +49,29 @@ export default async function Partners({ searchParams }: { searchParams: Promise
           </section>
 
           <div className="flex flex-wrap items-center gap-2 text-xs font-bold">
-            <Link href="/admin/partners/manage" className="inline-flex min-h-9 items-center rounded-lg bg-ink px-4 text-white hover:bg-forest">Partner operations — orgs, invites, statements, terms →</Link>
-            <Link href="/admin/fleet" className="inline-flex min-h-9 items-center rounded-lg border border-mist bg-white px-4 hover:bg-lime/30">Fleet — register kiosks →</Link>
+            <Link href="/admin/partners/manage" className="inline-flex min-h-9 items-center rounded-lg bg-[#0a2540] px-4 text-white hover:bg-forest">Partner operations — orgs, invites, statements, terms →</Link>
+            <Link href="/admin/fleet" className="inline-flex min-h-9 items-center rounded-lg border border-[#e3e8ee] bg-white px-4 hover:bg-[#edeeff]">Fleet — register kiosks →</Link>
           </div>
 
-          <section aria-label="Applications" className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
-            <div className="border-b border-mist px-4 py-4"><h2 className="font-display text-lg font-bold">Partner applications</h2></div>
+          <section aria-label="Applications" className="overflow-x-auto rounded-2xl border border-[#e3e8ee] bg-white shadow-sm">
+            <div className="border-b border-[#e3e8ee] px-4 py-4"><h2 className="font-display text-lg font-bold">Partner applications</h2></div>
             {appRows.length === 0 ? (
               <p className="px-4 py-8 text-sm text-graphite">No applications yet. New venue applications from /business/apply appear here.</p>
             ) : (
               <table className="w-full min-w-[900px] text-left text-sm">
-                <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite">
+                <thead className="border-b border-[#e3e8ee] bg-[#eef1f5]/40 text-xs uppercase tracking-wider text-graphite">
                   <tr>{["Business", "Contact", "Venue type", "City", "Status", "Applied", ""].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr>
                 </thead>
                 <tbody>
                   {appRows.map((a) => (
-                    <tr key={a.id} className="border-b border-mist/70 last:border-0 hover:bg-lime/10">
+                    <tr key={a.id} className="border-b border-[#e3e8ee]/70 last:border-0 hover:bg-[#edeeff]">
                       <td className="px-4 py-3 font-bold"><Link href={`/admin/partners/applications/${a.id}`} className="text-forest underline hover:text-ink">{a.business_name}</Link></td>
                       <td className="px-4 py-3"><p className="font-semibold">{a.contact_name}</p><p className="text-xs text-graphite">{a.email}{a.phone ? ` · ${a.phone}` : ""}</p></td>
                       <td className="px-4 py-3 text-xs font-semibold">{a.venue_type}{a.product_interest && <p className="mt-1 font-bold text-forest">{interestLabels(a.product_interest).join(" · ")}</p>}</td>
                       <td className="px-4 py-3 text-xs text-graphite">{a.city}, {a.state}</td>
                       <td className="px-4 py-3"><Pill tone={STATUS_TONE[a.status] ?? "mist"}>{a.status}</Pill></td>
                       <td className="px-4 py-3 text-xs text-graphite">{when(a.created_at)}</td>
-                      <td className="px-4 py-3"><Link href={`/admin/partners/applications/${a.id}`} className="inline-flex min-h-8 items-center rounded-full bg-mist px-3 text-xs font-bold hover:bg-lime">Open</Link></td>
+                      <td className="px-4 py-3"><Link href={`/admin/partners/applications/${a.id}`} className="inline-flex min-h-8 items-center rounded-full bg-[#eef1f5] px-3 text-xs font-bold hover:bg-[#edeeff]">Open</Link></td>
                     </tr>
                   ))}
                 </tbody>
@@ -79,24 +79,24 @@ export default async function Partners({ searchParams }: { searchParams: Promise
             )}
           </section>
 
-          <section aria-label="Venues" className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
-            <div className="flex items-center justify-between border-b border-mist px-4 py-4"><h2 className="font-display text-lg font-bold">Venues</h2><Link href="/admin/fleet" className="text-xs font-bold text-forest underline">Add venue or kiosk →</Link></div>
+          <section aria-label="Venues" className="overflow-x-auto rounded-2xl border border-[#e3e8ee] bg-white shadow-sm">
+            <div className="flex items-center justify-between border-b border-[#e3e8ee] px-4 py-4"><h2 className="font-display text-lg font-bold">Venues</h2><Link href="/admin/fleet" className="text-xs font-bold text-forest underline">Add venue or kiosk →</Link></div>
             {venueRows.length === 0 ? (
               <p className="px-4 py-8 text-sm text-graphite">No venues yet. Add one on the Fleet page after reviewing the partner application.</p>
             ) : (
               <table className="w-full min-w-[800px] text-left text-sm">
-                <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite">
+                <thead className="border-b border-[#e3e8ee] bg-[#eef1f5]/40 text-xs uppercase tracking-wider text-graphite">
                   <tr>{["Venue", "Equipment", "Owner organization", "City", "Status", ""].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr>
                 </thead>
                 <tbody>
                   {venueRows.map((v) => (
-                    <tr key={v.id} className="border-b border-mist/70 last:border-0 hover:bg-lime/10">
+                    <tr key={v.id} className="border-b border-[#e3e8ee]/70 last:border-0 hover:bg-[#edeeff]">
                       <td className="px-4 py-3 font-bold"><Link href={`/admin/partners/venues/${v.id}`} className="text-forest underline hover:text-ink">{v.name}</Link></td>
                       <td className="px-4 py-3"><Pill tone={v.equipment_category ? "cyan" : "mist"}>{equipmentLabelOr(v.equipment_category, "unclassified")}</Pill></td>
                       <td className="px-4 py-3 text-xs font-semibold">{v.organization_id ? orgName.get(v.organization_id) ?? "—" : "— unassigned —"}</td>
                       <td className="px-4 py-3 text-xs text-graphite">{v.city}, {v.state}</td>
                       <td className="px-4 py-3"><Pill tone={v.published ? "lime" : "mist"}>{v.published ? "published" : "unpublished"}</Pill></td>
-                      <td className="px-4 py-3"><Link href={`/admin/partners/venues/${v.id}`} className="inline-flex min-h-8 items-center rounded-full bg-mist px-3 text-xs font-bold hover:bg-lime">Manage</Link></td>
+                      <td className="px-4 py-3"><Link href={`/admin/partners/venues/${v.id}`} className="inline-flex min-h-8 items-center rounded-full bg-[#eef1f5] px-3 text-xs font-bold hover:bg-[#edeeff]">Manage</Link></td>
                     </tr>
                   ))}
                 </tbody>

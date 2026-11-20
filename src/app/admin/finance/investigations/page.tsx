@@ -86,7 +86,7 @@ export default async function InvestigationsPage({ searchParams }: { searchParam
               Search
               <input name="q" defaultValue={q ?? ""} placeholder="subject, customer…" className="mt-1 block rounded-lg border border-silver/70 bg-white px-3 py-2 text-sm" />
             </label>
-            <button className="min-h-10 rounded-full bg-ink px-5 text-sm font-bold text-white">Filter</button>
+            <button className="min-h-10 rounded-full bg-[#0a2540] px-5 text-sm font-bold text-white">Filter</button>
             {(status || caseType || severity || q) && <Link href="/admin/finance/investigations" className="py-2 text-xs font-bold text-graphite underline">Clear</Link>}
           </form>
 
@@ -95,16 +95,16 @@ export default async function InvestigationsPage({ searchParams }: { searchParam
           ) : cases.length === 0 ? (
             <EmptyCard title="No cases">No financial investigation cases match these filters.</EmptyCard>
           ) : (
-            <div className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
+            <div className="overflow-x-auto rounded-2xl border border-[#e3e8ee] bg-white shadow-sm">
               <table className="w-full min-w-[960px] text-left text-sm">
-                <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite">
+                <thead className="border-b border-[#e3e8ee] bg-[#eef1f5]/40 text-xs uppercase tracking-wider text-graphite">
                   <tr>{["Subject", "Type", "Status", "Severity", "Claimed", "Proposed refund", "Created"].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr>
                 </thead>
                 <tbody>
                   {cases.map((c) => {
                     const rec = c.recommendation as { proposed_refund_cents?: number | null } | null;
                     return (
-                      <tr key={c.id} className="border-b border-mist/60 last:border-0 hover:bg-mist/30">
+                      <tr key={c.id} className="border-b border-[#e3e8ee]/60 last:border-0 hover:bg-[#eef1f5]/30">
                         <td className="px-4 py-3">
                           <Link href={`/admin/finance/investigations/${c.id}`} className="font-bold text-ink hover:underline">{c.subject}</Link>
                           <p className="text-xs text-graphite">{c.customer_ref ?? "no customer ref"}{c.station_id ? ` · station ${c.station_id.slice(0, 8)}` : ""}</p>

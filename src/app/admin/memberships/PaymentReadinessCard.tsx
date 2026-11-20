@@ -8,10 +8,10 @@ import type { PaymentReadiness } from "@/lib/payments/readiness";
 type Tone = "ok" | "warn" | "bad" | "muted";
 
 const PILL: Record<Tone, string> = {
-  ok: "bg-lime text-ink",
+  ok: "bg-[#635bff] text-white",
   warn: "bg-[#ffe9a8] text-[#5b4300]",
   bad: "bg-[#f8d7d5] text-[#8f1d1d]",
-  muted: "bg-mist text-graphite",
+  muted: "bg-[#eef1f5] text-graphite",
 };
 
 function Pill({ tone, children }: { tone: Tone; children: React.ReactNode }) {
@@ -20,7 +20,7 @@ function Pill({ tone, children }: { tone: Tone; children: React.ReactNode }) {
 
 function Row({ label, hint, tone, value }: { label: string; hint?: string; tone: Tone; value: string }) {
   return (
-    <li className="flex flex-wrap items-center justify-between gap-2 border-b border-mist/60 py-2.5 last:border-0">
+    <li className="flex flex-wrap items-center justify-between gap-2 border-b border-[#e3e8ee]/60 py-2.5 last:border-0">
       <div>
         <p className="text-sm font-bold">{label}</p>
         {hint && <p className="text-xs text-graphite">{hint}</p>}
@@ -47,8 +47,8 @@ export function PaymentReadinessCard({ readiness: r }: { readiness: PaymentReadi
   const overallTone: Tone = r.overall === "ready" ? "ok" : r.overall === "partial" ? "warn" : "bad";
 
   return (
-    <section className="rounded-2xl border border-mist bg-white shadow-sm">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-mist px-4 py-4">
+    <section className="rounded-2xl border border-[#e3e8ee] bg-white shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e3e8ee] px-4 py-4">
         <div>
           <h2 className="font-display text-lg font-bold">Payment readiness</h2>
           <p className="text-xs text-graphite">Configuration checklist — statuses only, no secrets are shown.</p>

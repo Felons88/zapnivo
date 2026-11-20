@@ -44,7 +44,7 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
             <span className="text-xs font-extrabold uppercase tracking-wider text-graphite">Period</span>
             {([7, 30, 90] as const).map((d) => (
               <Link key={d} href={`/admin/finance?days=${d}`}
-                className={`rounded-full px-4 py-1.5 text-sm font-bold ${d === days ? "bg-ink text-white" : "bg-white text-graphite border border-mist hover:text-ink"}`}>
+                className={`rounded-full px-4 py-1.5 text-sm font-bold ${d === days ? "bg-[#0a2540] text-white" : "bg-white text-graphite border border-[#e3e8ee] hover:text-ink"}`}>
                 {DAY_LABEL[d]}
               </Link>
             ))}
@@ -71,8 +71,8 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
           </section>
 
           {/* By venue */}
-          <section className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
-            <div className="flex items-center justify-between border-b border-mist px-4 py-4">
+          <section className="overflow-x-auto rounded-2xl border border-[#e3e8ee] bg-white shadow-sm">
+            <div className="flex items-center justify-between border-b border-[#e3e8ee] px-4 py-4">
               <h2 className="font-display text-lg font-bold">By venue</h2>
               <Link href="/admin/payouts" className="text-xs font-extrabold uppercase tracking-wider text-forest hover:underline">Ledgers &amp; payouts →</Link>
             </div>
@@ -80,12 +80,12 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
               <p className="px-4 py-8 text-sm text-graphite">No captured payments in this period.</p>
             ) : (
               <table className="w-full min-w-[860px] text-left text-sm">
-                <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite">
+                <thead className="border-b border-[#e3e8ee] bg-[#eef1f5]/40 text-xs uppercase tracking-wider text-graphite">
                   <tr>{["Venue", "Rentals", "Captured", "Refunds", "Net", "Stripe fees (est.)", "Venue share"].map((h, i) => <th key={i} className="px-4 py-3 font-extrabold">{h}</th>)}</tr>
                 </thead>
                 <tbody>
                   {venues.map((v) => (
-                    <tr key={v.venueId} className="border-b border-mist/60 last:border-0">
+                    <tr key={v.venueId} className="border-b border-[#e3e8ee]/60 last:border-0">
                       <td className="px-4 py-3 font-bold">{v.venueName}</td>
                       <td className="px-4 py-3 text-graphite">{v.rentalsCount}</td>
                       <td className="px-4 py-3 font-bold">{fmt(v.capturedCents)}</td>

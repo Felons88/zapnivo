@@ -107,8 +107,8 @@ function TopLink({ item, active }: { item: (typeof NAV_ITEMS)[AdminNavKey]; acti
     <Link
       href={item.href}
       aria-current={active ? "page" : undefined}
-      className={`flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition-colors ${
-        active ? "bg-ink text-white" : "text-graphite hover:bg-mist hover:text-ink"
+      className={`flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+        active ? "bg-[#0a2540] text-white" : "text-[#425466] hover:bg-[#eef1f5] hover:text-[#0a2540]"
       }`}
     >
       {item.label}
@@ -120,20 +120,20 @@ function TopLink({ item, active }: { item: (typeof NAV_ITEMS)[AdminNavKey]; acti
 function ToolsMenu({ all, nav }: { all: [AdminNavKey, (typeof NAV_ITEMS)[AdminNavKey]][]; nav: AdminNavKey }) {
   return (
     <details className="group relative">
-      <summary className="flex shrink-0 cursor-pointer list-none items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold text-graphite hover:bg-mist hover:text-ink [&::-webkit-details-marker]:hidden">
+      <summary className="flex shrink-0 cursor-pointer list-none items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-[#425466] hover:bg-[#eef1f5] hover:text-[#0a2540] [&::-webkit-details-marker]:hidden">
         All tools<span aria-hidden className="text-[10px] transition-transform group-open:rotate-180">▾</span>
       </summary>
-      <div className="absolute left-0 top-full z-40 mt-1 max-h-[70vh] w-80 overflow-y-auto rounded-xl border border-mist bg-white p-2 shadow-2xl">
+      <div className="absolute left-0 top-full z-40 mt-1 max-h-[70vh] w-80 overflow-y-auto rounded-xl border border-[#e3e8ee] bg-white p-2 shadow-[0_15px_35px_rgba(10,37,64,.12)]">
         {GROUPS.map((g) => {
           const items = all.filter(([key, item]) => item.group === g && !(PRIMARY as readonly string[]).includes(key));
           if (items.length === 0) return null;
           return (
             <div key={g} className="mb-1 last:mb-0">
-              <p className="px-2 pb-1 pt-2 text-[10px] font-extrabold uppercase tracking-wider text-graphite">{g}</p>
+              <p className="px-2 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider text-[#8898aa]">{g}</p>
               <div className="grid grid-cols-1 gap-0.5">
                 {items.map(([key, item]) => (
-                  <Link key={key} href={item.href} className={`flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-[13px] font-semibold ${nav === key ? "bg-lime/60 text-ink" : "text-ink hover:bg-mist"}`}>
-                    <span className="text-graphite">{item.icon}</span>{item.label}
+                  <Link key={key} href={item.href} className={`flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-[13px] font-medium ${nav === key ? "bg-[#edeeff] text-[#635bff]" : "text-[#0a2540] hover:bg-[#f6f9fc]"}`}>
+                    <span className="text-[#8898aa]">{item.icon}</span>{item.label}
                   </Link>
                 ))}
               </div>
@@ -151,10 +151,10 @@ function NavLink({ item, active, mobile = false }: { item: (typeof NAV_ITEMS)[Ad
       href={item.href}
       aria-current={active ? "page" : undefined}
       className={`flex min-h-10 items-center gap-3 rounded-lg px-3 py-1.5 text-[13px] font-semibold transition-colors ${
-        active ? "bg-lime text-ink shadow-sm" : mobile ? "text-graphite hover:bg-mist hover:text-ink" : "text-[#c6d0cf] hover:bg-white/10 hover:text-white"
+        active ? "bg-[#edeeff] text-[#635bff]" : "text-[#425466] hover:bg-[#eef1f5] hover:text-[#0a2540]"
       }`}
     >
-      <span className={active ? "text-ink" : mobile ? "text-graphite" : "text-[#7f929c]"}>{item.icon}</span>
+      <span className={active ? "text-[#635bff]" : "text-[#8898aa]"}>{item.icon}</span>
       {item.label}
     </Link>
   );
@@ -193,7 +193,7 @@ export async function AdminGate({ title, nav, children }: { title: string; nav: 
     ? { text: cmsText(cms, "announcement_text", ""), href: cmsText(cms, "announcement_href", "") || undefined }
     : null;
   return (
-    <div className="admin-console min-h-screen bg-[#f3f5f2] text-ink">
+    <div className="admin-console min-h-screen bg-[#f6f9fc] text-ink">
       <LiveSync channel="admin-live" tables={LIVE_TABLES} intervalMs={30000} accessToken={accessToken} />
       {devAuth() && (
         <div className="relative z-50 bg-gold px-4 py-2 text-center text-xs font-bold text-ink">
@@ -203,49 +203,49 @@ export async function AdminGate({ title, nav, children }: { title: string; nav: 
       )}
 
       {announcement?.text ? (
-        <div className="border-b border-lime/40 bg-lime px-5 py-2 text-center text-xs font-bold text-ink">
+        <div className="border-b border-[#d8d0ff] bg-[#edeeff] px-5 py-2 text-center text-xs font-bold text-[#0a2540]">
           {announcement.text}
           {announcement.href ? <> · <Link href={announcement.href} className="underline underline-offset-2">Learn more →</Link></> : null}
         </div>
       ) : null}
       {/* Topbar — brand, search, user; one slim nav row underneath */}
-      <header className="sticky top-0 z-30 border-b border-[#dce4dc] bg-[#fafbf9]/95 shadow-[0_6px_24px_-22px_#102022] backdrop-blur">
+      <header className="sticky top-0 z-30 border-b border-[#e3e8ee] bg-white/95 shadow-[0_1px_3px_rgba(10,37,64,.05)] backdrop-blur">
         <div className="flex h-14 items-center gap-4 px-5 md:px-8">
           <Link href="/admin" aria-label="Zapnivo internal" className="flex shrink-0 items-center gap-2">
-            <span className="text-lg font-black tracking-tight text-ink">zapnivo<span className="text-lime">.</span></span>
-            <span className="rounded-md border border-lime/40 px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-widest text-forest">Ops</span>
+            <span className="text-lg font-black tracking-tight text-[#0a2540]">zapnivo<span className="text-[#635bff]">.</span></span>
+            <span className="rounded-md bg-[#edeeff] px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-widest text-[#635bff]">Ops</span>
           </Link>
           <form action="/admin/search" className="hidden min-w-0 flex-1 items-center gap-2 sm:flex sm:max-w-md">
-            <span className="text-silver">{icons.search}</span>
-            <input name="q" aria-label="Search internal records and tools" placeholder="Search records and tools" className="h-9 w-full bg-transparent text-sm outline-none placeholder:text-graphite/70" />
-            <button type="submit" className="shrink-0 text-xs font-bold text-forest">Search</button>
+            <span className="text-[#8898aa]">{icons.search}</span>
+            <input name="q" aria-label="Search internal records and tools" placeholder="Search records and tools" className="h-9 w-full bg-transparent text-sm outline-none placeholder:text-[#8898aa]" />
+            <button type="submit" className="shrink-0 text-xs font-bold text-[#635bff]">Search</button>
           </form>
           <div className="ml-auto flex items-center gap-3">
             <span className="hidden min-w-0 text-right lg:block">
-              <span className="block text-[10px] font-extrabold uppercase leading-4 tracking-[.16em] text-[#61736c]">{NAV_ITEMS[nav].group}</span>
-              <span className="block truncate font-display text-sm font-bold tracking-tight">{title}</span>
+              <span className="block text-[10px] font-semibold uppercase leading-4 tracking-[.16em] text-[#8898aa]">{NAV_ITEMS[nav].group}</span>
+              <span className="block truncate font-display text-sm font-bold tracking-tight text-[#0a2540]">{title}</span>
             </span>
-            <Link href="/admin/support?view=person" className="hidden min-h-9 items-center rounded-lg bg-ink px-4 text-xs font-bold text-white hover:bg-forest md:inline-flex">Open work queue →</Link>
-            <span className="hidden max-w-[180px] truncate text-xs font-semibold text-graphite xl:block">{user.email}</span>
+            <Link href="/admin/support?view=person" className="hidden min-h-9 items-center rounded-lg bg-[#635bff] px-4 text-xs font-semibold text-white hover:bg-[#5851ea] md:inline-flex">Open work queue →</Link>
+            <span className="hidden max-w-[180px] truncate text-xs font-medium text-[#425466] xl:block">{user.email}</span>
             <div className="lg:hidden"><LogoutButton light /></div>
             <div className="hidden lg:block"><LogoutButton light /></div>
           </div>
         </div>
         {/* Desktop nav row — daily destinations + full tools directory */}
-        <nav aria-label="Console" className="hidden border-t border-mist/70 lg:block">
+        <nav aria-label="Console" className="hidden border-t border-[#eef1f5] lg:block">
           <div className="mx-auto flex max-w-[1600px] items-center gap-1 overflow-x-auto px-5 py-1.5 md:px-8">
-            {PRIMARY.map((key) => <TopLink key={key} item={NAV_ITEMS[key]} active={nav === key} />)}
+            {PRIMARY.map((key) => <TopLink key={key} item={NAV_ITEMS[key] } active={nav === key} />)}
             <ToolsMenu all={all} nav={nav} />
-            <span className="ml-auto hidden shrink-0 items-center gap-3 pl-3 text-xs font-bold text-graphite xl:flex">
-              <Link href={SITE.url} className="hover:text-ink">Public site ↗</Link>
-              {user.role === "admin" && <Link href="/system" className="hover:text-ink">System console ↗</Link>}
+            <span className="ml-auto hidden shrink-0 items-center gap-3 pl-3 text-xs font-semibold text-[#425466] xl:flex">
+              <Link href={SITE.url} className="hover:text-[#635bff]">Public site ↗</Link>
+              {user.role === "admin" && <Link href="/system" className="hover:text-[#635bff]">System console ↗</Link>}
             </span>
           </div>
         </nav>
         {/* Mobile nav — compact disclosure, unchanged behavior */}
-        <nav id="admin-mobile-nav" aria-label="Console" className="border-t border-mist/70 px-5 py-2 lg:hidden">
+        <nav id="admin-mobile-nav" aria-label="Console" className="border-t border-[#eef1f5] px-5 py-2 lg:hidden">
           <details className="group">
-            <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between text-sm font-bold [&::-webkit-details-marker]:hidden">
+            <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between text-sm font-bold text-[#0a2540] [&::-webkit-details-marker]:hidden">
               Browse programs <span aria-hidden className="text-xl transition-transform group-open:rotate-90">›</span>
             </summary>
             <div className="max-h-[65vh] space-y-3 overflow-y-auto pb-4">
@@ -253,29 +253,29 @@ export async function AdminGate({ title, nav, children }: { title: string; nav: 
               {GROUPS.map((g) => {
                 const items = all.filter(([key, item]) => item.group === g && !(PRIMARY as readonly string[]).includes(key));
                 return items.length === 0 ? null : <details key={g} open={items.some(([key]) => key === nav)} className="rounded-lg bg-white p-2">
-                  <summary className="cursor-pointer px-2 py-1 text-xs font-extrabold uppercase tracking-wider text-graphite">{g}</summary>
+                  <summary className="cursor-pointer px-2 py-1 text-xs font-semibold uppercase tracking-wider text-[#8898aa]">{g}</summary>
                   <div className="grid grid-cols-2 gap-1 pt-1">{items.map(([key, item]) => <NavLink key={key} item={item} active={nav === key} mobile />)}</div>
                 </details>;
               })}
             </div>
           </details>
         </nav>
-        <form action="/admin/search" className="flex border-t border-mist/70 px-5 py-2 sm:hidden">
-          <input name="q" aria-label="Search internal records and tools" placeholder="Search records and tools" className="min-h-10 min-w-0 flex-1 rounded-l-lg border border-mist bg-white px-3 text-sm" />
-          <button className="rounded-r-lg bg-forest px-3 text-xs font-bold text-white">Search</button>
+        <form action="/admin/search" className="flex border-t border-[#eef1f5] px-5 py-2 sm:hidden">
+          <input name="q" aria-label="Search internal records and tools" placeholder="Search records and tools" className="min-h-10 min-w-0 flex-1 rounded-l-lg border border-[#e3e8ee] bg-white px-3 text-sm placeholder:text-[#8898aa]" />
+          <button className="rounded-r-lg bg-[#635bff] px-3 text-xs font-semibold text-white">Search</button>
         </form>
       </header>
 
-      {related.length > 0 && <nav aria-label={`More in ${NAV_ITEMS[nav].group}`} className="border-b border-[#e1e7e2] bg-white/70">
+      {related.length > 0 && <nav aria-label={`More in ${NAV_ITEMS[nav].group}`} className="border-b border-[#e3e8ee] bg-white">
         <div className="mx-auto flex max-w-[1600px] items-center gap-2 overflow-x-auto px-5 py-1.5 md:px-8">
-          <span className="shrink-0 pr-2 text-[10px] font-extrabold uppercase tracking-wider text-graphite">{NAV_ITEMS[nav].group}</span>
-          {related.map(([key, item]) => <Link key={key} href={item.href} className="shrink-0 rounded-full border border-mist bg-white px-3 py-1.5 text-xs font-bold text-graphite hover:border-forest hover:text-ink">{item.label}</Link>)}
+          <span className="shrink-0 pr-2 text-[10px] font-semibold uppercase tracking-wider text-[#8898aa]">{NAV_ITEMS[nav].group}</span>
+          {related.map(([key, item]) => <Link key={key} href={item.href} className="shrink-0 rounded-full border border-[#e3e8ee] bg-white px-3 py-1.5 text-xs font-semibold text-[#425466] hover:border-[#635bff] hover:text-[#0a2540]">{item.label}</Link>)}
         </div>
       </nav>}
       <main className="mx-auto max-w-[1600px] px-5 py-5 pb-24 md:px-8 lg:pb-8">{children}</main>
-      <nav aria-label="Quick navigation" className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-[#dce4dc] bg-white/95 px-2 pb-[max(8px,env(safe-area-inset-bottom))] pt-2 shadow-[0_-8px_30px_-22px_#102022] backdrop-blur lg:hidden">
-        {MOBILE_PRIMARY.map((key) => <Link key={key} href={NAV_ITEMS[key].href} aria-current={nav === key ? "page" : undefined} className={"flex min-h-12 flex-col items-center justify-center gap-0.5 rounded-lg text-[10px] font-bold " + (nav === key ? "bg-lime text-ink" : "text-graphite")}>{NAV_ITEMS[key].icon}<span>{key === "dashboard" ? "Home" : NAV_ITEMS[key].label}</span></Link>)}
-        <Link href="/admin/search" aria-current={nav === "search" ? "page" : undefined} className={"flex min-h-12 flex-col items-center justify-center gap-0.5 rounded-lg text-[10px] font-bold " + (nav === "search" ? "bg-lime text-ink" : "text-graphite")}>{icons.search}<span>Search</span></Link>
+      <nav aria-label="Quick navigation" className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-[#e3e8ee] bg-white/95 px-2 pb-[max(8px,env(safe-area-inset-bottom))] pt-2 shadow-[0_-8px_30px_-22px_rgba(10,37,64,.4)] backdrop-blur lg:hidden">
+        {MOBILE_PRIMARY.map((key) => <Link key={key} href={NAV_ITEMS[key].href} aria-current={nav === key ? "page" : undefined} className={"flex min-h-12 flex-col items-center justify-center gap-0.5 rounded-lg text-[10px] font-bold " + (nav === key ? "text-[#635bff]" : "text-[#425466]")}>{NAV_ITEMS[key].icon}<span>{key === "dashboard" ? "Home" : NAV_ITEMS[key].label}</span></Link>)}
+        <Link href="/admin/search" aria-current={nav === "search" ? "page" : undefined} className={"flex min-h-12 flex-col items-center justify-center gap-0.5 rounded-lg text-[10px] font-bold " + (nav === "search" ? "text-[#635bff]" : "text-[#425466]")}>{icons.search}<span>Search</span></Link>
       </nav>
     </div>
   );

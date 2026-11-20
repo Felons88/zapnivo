@@ -22,16 +22,16 @@ export default async function AuditLog({ searchParams }: { searchParams: Promise
       {!db ? <EmptyCard title="Audit data not connected">Connect Supabase to see the audit trail.</EmptyCard> : (
         <div className="space-y-4">
           <div className="flex flex-wrap gap-2">
-            <a href="/admin/audit" className={`rounded-full px-3 py-1.5 text-xs font-bold ${!entity ? "bg-ink text-white" : "bg-white hover:bg-mist"}`}>All</a>
-            {entities.map((e) => <a key={e} href={`/admin/audit?entity=${e}`} className={`rounded-full px-3 py-1.5 text-xs font-bold capitalize ${entity === e ? "bg-ink text-white" : "bg-white hover:bg-mist"}`}>{e}</a>)}
+            <a href="/admin/audit" className={`rounded-full px-3 py-1.5 text-xs font-bold ${!entity ? "bg-[#0a2540] text-white" : "bg-white hover:bg-[#eef1f5]"}`}>All</a>
+            {entities.map((e) => <a key={e} href={`/admin/audit?entity=${e}`} className={`rounded-full px-3 py-1.5 text-xs font-bold capitalize ${entity === e ? "bg-[#0a2540] text-white" : "bg-white hover:bg-[#eef1f5]"}`}>{e}</a>)}
           </div>
-          <section className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
+          <section className="overflow-x-auto rounded-2xl border border-[#e3e8ee] bg-white shadow-sm">
             {rows.length === 0 ? <p className="px-4 py-8 text-sm text-graphite">No audit events yet. Staff actions (fleet, partners, users, exports) are recorded here.</p> : (
               <table className="w-full min-w-[820px] text-left text-sm">
-                <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite"><tr>{["When", "Actor", "Action", "Entity", "Detail"].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr></thead>
+                <thead className="border-b border-[#e3e8ee] bg-[#eef1f5]/40 text-xs uppercase tracking-wider text-graphite"><tr>{["When", "Actor", "Action", "Entity", "Detail"].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr></thead>
                 <tbody>
                   {rows.map((r) => (
-                    <tr key={r.id} className="border-b border-mist/70 align-top last:border-0">
+                    <tr key={r.id} className="border-b border-[#e3e8ee]/70 align-top last:border-0">
                       <td className="whitespace-nowrap px-4 py-3 text-xs text-graphite">{when(r.occurred_at)}</td>
                       <td className="px-4 py-3 text-xs font-semibold">{who(r.profiles)}</td>
                       <td className="px-4 py-3 font-bold">{r.action}</td>

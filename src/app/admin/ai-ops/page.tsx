@@ -57,18 +57,18 @@ export default async function AiOps() {
 
           <ApprovalQueue approvals={approvals} />
 
-          <section aria-label="Activity" className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
-            <div className="border-b border-mist px-4 py-4"><h2 className="font-display text-lg font-bold">Activity log</h2></div>
+          <section aria-label="Activity" className="overflow-x-auto rounded-2xl border border-[#e3e8ee] bg-white shadow-sm">
+            <div className="border-b border-[#e3e8ee] px-4 py-4"><h2 className="font-display text-lg font-bold">Activity log</h2></div>
             {runs.length === 0 ? (
               <p className="px-4 py-8 text-sm text-graphite">No agent runs recorded yet.</p>
             ) : (
               <table className="w-full min-w-[900px] text-left text-sm">
-                <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite">
+                <thead className="border-b border-[#e3e8ee] bg-[#eef1f5]/40 text-xs uppercase tracking-wider text-graphite">
                   <tr>{["When", "Agent", "Task", "Status", "Duration", "Tokens", "Cost", "Actor", "Error"].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr>
                 </thead>
                 <tbody>
                   {runs.map((r) => (
-                    <tr key={r.id} className="border-b border-mist/70 last:border-0 hover:bg-lime/10">
+                    <tr key={r.id} className="border-b border-[#e3e8ee]/70 last:border-0 hover:bg-[#edeeff]">
                       <td className="px-4 py-3 text-xs text-graphite">{when(r.created_at)}</td>
                       <td className="px-4 py-3 font-semibold">{r.agent_id}</td>
                       <td className="max-w-56 truncate px-4 py-3 text-xs">{r.task}</td>

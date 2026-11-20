@@ -55,7 +55,7 @@ export default async function Payouts({ searchParams }: { searchParams: Promise<
     <AdminGate title="Settlement board" nav="payouts">
       {!db ? <EmptyCard title="Finance data not connected">Connect Supabase.</EmptyCard> : (
         <div className="space-y-4">
-          {sp.gen != null && <p className="rounded-xl bg-lime px-4 py-2.5 text-sm font-bold text-ink">Generated {sp.gen} ledger(s){Number(sp.norate) > 0 ? ` · ${sp.norate} venue(s) skipped — no private commission rate on their agreement` : ""}{Number(sp.locked) > 0 ? ` · ${sp.locked} locked (payout exists)` : ""}.</p>}
+          {sp.gen != null && <p className="rounded-xl bg-[#635bff] px-4 py-2.5 text-sm font-bold text-white">Generated {sp.gen} ledger(s){Number(sp.norate) > 0 ? ` · ${sp.norate} venue(s) skipped — no private commission rate on their agreement` : ""}{Number(sp.locked) > 0 ? ` · ${sp.locked} locked (payout exists)` : ""}.</p>}
 
           <section className="grid gap-4 sm:grid-cols-3">
             <Metric label="Awaiting payout" value={fmt(outstanding)} sub={`${month(`${period}-01`)} · scheduled + approved + accrued commission`} />
@@ -63,7 +63,7 @@ export default async function Payouts({ searchParams }: { searchParams: Promise<
             <Metric label="Venues" value={rows.length} sub={`${rows.filter((r) => r.state === "unbilled").length} without a ledger`} />
           </section>
 
-          <section className="rounded-2xl border border-mist bg-white p-4 shadow-sm">
+          <section className="rounded-2xl border border-[#e3e8ee] bg-white p-4 shadow-sm">
             <div className="flex flex-wrap items-end justify-between gap-4">
               <div>
                 <h2 className="font-display text-lg font-bold">Settlement period</h2>
@@ -75,26 +75,26 @@ export default async function Payouts({ searchParams }: { searchParams: Promise<
                     {recentPeriods().map((p) => <option key={p} value={p}>{month(`${p}-01`)}</option>)}
                   </select>
                 </div>
-                <button className="min-h-10 rounded-full bg-ink px-5 text-sm font-bold text-white">View</button>
+                <button className="min-h-10 rounded-full bg-[#0a2540] px-5 text-sm font-bold text-white">View</button>
               </form>
             </div>
-            <form method="post" action="/api/admin/payouts" className="mt-4 flex flex-wrap items-end gap-3 border-t border-mist pt-4">
+            <form method="post" action="/api/admin/payouts" className="mt-4 flex flex-wrap items-end gap-3 border-t border-[#e3e8ee] pt-4">
               <input type="hidden" name="action" value="generate_ledgers" />
               <div><label htmlFor="g-period" className="mb-1 block text-xs font-bold">Generate ledgers for</label><input id="g-period" name="period" required pattern="\d{4}-(0[1-9]|1[0-2])" defaultValue={period} className={input} /></div>
-              <button className="min-h-10 rounded-full bg-mist px-5 text-sm font-bold hover:bg-lime">Generate</button>
+              <button className="min-h-10 rounded-full bg-[#eef1f5] px-5 text-sm font-bold hover:bg-[#edeeff]">Generate</button>
             </form>
           </section>
 
-          <section className="overflow-x-auto rounded-2xl border border-mist bg-white shadow-sm">
-            <div className="border-b border-mist px-4 py-4"><h2 className="font-display text-lg font-bold">Venues — {month(`${period}-01`)}</h2></div>
+          <section className="overflow-x-auto rounded-2xl border border-[#e3e8ee] bg-white shadow-sm">
+            <div className="border-b border-[#e3e8ee] px-4 py-4"><h2 className="font-display text-lg font-bold">Venues — {month(`${period}-01`)}</h2></div>
             {rows.length === 0 ? <p className="px-4 py-8 text-sm text-graphite">No venues found.</p> : (
               <table className="w-full min-w-[1100px] text-left text-sm">
-                <thead className="border-b border-mist bg-mist/40 text-xs uppercase tracking-wider text-graphite"><tr>{["Venue", "Organization", "Gross", "Commission", "Agreement", "Payout", "State", ""].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr></thead>
+                <thead className="border-b border-[#e3e8ee] bg-[#eef1f5]/40 text-xs uppercase tracking-wider text-graphite"><tr>{["Venue", "Organization", "Gross", "Commission", "Agreement", "Payout", "State", ""].map((h) => <th key={h} className="px-4 py-3 font-extrabold">{h}</th>)}</tr></thead>
                 <tbody>
                   {rows.map((r) => {
                     const payout = r.payouts.find((p) => p.status === r.state) ?? r.payouts[0] ?? null;
                     return (
-                      <tr key={r.venueId} className="border-b border-mist/70 align-top last:border-0">
+                      <tr key={r.venueId} className="border-b border-[#e3e8ee]/70 align-top last:border-0">
                         <td className="px-4 py-3 font-bold">{r.venueName}{r.statementPath && <> · <a href={r.statementPath} className="text-xs font-bold text-forest underline">statement</a></>}</td>
                         <td className="px-4 py-3 text-xs text-graphite">{r.organizationName ?? "—"}</td>
                         <td className="px-4 py-3">{r.grossCents == null ? "—" : fmt(r.grossCents)}</td>
@@ -120,12 +120,12 @@ export default async function Payouts({ searchParams }: { searchParams: Promise<
                                 <option value="">method…</option>
                                 {PAYOUT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
                               </select>
-                              <button className="min-h-8 rounded-full bg-mist px-3 text-xs font-bold hover:bg-lime">Schedule</button>
+                              <button className="min-h-8 rounded-full bg-[#eef1f5] px-3 text-xs font-bold hover:bg-[#edeeff]">Schedule</button>
                             </form>
                           )}
                           {isAdmin && payout?.status === "scheduled" && (
                             <div className="flex flex-col gap-2">
-                              <form method="post" action="/api/admin/payouts"><input type="hidden" name="action" value="approve_payout" /><input type="hidden" name="payout_id" value={payout.id} /><button className="min-h-8 rounded-full bg-ink px-3 text-xs font-bold text-white">Approve</button></form>
+                              <form method="post" action="/api/admin/payouts"><input type="hidden" name="action" value="approve_payout" /><input type="hidden" name="payout_id" value={payout.id} /><button className="min-h-8 rounded-full bg-[#0a2540] px-3 text-xs font-bold text-white">Approve</button></form>
                               <form method="post" action="/api/admin/payouts"><input type="hidden" name="action" value="cancel_payout" /><input type="hidden" name="payout_id" value={payout.id} /><button className="min-h-8 rounded-full border border-silver/60 px-3 text-xs font-bold">Cancel</button></form>
                             </div>
                           )}
@@ -138,7 +138,7 @@ export default async function Payouts({ searchParams }: { searchParams: Promise<
                                   <option value="" disabled>method</option>
                                   {PAYOUT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
                                 </select>
-                                <button className="min-h-8 rounded-full bg-lime px-3 text-xs font-bold text-ink">Mark paid</button>
+                                <button className="min-h-8 rounded-full bg-[#635bff] px-3 text-xs font-bold text-white">Mark paid</button>
                               </form>
                               <div className="flex gap-2">
                                 <form method="post" action="/api/admin/payouts"><input type="hidden" name="action" value="mark_payout" /><input type="hidden" name="payout_id" value={payout.id} /><input type="hidden" name="to" value="failed" /><button className="min-h-8 rounded-full border border-silver/60 px-3 text-xs font-bold">Mark failed</button></form>
