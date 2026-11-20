@@ -8,12 +8,10 @@ import { computeMetrics } from "@/lib/helpdesk/metrics";
 import { defaultCtx } from "@/lib/helpdesk/service";
 import { slaStatus } from "@/lib/helpdesk/sla";
 import type { Ticket } from "@/lib/helpdesk/types";
-import { loadAdminInsights } from "@/lib/admin-insights";
 import { serviceClient } from "@/lib/supabase";
 import { fetchFinanceData, periodWindow, computeSummary } from "@/lib/admin-finance";
 import { fmt } from "@/lib/pricing";
 import TrendChart from "@/components/TrendChart";
-import { FunnelChart, LeaderboardChart } from "@/components/Charts";
 
 export const metadata: Metadata = { title: "Operations overview", robots: { index: false, follow: false } };
 
@@ -30,19 +28,6 @@ const ACTIONS = [
   { title: "Check a station", desc: "Review devices that are offline or stale", href: "/admin/fleet?state=attention" },
   { title: "Review the money", desc: "Payouts, refunds, and disputes", href: "/admin/finance" },
 ] as const;
-
-function StatCard({ label, value, hint, href, alert = false }: { label: string; value: string; hint: string; href: string; alert?: boolean }) {
-  return (
-    <Link href={href} className={`group block p-4 ${card} transition hover:border-[#c7cfda]`}>
-      <span className="flex items-center gap-1.5 text-[13px] font-medium text-[#425466]">
-        {alert ? <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-[#df1b41]" /> : null}
-        {label}
-      </span>
-      <span className={`mt-1 block text-[26px] font-semibold leading-8 tracking-tight tabular-nums ${alert ? "text-[#df1b41]" : navy}`}>{value}</span>
-      <span className={`mt-1 block text-xs ${muted}`}>{hint} <span className={`${accent} opacity-0 transition group-hover:opacity-100`}>→</span></span>
-    </Link>
-  );
-}
 
 function ModuleHeading({ title, href, action }: { title: string; href?: string; action?: string }) {
   return (
@@ -85,11 +70,6 @@ export default async function AdminDashboard() {
   const financeData = db ? await fetchFinanceData(db, financeWindow) : null;
   const financeSummary = financeData ? computeSummary(financeData, financeWindow) : null;
 
-  const events = db
-    ? (await db.from("business_events").select("name,occurred_at").gte("occurred_at", financeWindow.start).limit(20000)).data ?? []
-    : [];
-  const insights = db ? await loadAdminInsights(db, events as { name: string }[]) : null;
-
   const now = new Date();
   const attention = tickets.filter(
     (t: Ticket) =>
@@ -106,16 +86,9 @@ export default async function AdminDashboard() {
   const stationOnline = stats?.kioskStates == null ? null : `${pick(stats.kioskStates, "online")} / ${total(stats.kioskStates)}`;
   const slotsReady = stats?.slotStates == null ? null : `${pick(stats.slotStates, "ready")} / ${total(stats.slotStates)}`;
   const activeRentals = stats?.rentalStates == null ? null : pick(stats.rentalStates, "active") + pick(stats.rentalStates, "dispense_pending");
+  const hour = now.getHours();
+  const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
   const today = new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric" }).format(now);
-
-  const funnelSteps = (insights?.funnel ?? []).map((f) => ({ label: f.label, count: f.count, convPct: f.convPct }));
-  const leaderboardRows =
-    (insights?.stations ?? []).slice(0, 10).map((s) => ({
-      label: s.station,
-      detail: s.venue ?? undefined,
-      value: s.grossCents / 100,
-      flag: s.bottomDecile ? "bottom decile" : undefined,
-    })) ?? [];
 
   const rentalsByDay = stats?.rentalsByDay ?? {};
   const days = Object.keys(rentalsByDay).sort();
@@ -129,36 +102,48 @@ export default async function AdminDashboard() {
   const refundsAwaiting = metrics?.refunds.requested ?? null;
   const disputesOpen = stats?.disputesOpen ?? null;
 
+  const headline: { label: string; value: string; hint: string; href: string; alert?: boolean }[] = [
+    { label: "Needs a person", value: num(metrics?.needsHuman), hint: "cases waiting", href: "/admin/support?view=person", alert: (metrics?.needsHuman ?? 0) > 0 },
+    { label: "Fleet attention", value: num(fleetAttention), hint: "offline / stale", href: "/admin/fleet?state=attention", alert: (fleetAttention ?? 0) > 0 },
+    { label: "Active rentals", value: num(activeRentals), hint: "in progress", href: "/admin/rentals" },
+    { label: "Captured today", value: money(stats?.revenueTodayCents), hint: "payments", href: "/admin/finance" },
+    { label: "Rentals today", value: num(stats?.rentalsToday), hint: "started", href: "/admin/rentals" },
+  ];
+
   return (
     <AdminGate title="Operations overview" nav="dashboard">
-      <div className="-mx-5 -my-5 min-h-[calc(100vh-8rem)] bg-[#f6f9fc] px-5 py-6 md:-mx-8 md:px-8">
-        {/* ── Header ─────────────────────────────────────────────────── */}
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-          <div className="min-w-0 flex-1">
-            <h1 className={`text-xl font-bold tracking-tight ${navy}`}>Your operations overview</h1>
-            <p className={`mt-0.5 text-sm ${secondary}`}>{today}</p>
+      <div className="mx-auto max-w-5xl">
+        {/* ── Greeting ───────────────────────────────────────────────── */}
+        <div className="flex items-end justify-between gap-4">
+          <div className="min-w-0">
+            <h1 className={`text-xl font-bold tracking-tight ${navy}`}>{greeting}</h1>
+            <p className={`mt-0.5 text-sm ${secondary}`}>{today} · here's what needs you.</p>
           </div>
-          <form method="get" action="/admin/search" className="flex min-w-0 flex-1 gap-2 lg:max-w-md">
-            <input name="q" required minLength={2} aria-label="Search the workspace" placeholder="Search customers, tickets, rentals…" className={`min-h-10 min-w-0 flex-1 rounded-lg border border-[#e3e8ee] bg-white px-3 text-sm ${navy} shadow-[0_1px_2px_rgba(10,37,64,.04)] outline-none placeholder:text-[#8898aa] focus:border-[#635bff]`} />
-            <button className="rounded-lg bg-[#635bff] px-4 text-sm font-semibold text-white transition hover:bg-[#5851ea]">Search</button>
-          </form>
-          <Link href="/admin/support?view=person" className={`inline-flex min-h-10 shrink-0 items-center gap-2 rounded-lg border border-[#e3e8ee] bg-white px-4 text-sm font-semibold ${navy} shadow-[0_1px_2px_rgba(10,37,64,.04)] transition hover:border-[#c7cfda]`}>
+          <Link href="/admin/support?view=person" className={`inline-flex min-h-9 shrink-0 items-center gap-2 rounded-lg border border-[#e3e8ee] bg-white px-4 text-[13px] font-semibold ${navy} shadow-[0_1px_2px_rgba(10,37,64,.04)] transition hover:border-[#c7cfda]`}>
             Priority queue{metrics ? ` (${metrics.needsHuman})` : ""}
           </Link>
         </div>
 
-        {/* ── Top stats ──────────────────────────────────────────────── */}
-        <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <StatCard label="Needs a person" value={num(metrics?.needsHuman)} hint="Cases waiting on staff" href="/admin/support?view=person" alert={(metrics?.needsHuman ?? 0) > 0} />
-          <StatCard label="Fleet attention" value={num(fleetAttention)} hint="Offline or stale stations" href="/admin/fleet?state=attention" alert={(fleetAttention ?? 0) > 0} />
-          <StatCard label="Active rentals" value={num(activeRentals)} hint="Renting or dispensing now" href="/admin/rentals" />
-          <StatCard label="Captured today" value={money(stats?.revenueTodayCents)} hint="Successful payments only" href="/admin/finance" />
-        </div>
+        {/* ── Today at a glance — one card, inline stats (Stripe overview) ── */}
+        <section aria-label="Today at a glance" className={`mt-4 overflow-hidden ${card}`}>
+          <div className="grid grid-cols-2 divide-[#e3e8ee] sm:grid-cols-3 sm:divide-x lg:grid-cols-5">
+            {headline.map((s) => (
+              <Link key={s.label} href={s.href} className="group p-4 transition hover:bg-[#f6f9fc]">
+                <span className={`flex items-center gap-1.5 text-[13px] font-medium ${secondary}`}>
+                  {s.alert ? <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-[#df1b41]" /> : null}
+                  {s.label}
+                </span>
+                <span className={`mt-1 block text-[26px] font-semibold leading-8 tracking-tight tabular-nums ${s.alert ? "text-[#df1b41]" : navy}`}>{s.value}</span>
+                <span className={`mt-0.5 block text-xs ${muted}`}>{s.hint} <span className={`${accent} opacity-0 transition group-hover:opacity-100`}>→</span></span>
+              </Link>
+            ))}
+          </div>
+        </section>
 
-        {/* ── Main grid: work surface + side modules ─────────────────── */}
-        <div className="mt-4 grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+        {/* ── Work surface + side rail ───────────────────────────────── */}
+        <div className="mt-4 grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
           <div className="min-w-0 space-y-4">
-            {/* Needs attention */}
+            {/* Needs attention — the work */}
             <section aria-labelledby="attention-title" className={`overflow-hidden ${card}`}>
               <ModuleHeading title="Needs attention" href="/admin/support?view=person" action="Open inbox" />
               {!ctx ? (
@@ -198,21 +183,20 @@ export default async function AdminDashboard() {
 
             {/* Trend */}
             {days.length > 0 ? (
-              <TrendChart title="Activity — last 14 days" subtitle="Rentals started vs support tickets created" days={days} series={series} />
+              <div>
+                <TrendChart title="Activity — last 14 days" subtitle="Rentals started vs support tickets created" days={days} series={series} />
+                <p className={`mt-2 text-right text-xs ${muted}`}>
+                  Funnels, station revenue, and cohorts live in <Link href="/admin/analytics" className={`font-medium ${accent} hover:text-[#0a2540]`}>Analytics →</Link>
+                </p>
+              </div>
             ) : (
               <section aria-label="Activity trend" className={`px-4 py-10 text-center text-sm ${card} ${secondary}`}>
                 No rental activity yet — the trend chart appears when rentals begin.
               </section>
             )}
-
-            {/* Funnel + leaderboard */}
-            <div className="grid gap-4 lg:grid-cols-2">
-              <FunnelChart title="Rental journey" subtitle="Last 30 days · first-party events" steps={funnelSteps} />
-              <LeaderboardChart title="Station revenue" subtitle="Gross captured less refunds · last 30 days" rows={leaderboardRows} format={(v) => "$" + v.toLocaleString(undefined, { maximumFractionDigits: 0 })} />
-            </div>
           </div>
 
-          {/* ── Right rail: actions + state modules ──────────────────── */}
+          {/* ── Right rail: actions + one ops card ───────────────────── */}
           <div className="space-y-4">
             <section aria-labelledby="actions-title" className={`overflow-hidden ${card}`}>
               <ModuleHeading title="Quick actions" />
@@ -231,31 +215,17 @@ export default async function AdminDashboard() {
               </ul>
             </section>
 
-            <section aria-labelledby="network-title" className={`overflow-hidden ${card}`}>
-              <ModuleHeading title="Network" href="/admin/fleet" action="Fleet" />
+            <section aria-labelledby="ops-title" className={`overflow-hidden ${card}`}>
+              <ModuleHeading title="Operations" href="/admin/fleet" action="Fleet" />
               <div className="divide-y divide-[#eef1f5]">
                 <MetricRow label="Stations online" value={stationOnline ?? "—"} href="/admin/fleet" />
                 <MetricRow label="Slots ready" value={slotsReady ?? "—"} href="/admin/inventory" />
                 <MetricRow label="Power banks" value={num(stats?.powerBanks)} href="/admin/inventory" />
-                <MetricRow label="Rentals today" value={num(stats?.rentalsToday)} href="/admin/rentals" />
                 <MetricRow label="Maintenance visits" value={num(stats?.maintenanceVisits)} href="/admin/vending-ops" />
-              </div>
-            </section>
-
-            <section aria-labelledby="money-title" className={`overflow-hidden ${card}`}>
-              <ModuleHeading title="Money" href="/admin/finance" action="Finance" />
-              <div className="divide-y divide-[#eef1f5]">
                 <MetricRow label="Payouts scheduled" value={money(financeSummary?.payouts.scheduledCents)} href="/admin/payouts" />
                 <MetricRow label="Refunds awaiting" value={num(refundsAwaiting)} href="/admin/support/refunds" alert={(refundsAwaiting ?? 0) > 0} />
                 <MetricRow label="Disputes open" value={num(disputesOpen)} href="/admin/disputes" alert={(disputesOpen ?? 0) > 0} />
-              </div>
-            </section>
-
-            <section aria-labelledby="pipeline-title" className={`overflow-hidden ${card}`}>
-              <ModuleHeading title="Pipeline" href="/admin/partners" action="Partners" />
-              <div className="divide-y divide-[#eef1f5]">
                 <MetricRow label="Applications pending" value={stats?.applicationStates == null ? "—" : String(pick(stats.applicationStates, "pending"))} href="/admin/partners" />
-                <MetricRow label="Active venues" value={stats?.venues == null ? "—" : String(pick(stats.venues, "true"))} href="/admin/partners/manage" />
                 <MetricRow label="Unhandled inquiries" value={num(stats?.unhandledContacts)} href="/admin/inquiries" />
                 <MetricRow label="Unassigned cases" value={num(metrics?.unassigned)} href="/admin/support?view=unassigned" />
               </div>
